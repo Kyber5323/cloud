@@ -8,6 +8,8 @@ Requires Go 1.27.1, Git, PostgreSQL 17, optionally Task, and `buf` (≥ 1.73; `t
 
 ## Local validation
 
+The tenant-as-space migration is `0017_tenant_membership_and_join.sql`, following upstream 0014 clone coordination, 0015 plugins and 0016 independent runtimes. Published migrations remain unchanged. Active tenant members share project and runtime access; each runtime independently clones its repository through the upstream lifecycle. Lifecycle operations on one project remain serialized; shared access does not merge simultaneous edits to one directory. Rebuild test databases that applied the old PR's 0014 tenant migration; other incompatible test data is never silently rewritten.
+
 On Windows, PostgreSQL 17.11 can be installed and started in isolation under the project's `.local/` directory without creating a system service:
 
 ```powershell

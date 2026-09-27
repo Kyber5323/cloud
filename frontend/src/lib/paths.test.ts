@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { loginPath, safeReturnTo, workspacePaths, workspaceUrlPrefix } from './paths'
+import {
+  joinUrl,
+  joinedLinkPath,
+  loginPath,
+  safeReturnTo,
+  workspacePaths,
+  workspaceUrlPrefix,
+} from './paths'
 
 describe('safeReturnTo', () => {
   it('keeps a same-origin path including query and fragment', () => {
@@ -41,5 +48,18 @@ describe('workspacePaths', () => {
     expect(p.members).toBe('/w/acme/settings/members')
     expect(p.repositories).toBe('/w/acme/repositories')
     expect(workspaceUrlPrefix()).toBe('localhost:3000/w/')
+  })
+})
+
+describe('private join links', () => {
+  it('round-trips a same-origin invitation and rejects external or malformed links', () => {
+    const token = 'a'.repeat(43)
+    const invite = joinUrl('invite', token)
+    expect(invite).toBe(`http://localhost:3000/join/invite/${token}`)
+    expect(joinedLinkPath(invite)).toBe(`/join/invite/${token}`)
+    expect(joinedLinkPath(`/join/apply/${token}`)).toBe(`/join/apply/${token}`)
+    expect(joinedLinkPath(`https://evil.invalid/join/invite/${token}`)).toBeUndefined()
+    expect(joinedLinkPath('/join/invite/short')).toBeUndefined()
+    expect(joinedLinkPath('http://[invalid')).toBeUndefined()
   })
 })

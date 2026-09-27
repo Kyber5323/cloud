@@ -42,6 +42,8 @@ docs/
 
 **Integration stages.** **Stage A** = upstream main alignment (`origin/main` → `workspace合并`). **Stage B** = Collaboration Space integration + the D1–D7 ADR. **Stage C** = final integration review (a review phase; its record is not yet a repo document). **Stage D** = coworker Login + Workspace UX restoration (SD1–SD7), a product correction that restores the coworker's product shell on top of the merged Space backend — **COMPLETE** (commits `c4a7510`…`c570b9e`, branch `workspace合并`; `main` stays `1c5b9b4`, not merged/pushed at the time). **922GithubAuth ← main（2026-09-23）** = feature 分支 `922GithubAuth` 合并 main 的 gateway-会话架构（`SessionProvider`/`/w/:slug`/`/onboarding`），删除 feature zustand 商店，保留 Step 3A 前端能力；开发拓扑双入口（ora-web :8080 + gateway :8081）；项目模型混合 optional-space。**已合并提交 `9e887d4`，待人工测试验收**。
 
+> **当前租户与协作空间规则（0014 迁移之后）**：每个租户只有一个空间；租户成员关系决定访问与 `admin/member` 角色；空间内项目对活动成员共享，只有管理员可删除项目。内网通过天舟按 `globalUserId` 添加在职人员，公网通过私有邀请或申请链接加入。下文 Stage A–D、Step 2–3A 为历史设计记录，其中独立空间成员、owner 角色、邮箱添加、可空项目空间和创建多个空间的描述已被 [核心契约](core-contract.md) 与 [迁移目录](../internal/core/migrations/README.md) 取代。
+
 ## Source of truth (one doc per topic)
 
 | Topic | Where | Notes |
@@ -49,7 +51,7 @@ docs/
 | **Project status / roadmap** | [progress.md](development/onboarding/progress.md) | done / in-progress / planned / deferred / blocked |
 | **Issue architecture** | [agent/architecture.md](development/agent/architecture.md) + [12-collaboration-architecture.md](migrations/multica-issue-board/12-collaboration-architecture.md) | the latter is the frozen Wave-3 design (rev. 2, plus §36/§37 revisions) |
 | **API** | [agent/api-reference.md](development/agent/api-reference.md) | live endpoint/field reference; `api/openapi.json` is the machine truth |
-| **Database** | [agent/database.md](development/agent/database.md) | live table + migration inventory |
+| **Database** | [agent/database.md](development/agent/database.md) + [migration README](../internal/core/migrations/README.md) | Current table inventory and immutable migration history |
 | **Collaboration interaction model** | [12-collaboration-architecture.md §37](migrations/multica-issue-board/12-collaboration-architecture.md#37-wave-3b-0--collaboration-interaction-model-frozen) | **authoritative product semantics** — `@`, the four target modes, cardinality, context, timeline, fixtures. Frozen by Wave 3B-0 |
 | **Collaboration / integration ports** | [12-collaboration-architecture.md §6.4](migrations/multica-issue-board/12-collaboration-architecture.md#64-canonical-port-inventory-unified-by-wave-3b-0) | the **single** canonical port inventory (15 ports; `FormDescriptorProvider` added by 3B-2). Other docs must point here, not repeat a list |
 | **Workflow interaction (Issues-facing)** | [12-collaboration-architecture.md §38](migrations/multica-issue-board/12-collaboration-architecture.md#38-wave-3b-2--workflow-interaction-design-frozen) | the **contract** (`FormDescriptor`, single Confirm boundary, AI Assist authority, draft decision, API surface, `0010`) + **§38.37** implementation record |

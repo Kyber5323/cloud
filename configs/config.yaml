@@ -26,6 +26,14 @@ collaboration:
   # addition to humans. Explicitly enabled; production default OFF. Independent of authentication —
   # enabling GitHub Auth never enables these fixtures. Override: CLOUD_COLLABORATION_DEVELOPMENT_FIXTURES=true.
   development_fixtures: false
+
+# Corporate deployments configure the fixed Tianzhou endpoint and machine
+# credentials. Public deployments leave directory.endpoint empty.
+# directory:
+#   endpoint: "https://tianzhou.huawei.com/api/framework/v1/user/search"
+#   hw_id: "<deployment value>"
+#   environment: "<deployment value>"
+#   app_key_file: "/run/ora-secrets/tianzhou-app-key"
 control:
   grpc_addr: "127.0.0.1:8082" # Controller-facing gRPC, unauthenticated at this stage; loopback or private network only
 auth:

@@ -25,7 +25,10 @@ function renderOnboarding() {
 
 function noTenant() {
   installSignedInSession()
-  server.use(http.get('/api/v1/me/tenants', () => HttpResponse.json({ items: [], nextCursor: '' })))
+  server.use(
+    http.get('/api/v1/me/spaces', () => HttpResponse.json({ items: [], nextCursor: '' })),
+    http.get('/api/v1/me/join-requests', () => HttpResponse.json({ items: [], nextCursor: '' })),
+  )
 }
 
 function createdSpace(name: string, slug: string) {
@@ -92,33 +95,30 @@ describe('OnboardingPage', () => {
     expect(body).toEqual({ name: 'Acme', slug: 'acme' })
   })
 
-  it('creates a space in the existing tenant when the member has one but no workspace', async () => {
-    installSignedInSession()
-    let posted = false
+  it('shows pending applications while the user has no space', async () => {
+    noTenant()
     server.use(
-      http.get('/api/v1/me/tenants', () =>
+      http.get('/api/v1/me/join-requests', () =>
         HttpResponse.json({
-          items: [{ id: TEST_TENANT_ID, name: '研发组织', status: 'active', role: 'admin' }],
+          items: [{ id: 'r1', name: 'Ops', status: 'pending' }],
           nextCursor: '',
         }),
       ),
-      http.get(`/api/v1/tenants/${TEST_TENANT_ID}/spaces`, () =>
-        HttpResponse.json({ items: [], nextCursor: '' }),
-      ),
-      http.post(`/api/v1/tenants/${TEST_TENANT_ID}/spaces`, () => {
-        posted = true
-        return HttpResponse.json(createdSpace('Ops', 'ops'))
-      }),
-      http.post('/api/v1/tenants', () => HttpResponse.error()),
     )
-    const user = userEvent.setup()
     renderOnboarding()
+    expect(await screen.findByText('Ops：等待管理员审批')).toBeInTheDocument()
+  })
 
-    await user.type(await screen.findByLabelText('工作区名称'), 'Ops')
-    await user.click(screen.getByRole('button', { name: '创建工作区' }))
-
-    expect(await screen.findByText('Issues screen')).toBeInTheDocument()
-    expect(posted).toBe(true)
+  it('directs Huawei users to directory-based joining instead of private links', async () => {
+    noTenant()
+    server.use(
+      http.get('/auth/providers', () => HttpResponse.json({ providers: ['huawei-idaas'] })),
+    )
+    renderOnboarding()
+    expect(
+      await screen.findByText('如需加入已有协作空间，请联系空间管理员通过华为人员目录添加你。'),
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText('加入已有协作空间')).not.toBeInTheDocument()
   })
 
   it('shows the backend fault code and keeps the form when creation fails', async () => {

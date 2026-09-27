@@ -8,6 +8,9 @@ export const WORKSPACE_ROUTE_PREFIX = '/w'
 /** Router pattern of the workspace subtree; pages read `:workspaceSlug` from it. */
 export const WORKSPACE_ROUTE_PATTERN = `${WORKSPACE_ROUTE_PREFIX}/:workspaceSlug`
 
+/** Browser-tab storage key for a private join path during external login. */
+export const PENDING_JOIN_PATH_KEY = 'ora:pending-join-path'
+
 /**
  * Builds the workspace-scoped routes used by the application.
  *
@@ -85,4 +88,21 @@ export function safeReturnTo(candidate: string | null | undefined): string {
  */
 export function workspaceUrlPrefix(): string {
   return `${window.location.host}${WORKSPACE_ROUTE_PREFIX}/`
+}
+
+/** Builds the private, same-origin link an administrator can share once. */
+export function joinUrl(kind: 'invite' | 'apply', token: string): string {
+  return `${window.location.origin}/join/${kind}/${token}`
+}
+
+/** Accepts only this application's private invitation and application links. */
+export function joinedLinkPath(input: string): string | undefined {
+  try {
+    const url = new URL(input, window.location.origin)
+    if (url.origin !== window.location.origin) return undefined
+    if (!/^\/join\/(invite|apply)\/[A-Za-z0-9_-]{43}$/.test(url.pathname)) return undefined
+    return url.pathname
+  } catch {
+    return undefined
+  }
 }

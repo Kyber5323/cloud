@@ -42,7 +42,7 @@ func TestRemainingPublicContractsAndMembershipRevocation(t *testing.T) {
 	f.user.Subject = "member"
 	member := f.call("GET", "/api/v1/me", nil, "", 200)
 	f.user.Subject = "alice"
-	f.call("PUT", f.path("/members/"+member.S("id")), core.Object{"role": "member", "status": "active", "version": 0}, "", 200)
+	f.addMemberID(member.S("id"), "member")
 	f.user.Subject = "member"
 	owned := f.create("member-project")
 	f.drain()
@@ -125,7 +125,7 @@ func TestDatabaseEffectAndTicketScopes(t *testing.T) {
 	f.user.Subject = "ticket-bob"
 	bob := f.call("GET", "/api/v1/me", nil, "", 200)
 	f.user.Subject = "alice"
-	f.call("PUT", f.path("/members/"+bob.S("id")), core.Object{"role": "member", "status": "active", "version": 0}, "", 200)
+	f.addMemberID(bob.S("id"), "member")
 	if _, e := f.store.Pool.Exec("INSERT INTO execution_tickets(id,tenant_id,workspace_id,node_instance_id,actor_user_id,admission_epoch,kind,state) VALUES($1,$2,$3,$4,$5,0,'task','active')", uuid.NewString(), f.tid, aw, node.Subject, bob.S("id")); e == nil {
 		t.Fatal("ticket accepted an actor who does not own the workspace")
 	}

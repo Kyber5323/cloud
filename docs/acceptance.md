@@ -1,5 +1,7 @@
 # 阶段一验收记录
 
+> 历史记录（2026-09-09）：以下命令、测试数量和 owner 隔离结论只描述当时的阶段一版本。当前协作空间即租户、租户成员共享项目与运行时的契约，见 [核心契约](core-contract.md) 和 `specs/decisions/cloud/tenancy/20260923-one-space-per-tenant.md`；本页不是当前版本的门禁结果。
+
 2026-09-09，工作区 `D:\project\cloud`。已完成阶段一 cloud 核心与模拟执行契约，不等同于真实 Controller/Node/Kubernetes 上线。源码未提交、未推送、未部署；desktop 只读参考，独立 `specs/` 仓库没有修改。
 
 ## 实际运行环境与结果

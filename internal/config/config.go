@@ -20,6 +20,7 @@ type Config struct {
 	Database      DatabaseConfig      `mapstructure:"database"`
 	Auth          AuthConfig          `mapstructure:"auth"`
 	Collaboration CollaborationConfig `mapstructure:"collaboration"`
+	Directory     DirectoryConfig     `mapstructure:"directory"`
 	Control       ControlConfig       `mapstructure:"control"`
 	Plugins       PluginConfig        `mapstructure:"plugins"`
 }
@@ -45,6 +46,15 @@ type CollaborationConfig struct {
 	// enabled: production must leave it false (default), in which case only human targets are
 	// served. It must never be coupled to whether an external login provider is enabled.
 	DevelopmentFixtures bool `mapstructure:"development_fixtures"`
+}
+
+// DirectoryConfig holds the fixed Tianzhou machine endpoint and secret file.
+// Empty endpoint disables corporate lookup on public deployments.
+type DirectoryConfig struct {
+	Endpoint    string `mapstructure:"endpoint"`
+	HWID        string `mapstructure:"hw_id"`
+	Environment string `mapstructure:"environment"`
+	AppKeyFile  string `mapstructure:"app_key_file"`
 }
 
 // ControlConfig binds the Controller-facing gRPC listener. Until the authentication ADR adds TLS,

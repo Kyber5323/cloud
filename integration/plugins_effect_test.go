@@ -106,7 +106,7 @@ func TestPluginEffectChainAndEvidence(t *testing.T) {
 	must(t, os.WriteFile(wrong, []byte("tampered bytes\n"), 0o600))
 	f.substrate.MapArtifact("https://example.invalid/artifacts/hello-1.0.0.orax", wrong)
 
-	f.call("POST", f.path("/spaces/"+sid+"/plugins"), core.Object{"identifier": "official/hello-world"}, "install-effect", 200)
+	f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/hello-world"}, "install-effect", 200)
 	op := f.claimPluginOp(t, "install_plugin")
 	planned := f.controlStep(t, op, "/effects", core.Object{"kind": "plugin_ensure", "workspaceId": wid}, 200)
 	effect := planned.O("effect")
@@ -160,7 +160,7 @@ func TestPluginEffectChainAndEvidence(t *testing.T) {
 
 	// IT-4.6: success evidence is validated strictly — an installed flag
 	// without the exact version is refused before any writeback.
-	f.call("POST", f.path("/spaces/"+sid+"/plugins"), core.Object{"identifier": "official/native-tool"}, "install-evidence", 200)
+	f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/native-tool"}, "install-evidence", 200)
 	op = f.claimPluginOp(t, "install_plugin")
 	planned = f.controlStep(t, op, "/effects", core.Object{"kind": "plugin_ensure", "workspaceId": wid}, 200)
 	badEvidence := f.controlStep(t, planned.O("operation"), "/effects/"+planned.O("effect").S("id")+"/result",
@@ -185,7 +185,7 @@ func TestPluginEffectAdmissionGate(t *testing.T) {
 	f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": ws.N("version")}, "stop-1", 202)
 	f.drain()
 
-	f.call("POST", f.path("/spaces/"+sid+"/plugins"), core.Object{"identifier": "official/hello-world"}, "install-admission", 200)
+	f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/hello-world"}, "install-admission", 200)
 	op := f.claimPluginOp(t, "install_plugin")
 	refused := f.controlStep(t, op, "/effects", core.Object{"kind": "plugin_ensure", "workspaceId": wid}, 409)
 	if refused.S("code") != "workspace_not_ready" {
@@ -205,7 +205,7 @@ func TestPluginAggregationMatrix(t *testing.T) {
 	f.spaceProject(t, sid, "project-one")
 	f.spaceProject(t, sid, "project-two")
 
-	f.call("POST", f.path("/spaces/"+sid+"/plugins"), core.Object{"identifier": "official/hello-world"}, "install-agg", 200)
+	f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/hello-world"}, "install-agg", 200)
 
 	// First workspace: plan → installing; complete → still installing (the
 	// second workspace is pending).
@@ -241,8 +241,8 @@ func TestPluginAggregationMatrix(t *testing.T) {
 	}
 
 	// A space without live runtime workspaces converges immediately.
-	other := f.createSpace("Empty", "empty-space", "space-empty")
-	o := f.call("POST", f.path("/spaces/"+other.S("id")+"/plugins"), core.Object{"identifier": "official/hello-world"}, "install-empty", 200)
+	other := f.createPluginTenant("Empty", "empty-space", "space-empty")
+	o := f.call("POST", f.pluginSpacePath(other.S("id"))+"/plugins", core.Object{"identifier": "official/hello-world"}, "install-empty", 200)
 	if o.O("resource").S("observedState") != "installed" {
 		t.Fatalf("no live workspaces means nothing to do: %v", o)
 	}
@@ -262,8 +262,8 @@ func TestPluginIsolationSerializationAndRecovery(t *testing.T) {
 
 	// IT-5.2: an in-flight install serializes the project; a second install
 	// while the first operation is queued is refused.
-	f.call("POST", f.path("/spaces/"+sid+"/plugins"), core.Object{"identifier": "official/hello-world"}, "install-serial", 200)
-	o := f.call("POST", f.path("/spaces/"+sid+"/plugins"), core.Object{"identifier": "official/native-tool"}, "install-serial-2", 409)
+	f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/hello-world"}, "install-serial", 200)
+	o := f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/native-tool"}, "install-serial-2", 409)
 	if o.S("code") != "operation_in_progress" {
 		t.Fatalf("second install on a busy project = %v", o)
 	}
@@ -271,8 +271,8 @@ func TestPluginIsolationSerializationAndRecovery(t *testing.T) {
 
 	// IT-5.1: another space never sees the first space's plugins, even though
 	// both serve the same catalog snapshot.
-	other := f.createSpace("Other", "other-space", "space-other")
-	plugins := f.call("GET", f.path("/spaces/"+other.S("id")+"/plugins"), nil, "", 200)
+	other := f.createPluginTenant("Other", "other-space", "space-other")
+	plugins := f.call("GET", f.pluginSpacePath(other.S("id"))+"/plugins", nil, "", 200)
 	if len(plugins["items"].([]any)) != 0 {
 		t.Fatalf("space isolation leaked plugins: %v", plugins)
 	}
@@ -283,7 +283,7 @@ func TestPluginIsolationSerializationAndRecovery(t *testing.T) {
 
 	// IT-5.4: controller takeover — the first controller plans the effect and
 	// is lost before dispatch; a second controller reconciles by stable id.
-	f.call("POST", f.path("/spaces/"+sid+"/plugins"), core.Object{"identifier": "official/native-tool"}, "install-recover", 200)
+	f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/native-tool"}, "install-recover", 200)
 	op := f.claimPluginOp(t, "install_plugin")
 	_ = f.controlStep(t, op, "/effects", core.Object{"kind": "plugin_ensure", "workspaceId": op.S("workspaceId")}, 200)
 	if _, e := f.client.Control(context.Background(), "/internal/v1/controller-lease/release", core.Object{"epoch": f.controller.Epoch}); e != nil {
@@ -313,7 +313,7 @@ func TestPluginConcurrentInstallsAcrossSpaces(t *testing.T) {
 	f.syncMarketplace(t, repo)
 	f.substrate.MapArtifact("https://example.invalid/artifacts/hello-1.0.0.orax", artifacts["https://example.invalid/artifacts/hello-1.0.0.orax"])
 	spaceA := f.defaultSpaceID()
-	spaceB := f.createSpace("Bee", "bee-space", "space-bee")
+	spaceB := f.createPluginTenant("Bee", "bee-space", "space-bee")
 	f.spaceProject(t, spaceA, "project-a")
 	f.spaceProject(t, spaceB.S("id"), "project-b")
 
@@ -326,7 +326,7 @@ func TestPluginConcurrentInstallsAcrossSpaces(t *testing.T) {
 		wg.Add(1)
 		go func(sid, id, key string) {
 			defer wg.Done()
-			_, status, e := f.client.Call(context.Background(), "POST", f.path("/spaces/"+sid+"/plugins"), "gateway",
+			_, status, e := f.client.Call(context.Background(), "POST", f.pluginSpacePath(sid)+"/plugins", "gateway",
 				core.Claims{Subject: "gateway-a"}, &f.user, key, core.Object{"identifier": id})
 			results <- fmt.Sprintf("%s:%d:%v", key, status, e)
 		}(install.sid, install.id, install.key)

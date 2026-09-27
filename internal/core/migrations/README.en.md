@@ -46,6 +46,9 @@ Migrations are executed in ascending numerical sequence. The sequence is **appen
   - `clone_executions`: executions a Controller registers before dispatching (exactly one per request, Controller-chosen opaque identities), their input, terminal result and the lease epoch at registration.
   - `clone_event_receipts`: exact receipts `(execution, sequence, event)` of Node events, the only basis for acknowledging a Node.
   - `control_submissions`: identity, request digest and recorded response of every state-changing submission; the same identity with the same content replays the response instead of reapplying.
+- **`0015_plugins.sql`**: Adds the plugin catalog, per-space selections and runtime installation records.
+- **`0016_workspace_runtime_follows_node.sql`**: Retires storage/worktree provisioning and uses independent Workspace data, Node and clone initialization. Historical records remain readable.
+- **`0017_tenant_membership_and_join.sql`**: Consolidates one space per tenant with tenant membership as the sole authority; restores mandatory project space association, reserves slugs globally even after archiving, and adds durable IDaaS identity association, invitation and join-request records. Incompatible test data with multiple spaces, unscoped projects, reused slugs or divergent tenant and space names must be rebuilt; the migration never silently splits or renames data.
 
 ## Checksum integrity and immutability
 

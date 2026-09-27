@@ -45,23 +45,35 @@ func TestPluginCatalogAPIAndGating(t *testing.T) {
 	f := setup(t)
 	repo, _ := marketplaceFixture(t, f.root)
 	f.syncMarketplace(t, repo)
-	// The gate is the space itself: a tenant member who never joined gets 404
-	// (no existence leak), a non-tenant member is already stopped by the
-	// tenant membership precondition (403), the pre-existing tenant gate.
-	created := f.createSpace("Gated", "gated-space", "space-gated")
-	sid := created.S("id")
-	bob, _ := f.addUser(t, "bob", "Bob")
+	// Tenant membership grants access to the sole space without a second ACL.
+	// A removed member is rejected immediately; foreign spaces remain hidden.
+	sid := f.defaultSpaceID()
+	bob, bobID := f.addUser(t, "bob", "Bob")
 
 	gw := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "gateway-a"}}
 	_, status, e := f.client.Call(context.Background(), "GET", f.path("/spaces/"+sid+"/plugins/catalog"), "gateway", gw, &bob, "", nil)
 	must(t, e)
-	if status != 404 {
-		t.Fatalf("non-member catalog read: want 404 got %d", status)
+	if status != 200 {
+		t.Fatalf("tenant member catalog read: want 200 got %d", status)
 	}
 	_, status, e = f.client.Call(context.Background(), "GET", f.path("/spaces/"+sid+"/plugins"), "gateway", gw, &bob, "", nil)
 	must(t, e)
+	if status != 200 {
+		t.Fatalf("tenant member plugin list: want 200 got %d", status)
+	}
+	foreign := f.createPluginTenant("Other", "other-space", "other-tenant")
+	_, status, e = f.client.Call(context.Background(), "GET", f.path("/spaces/"+foreign.S("id")+"/plugins"), "gateway", gw, &bob, "", nil)
+	must(t, e)
 	if status != 404 {
-		t.Fatalf("non-member plugin list: want 404 got %d", status)
+		t.Fatalf("foreign space under current tenant: want 404 got %d", status)
+	}
+	f.call("PUT", f.path("/members/"+bobID), core.Object{"role": "member", "status": "disabled", "version": 1}, "", 200)
+	for _, suffix := range []string{"/plugins", "/plugins/catalog"} {
+		_, status, e = f.client.Call(context.Background(), "GET", f.path("/spaces/"+sid+suffix), "gateway", gw, &bob, "", nil)
+		must(t, e)
+		if status != 403 {
+			t.Fatalf("removed member %s: want 403 got %d", suffix, status)
+		}
 	}
 	outsider := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "outsider"}, Source: "corp", DisplayName: "Outsider"}
 	_, status, e = f.client.Call(context.Background(), "GET", f.path("/spaces/"+sid+"/plugins"), "gateway", gw, &outsider, "", nil)

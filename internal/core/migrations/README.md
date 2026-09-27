@@ -46,6 +46,9 @@
   - `clone_executions`：Controller 派发前登记的执行（每个请求恰一个执行，身份为 Controller 选择的 opaque 字符串）、输入与终态结果、登记时的租约 epoch。
   - `clone_event_receipts`：Node 原事件的精确收据 `(execution, sequence, event)`，是确认 Node 的唯一依据。
   - `control_submissions`：每个状态变更提交的身份、请求摘要与记录的响应；同身份同内容回放响应，不重新应用。
+- **`0015_plugins.sql`**：增加插件目录、空间级选择和运行时安装记录。
+- **`0016_workspace_runtime_follows_node.sql`**：停用旧存储卷与工作树创建流程，采用独立 Workspace 数据、Node 和仓库克隆初始化，保留历史记录供读取。
+- **`0017_tenant_membership_and_join.sql`**：收敛为一租户一空间，租户成员身份成为唯一权限来源；恢复项目必须归属空间的约束，空间 slug 在全平台唯一且归档后不复用；为 IDaaS 关联身份、邀请和加入申请增加持久化表。历史多空间、无空间项目、重复 slug 或租户与空间名称不一致的测试数据必须重建；迁移不会静默拆分或改名。
 
 ## 校验和完整性与不可变性
 

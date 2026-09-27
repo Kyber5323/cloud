@@ -6,6 +6,7 @@ import type { ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import { AXIOS_INSTANCE } from '@/lib/api-client'
+import { PENDING_JOIN_PATH_KEY } from '@/lib/paths'
 import { installSignedInSession, TEST_USER } from '@/test/cloud-handlers'
 import { installFakeNavigation } from '@/test/navigation'
 import { renderRoutes, renderWithProviders } from '@/test/render'
@@ -209,6 +210,21 @@ describe('RequireSession', () => {
       '/private?tab=2',
     )
     expect(await screen.findByText('/login?returnTo=%2Fprivate%3Ftab%3D2')).toBeInTheDocument()
+  })
+
+  it('keeps a private invitation token out of the Gateway login return path', async () => {
+    const token = 'a'.repeat(43)
+    const path = `/join/invite/${token}`
+    renderRoutes(
+      [
+        { path: '/login', element: <LocationEcho /> },
+        { path: '/join/invite/:token', element: <RequireSession>Private join</RequireSession> },
+      ],
+      path,
+    )
+    expect(await screen.findByText('/login?returnTo=%2Fjoin%2Fcontinue')).toBeInTheDocument()
+    expect(sessionStorage.getItem(PENDING_JOIN_PATH_KEY)).toBe(path)
+    sessionStorage.removeItem(PENDING_JOIN_PATH_KEY)
   })
 
   it('renders the protected screen for a member', async () => {

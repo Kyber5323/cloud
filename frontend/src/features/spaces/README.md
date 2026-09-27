@@ -1,42 +1,33 @@
-# spaces：云协作空间接入层
+# spaces：协作空间接入层
 
 ## 职责
 
-把生成的 orval 客户端包装为页面可用的领域 hooks，并维护"当前空间"上下文与 SSE 订阅。它负责：
+包装生成的 Cloud 客户端，加载用户在所有租户中的空间，按路由 slug 选中空间并提供对应 `tenantId`。一个协作空间就是一个租户的可见信息；创建空间调用 `POST /api/v1/tenants`。维护空间名称更新、空间内项目列表和 SSE 失效通知。
 
-- 会话确认已登录后，从 `GET /api/v1/me/tenants` 解析租户（产品不展示租户，取最早创建的一个；后端按创建时间升序返回，选择是确定的），再加载 `GET /spaces` 空间列表（`useJoinedSpaces`）；
-- 为无租户的首次登录用户提供 `useCreateTenant`（`POST /api/v1/tenants`，后端顺带建首个空间并把调用者设为 owner）；
-- 把路由的 `:workspaceSlug` 解析为真实空间（未加入的 slug 解析为空）；
-- 空间成员 / 空间内项目的查询与变更（创建/改名/归档/成员 upsert），成功后失效对应查询；
-- 订阅 `/spaces/:sid/events` SSE 流，事件到达时只做 query invalidation（事件不携带业务状态）。
-
-不负责：页面 UI、路由定义、会话探测与登录（`features/auth`）、mock 数据。
+不负责成员关系（`features/members`）、加入流程（`features/onboarding`）、会话认证或项目业务内容。
 
 ## 文件
 
 | 文件 | 说明 |
-|---|---|
-| `api.ts` | 领域 hooks（useJoinedSpaces / useCreateTenant / useSpaces / useSpaceMembers / useSpaceProjects / useCreateSpace / useUpdateSpace / useArchiveSpace / useUpdateSpaceMember） |
-| `current-space.tsx` | `CurrentSpaceProvider` + `useCurrentSpace`：把路由 slug 解析为已加入的真实空间，暴露 `isPending` / `isError` |
-| `slug.ts` | 与后端一致的 slug 规则 `isValidSlug` 与从名称派生 slug 的 `slugFromName`，被创建对话框与 onboarding 共用 |
-| `use-space-events.ts` | `parseSSEFrames`（纯函数）+ `reconnectDelay` + `useSpaceEvents`（Cookie 会话下的 fetch 流订阅、指数退避重连与失效） |
-| `create-space-dialog.tsx` | 新建工作区对话框：slug 自动小写、创建后回调 slug 供跳转 |
-| `spaces.test.tsx` | 上述行为的测试 |
+| --- | --- |
+| `api.ts` | 全量分页的已加入空间列表、租户创建、空间改名和空间项目 hooks |
+| `current-space.tsx` | 从路由 slug 推导当前空间和该空间的租户 ID |
+| `slug.ts` | 与服务端一致的 slug 校验与名称派生 |
+| `create-space-dialog.tsx` | 创建新租户及其唯一空间的对话框 |
+| `use-space-events.ts` | SSE 解析、重连与 Query 缓存失效 |
+| `*.test.tsx` | 列表、创建、切换和事件行为测试 |
 
-## 依赖与使用
+## 依赖与不变量
 
-依赖：`src/api`（生成客户端）、`src/features/auth/session`（登录态门控）、TanStack Query。
+依赖生成客户端、`features/auth/session`、TanStack Query。布局、onboarding、项目和设置页依赖本模块。
 
-可被依赖：页面与布局组件（`projects`、`members`、`settings`、`dashboard-layout`、`app-sidebar`）。
-
-## 不变量
-
-- 租户列表只在会话为 `signed-in` 时请求；空间及以下查询全部以 `tenantId` 为开关（`enabled: !!tenantId`）；
-- `useJoinedSpaces` 对"无租户"返回 `spaces: []` 而非 `undefined`，调用方只凭 `isPending` 区分"没加入"与"还在加载"；
-- 本模块不接触任何凭证；请求靠浏览器自动携带的 Gateway Cookie；
-- SSE 事件仅触发失效，任何状态都以 REST 重新拉取为准；断线按 1s→30s 指数退避重连，重连成功后失效该租户下全部查询，401 则终止订阅；
-- `parseSSEFrames` 是纯函数，坏帧跳过不抛异常。
+- 只在确认登录后请求 `/me/spaces`；必须读取所有分页，切换器不能漏掉后续租户。
+- `tenantId` 必须来自当前路由匹配的空间；未知 slug 不借用第一个租户权限。
+- 角色只有 `admin`、`member`，未知角色按普通成员处理。
+- SSE 事件只触发重新读取权威 REST 状态；断线后按有上限的退避重连。若重连返回 403/404，则刷新已加入空间列表并停止订阅，以便界面退出已失去权限的空间。
 
 ## 测试
 
-`spaces.test.tsx` 用 MSW 动态 handler 模拟真实 API；未登录基线下断言不发租户请求且保持 pending。slug 规则与重连退避是纯函数测试。测试不依赖网络。
+MSW 模拟生成客户端的网络边界；纯函数单测覆盖 slug、SSE 帧与重连间隔。
+
+创建表单复用 `CreateFormSubmit` 统一错误与等待反馈；SSE 同时支持租户成员撤权、插件选择和目录更新，刷新相应查询。

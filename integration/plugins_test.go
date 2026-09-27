@@ -74,7 +74,7 @@ func (f *fixture) syncMarketplace(t *testing.T, repo string) *pluginmarket.Synce
 func (f *fixture) defaultSpaceID() string {
 	f.t.Helper()
 	var id string
-	must(f.t, f.store.Pool.QueryRow("SELECT id::text FROM collab_workspaces WHERE tenant_id=$1 AND slug='default'", f.tid).Scan(&id))
+	must(f.t, f.store.Pool.QueryRow("SELECT id::text FROM collab_workspaces WHERE tenant_id=$1", f.tid).Scan(&id))
 	return id
 }
 
@@ -82,7 +82,7 @@ func (f *fixture) defaultSpaceID() string {
 // main workspace is ready for plugin effects.
 func (f *fixture) spaceProject(t *testing.T, sid, key string) core.Object {
 	t.Helper()
-	created := f.call("POST", f.path("/spaces/"+sid+"/projects"), core.Object{"name": "Project", "repositoryUrl": "https://example.invalid/repo.git", "defaultBranch": "main"}, key, 202)
+	created := f.call("POST", f.pluginSpacePath(sid)+"/projects", core.Object{"name": "Project", "repositoryUrl": "https://example.invalid/repo.git", "defaultBranch": "main"}, key, 202)
 	f.drain()
 	return created
 }
@@ -108,7 +108,7 @@ func TestPluginMigrationAndCatalogPersistence(t *testing.T) {
 	pid, wid := uuid.NewString(), uuid.NewString()
 	tx, e := f.store.Pool.Begin()
 	must(t, e)
-	if _, e = tx.Exec(`INSERT INTO projects(id,tenant_id,owner_user_id,name,repository_url,default_branch,lifecycle) VALUES($1,$2,$3,'Constraint test','https://example.invalid/r.git','main','active')`, pid, f.tid, f.uid); e != nil {
+	if _, e = tx.Exec(`INSERT INTO projects(id,tenant_id,owner_user_id,space_id,name,repository_url,default_branch,lifecycle) VALUES($1,$2,$3,$4,'Constraint test','https://example.invalid/r.git','main','active')`, pid, f.tid, f.uid, sid); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = tx.Exec(`INSERT INTO workspaces(id,tenant_id,owner_user_id,project_id,kind,desired_state,observed_state,requested_ref) VALUES($1,$2,$3,$4,'main','running','ready','main')`, wid, f.tid, f.uid, pid); e != nil {

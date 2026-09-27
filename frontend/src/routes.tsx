@@ -13,6 +13,7 @@ import { IssuesPage } from '@/features/issues/issues-page'
 import { MembersPage } from '@/features/members/members-page'
 import { MyIssuesPage } from '@/features/my-issues/my-issues-page'
 import { OnboardingPage } from '@/features/onboarding/onboarding-page'
+import { JoinContinue, JoinPage } from '@/features/onboarding/join-page'
 import { PluginsPage } from '@/features/plugins/plugins-page'
 import { ProjectDetailPage } from '@/features/projects/project-detail-page'
 import { ProjectsPage } from '@/features/projects/projects-page'
@@ -62,10 +63,34 @@ export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/onboarding" replace /> },
   { path: '/login', element: <LoginPage /> },
   {
+    path: '/join/continue',
+    element: (
+      <RequireSession>
+        <JoinContinue />
+      </RequireSession>
+    ),
+  },
+  {
     path: '/onboarding',
     element: (
       <RequireSession>
         <OnboardingPage />
+      </RequireSession>
+    ),
+  },
+  {
+    path: '/join/invite/:token',
+    element: (
+      <RequireSession>
+        <JoinPage kind="invite" />
+      </RequireSession>
+    ),
+  },
+  {
+    path: '/join/apply/:token',
+    element: (
+      <RequireSession>
+        <JoinPage kind="apply" />
       </RequireSession>
     ),
   },

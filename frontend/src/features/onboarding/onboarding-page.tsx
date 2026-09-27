@@ -4,20 +4,19 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useSession } from '@/features/auth/session'
-import { useCreateSpace, useCreateTenant, useJoinedSpaces } from '@/features/spaces/api'
+import { useLoginProviders } from '@/features/auth/providers'
+import { useMyJoinRequests } from '@/features/onboarding/api'
+import { useCreateTenant, useJoinedSpaces } from '@/features/spaces/api'
 import { isValidSlug, slugFromName } from '@/features/spaces/slug'
-import { workspacePaths, workspaceUrlPrefix } from '@/lib/paths'
+import { joinedLinkPath, workspacePaths, workspaceUrlPrefix } from '@/lib/paths'
 
 /**
- * First-run screen: a signed-in member who joined no workspace names their
- * first one here. Creating it provisions the member's tenant behind the
- * scenes (the product never shows tenants); a member whose tenant exists but
- * has no live workspace creates one in that tenant instead. Members who
- * already have a workspace are sent to it — later workspaces are created
- * from the sidebar, not here.
+ * Landing screen for members with no space. They can create a tenant or enter
+ * a private invitation or application link shared by an administrator.
  */
 export function OnboardingPage() {
-  const { tenantId, spaces, isPending, isError } = useJoinedSpaces()
+  const { spaces, isPending, isError } = useJoinedSpaces()
+  const providers = useLoginProviders()
 
   if (isPending) return null
   if (isError) {
@@ -31,7 +30,7 @@ export function OnboardingPage() {
   if (existing) return <Navigate to={workspacePaths(existing.slug).issues} replace />
   return (
     <Shell>
-      <CreateFirstWorkspace tenantId={tenantId} />
+      <CreateFirstWorkspace corporate={providers.data?.includes('huawei-idaas')} />
     </Shell>
   )
 }
@@ -45,35 +44,27 @@ function Shell({ children }: { children: ReactNode }) {
 }
 
 /**
- * Picks the creation API by the member's state: without a tenant the
- * workspace comes with a new tenant; with one it is a space in that tenant.
- * Both resolve to the slug the caller should navigate to.
+ * Creates a tenant and its sole space and yields its immutable slug.
  */
-function useCreateFirstWorkspace(tenantId: string | undefined) {
+function useCreateFirstWorkspace() {
   const createTenant = useCreateTenant()
-  const createSpace = useCreateSpace(tenantId)
-  const errorCode =
-    createTenant.error?.response?.data?.code ?? createSpace.error?.response?.data?.code
+  const errorCode = createTenant.error?.response?.data?.code
 
   function create(input: { name: string; slug: string }, onCreated: (slug: string) => void) {
-    if (tenantId) {
-      createSpace.mutate({ ...input, description: '' }, { onSuccess: (s) => onCreated(s.slug) })
-      return
-    }
     createTenant.mutate(input, { onSuccess: (created) => onCreated(created.space.slug) })
   }
 
-  return { create, pending: createTenant.isPending || createSpace.isPending, errorCode }
+  return { create, pending: createTenant.isPending, errorCode }
 }
 
 /**
  * Name + slug form. The slug follows the name until the user edits it, and
  * the URL preview shows exactly where the workspace will live.
  */
-function CreateFirstWorkspace({ tenantId }: { tenantId: string | undefined }) {
+function CreateFirstWorkspace({ corporate }: { corporate: boolean | undefined }) {
   const navigate = useNavigate()
   const { session, signOut } = useSession()
-  const { create, pending, errorCode } = useCreateFirstWorkspace(tenantId)
+  const { create, pending, errorCode } = useCreateFirstWorkspace()
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [slugTouched, setSlugTouched] = useState(false)
@@ -98,10 +89,10 @@ function CreateFirstWorkspace({ tenantId }: { tenantId: string | undefined }) {
       className="space-y-6"
     >
       <div className="space-y-1">
-        <h1 className="text-lg font-semibold">创建你的第一个工作区</h1>
+        <h1 className="text-lg font-semibold">创建或加入协作空间</h1>
         <p className="text-sm text-muted-foreground">
           {displayName ? `${displayName}，` : ''}
-          工作区是团队协作的地方：项目、成员和任务都属于某个工作区。你将成为它的所有者。
+          协作空间承载项目、成员和任务。创建后你将成为管理员。
         </p>
       </div>
       <div className="space-y-1.5">
@@ -126,6 +117,12 @@ function CreateFirstWorkspace({ tenantId }: { tenantId: string | undefined }) {
       <Button type="submit" className="w-full" disabled={!submittable}>
         {pending ? '创建中…' : '创建工作区'}
       </Button>
+      {corporate === true && (
+        <p className="text-sm text-muted-foreground">
+          如需加入已有协作空间，请联系空间管理员通过华为人员目录添加你。
+        </p>
+      )}
+      {corporate === false && <JoinLinkEntry />}
       <Button
         type="button"
         variant="ghost"
@@ -136,6 +133,44 @@ function CreateFirstWorkspace({ tenantId }: { tenantId: string | undefined }) {
         退出登录
       </Button>
     </form>
+  )
+}
+
+/** Navigates only to this application's supported private join-link routes. */
+function JoinLinkEntry() {
+  const navigate = useNavigate()
+  const requests = useMyJoinRequests()
+  const [link, setLink] = useState('')
+  const [invalid, setInvalid] = useState(false)
+  return (
+    <div className="space-y-2 border-t pt-4">
+      <Label htmlFor="join-link">加入已有协作空间</Label>
+      <Input
+        id="join-link"
+        value={link}
+        onChange={(event) => setLink(event.target.value)}
+        placeholder="粘贴管理员分享的链接"
+      />
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => {
+          const path = joinedLinkPath(link)
+          setInvalid(!path)
+          if (path) void navigate(path)
+        }}
+      >
+        打开加入链接
+      </Button>
+      {invalid && <p className="text-xs text-destructive">请输入有效的邀请或申请链接</p>}
+      {requests.data?.items
+        .filter((request) => request.status === 'pending')
+        .map((request) => (
+          <p key={request.id} className="text-sm text-muted-foreground">
+            {request.name}：等待管理员审批
+          </p>
+        ))}
+    </div>
   )
 }
 

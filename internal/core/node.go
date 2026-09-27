@@ -2,7 +2,7 @@ package core
 
 func access(t *transaction, r *ControlRequest) Object {
 	require(r.Identity != nil, 401, "user_credential_required")
-	u := identity(t, r.Identity.Source, r.Identity.Subject, r.Identity.DisplayName)
+	u := identityWithAlias(t, r.Identity)
 	tid, wid := r.Body.S("tenantId"), r.Body.S("workspaceId")
 	membership(t, tid, u.S("id"), false)
 	w := workspace(t, tid, u.S("id"), wid, false)

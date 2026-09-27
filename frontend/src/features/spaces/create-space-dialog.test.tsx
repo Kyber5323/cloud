@@ -8,9 +8,7 @@ import { renderWithProviders } from '@/test/render'
 import { server } from '@/test/msw-server'
 
 function setupDialog(onCreated = vi.fn<(slug: string) => void>()) {
-  renderWithProviders(
-    <CreateSpaceDialog open onOpenChange={() => {}} tenantId={TENANT_ID} onCreated={onCreated} />,
-  )
+  renderWithProviders(<CreateSpaceDialog open onOpenChange={() => {}} onCreated={onCreated} />)
   return { onCreated }
 }
 
@@ -20,28 +18,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 describe('CreateSpaceDialog', () => {
-  it('creates a space through the cloud API and reports the normalized slug', async () => {
+  it('creates a tenant and its sole space and reports the normalized slug', async () => {
     installSignedInSession()
     let postedName = ''
     let postedSlug = ''
     server.use(
-      http.post(`/api/v1/tenants/${TENANT_ID}/spaces`, async ({ request }) => {
+      http.post('/api/v1/tenants', async ({ request }) => {
         const body = await request.json()
         if (isRecord(body)) {
           postedName = typeof body['name'] === 'string' ? body['name'] : ''
           postedSlug = typeof body['slug'] === 'string' ? body['slug'] : ''
         }
         return HttpResponse.json({
-          id: '22222222-2222-2222-2222-222222222222',
-          tenantId: TENANT_ID,
-          name: postedName,
-          slug: postedSlug,
-          description: '',
-          createdBy: 'u1',
-          version: 1,
-          createdAt: '2026-09-20T10:00:00+08:00',
-          updatedAt: '2026-09-20T10:00:00+08:00',
-          archivedAt: null,
+          tenant: { id: TENANT_ID, name: postedName, role: 'admin', status: 'active' },
+          space: {
+            id: '22222222-2222-2222-2222-222222222222',
+            tenantId: TENANT_ID,
+            name: postedName,
+            slug: postedSlug,
+            description: '',
+            createdBy: 'u1',
+            version: 1,
+            createdAt: '2026-09-20T10:00:00+08:00',
+            updatedAt: '2026-09-20T10:00:00+08:00',
+            archivedAt: null,
+          },
         })
       }),
     )

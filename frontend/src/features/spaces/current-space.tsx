@@ -4,12 +4,12 @@ import { useJoinedSpaces } from '@/features/spaces/api'
 
 /**
  * Current-space context: resolves the route's `:workspaceSlug` against the
- * spaces the signed-in member joined and exposes the tenant id every
+ * spaces the signed-in member joined and exposes the selected space's tenant id every
  * tenant-scoped API needs. Pages read {@link useCurrentSpace} instead of
  * touching routing or the tenant list themselves.
  */
 export interface CurrentSpaceValue {
-  /** Tenant id of the session (the product shows only spaces, so the earliest-created tenant is used). */
+  /** Tenant id of the space selected by the route slug. */
   tenantId: string | undefined
   /** Spaces the signed-in member joined; `[]` once resolved for a member with none. */
   spaces: SpaceListItem[] | undefined
@@ -24,8 +24,9 @@ export interface CurrentSpaceValue {
 const CurrentSpaceContext = createContext<CurrentSpaceValue | null>(null)
 
 export function CurrentSpaceProvider({ slug, children }: { slug: string; children: ReactNode }) {
-  const { tenantId, spaces, isPending, isError } = useJoinedSpaces()
+  const { spaces, isPending, isError } = useJoinedSpaces()
   const space = spaces?.find((candidate) => candidate.slug === slug)
+  const tenantId = space?.tenantId
   const value = useMemo(
     () => ({ tenantId, spaces, space, isPending, isError }),
     [tenantId, spaces, space, isPending, isError],

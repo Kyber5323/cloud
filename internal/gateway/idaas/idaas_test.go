@@ -117,7 +117,7 @@ func TestExchangeUsesClientSecretPostAndReturnsCorporateIdentity(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	want := gateway.VerifiedIdentity{Source: Source, Subject: "uuid~dGVzdDE =", DisplayName: "Wang Longan"}
+	want := gateway.VerifiedIdentity{Source: Source, Subject: "uuid~dGVzdDE =", DisplayName: "Wang Longan", GlobalUserID: "174022309561388"}
 	if identity != want {
 		t.Fatalf("identity = %+v want %+v", identity, want)
 	}
@@ -142,8 +142,8 @@ func TestExchangeFallsBackToUUIDAndRejectsProviderAnswers(t *testing.T) {
 		want                          gateway.VerifiedIdentity
 		providerRejected, unavailable bool
 	}{
-		{"display field absent", 200, 200, `{"access_token":"tok","token_type":"Bearer"}`, `{"uuid":"w1","email":"ignored@example.com"}`, gateway.VerifiedIdentity{Source: Source, Subject: "w1", DisplayName: "w1"}, false, false},
-		{"display field wrong type", 200, 200, `{"access_token":"tok"}`, `{"uuid":"w2","userName":42}`, gateway.VerifiedIdentity{Source: Source, Subject: "w2", DisplayName: "w2"}, false, false},
+		{"display field absent", 200, 200, `{"access_token":"tok","token_type":"Bearer"}`, `{"uuid":"w1","globalUserId":123,"email":"ignored@example.com"}`, gateway.VerifiedIdentity{Source: Source, Subject: "w1", DisplayName: "w1", GlobalUserID: "123"}, false, false},
+		{"display field wrong type", 200, 200, `{"access_token":"tok"}`, `{"uuid":"w2","globalUserId":124,"userName":42}`, gateway.VerifiedIdentity{Source: Source, Subject: "w2", DisplayName: "w2", GlobalUserID: "124"}, false, false},
 		{"token oauth error", 200, 200, `{"error":"invalid_request","error_description":"secret provider detail"}`, `{}`, gateway.VerifiedIdentity{}, true, false},
 		{"token error code", 200, 200, `{"errorCode":"E_10009","errorDesc":"secret provider detail"}`, `{}`, gateway.VerifiedIdentity{}, true, false},
 		{"non-bearer token", 200, 200, `{"access_token":"tok","token_type":"mac"}`, `{}`, gateway.VerifiedIdentity{}, true, false},
@@ -151,8 +151,9 @@ func TestExchangeFallsBackToUUIDAndRejectsProviderAnswers(t *testing.T) {
 		{"userinfo error code", 200, 200, `{"access_token":"tok"}`, `{"errorCode":"E_10012"}`, gateway.VerifiedIdentity{}, true, false},
 		{"missing uuid", 200, 200, `{"access_token":"tok"}`, `{"userName":"Name"}`, gateway.VerifiedIdentity{}, true, false},
 		{"blank uuid", 200, 200, `{"access_token":"tok"}`, `{"uuid":"   "}`, gateway.VerifiedIdentity{}, true, false},
-		{"padded uuid", 200, 200, `{"access_token":"tok"}`, `{"uuid":" w3 "}`, gateway.VerifiedIdentity{Source: Source, Subject: "w3", DisplayName: "w3"}, false, false},
-		{"documented padded uuid", 200, 200, `{"access_token":"tok"}`, `{"uuid":"uuid~dGVzdDE = "}`, gateway.VerifiedIdentity{Source: Source, Subject: "uuid~dGVzdDE =", DisplayName: "uuid~dGVzdDE ="}, false, false},
+		{"padded uuid", 200, 200, `{"access_token":"tok"}`, `{"uuid":" w3 ","globalUserId":125}`, gateway.VerifiedIdentity{Source: Source, Subject: "w3", DisplayName: "w3", GlobalUserID: "125"}, false, false},
+		{"documented padded uuid", 200, 200, `{"access_token":"tok"}`, `{"uuid":"uuid~dGVzdDE = ","globalUserId":126}`, gateway.VerifiedIdentity{Source: Source, Subject: "uuid~dGVzdDE =", DisplayName: "uuid~dGVzdDE =", GlobalUserID: "126"}, false, false},
+		{"missing global id", 200, 200, `{"access_token":"tok"}`, `{"uuid":"w4"}`, gateway.VerifiedIdentity{}, true, false},
 		{"token 401", 401, 200, `{}`, `{}`, gateway.VerifiedIdentity{}, true, false},
 		{"provider 429", 429, 200, `{}`, `{}`, gateway.VerifiedIdentity{}, false, true},
 		{"provider 500", 500, 200, `{}`, `{}`, gateway.VerifiedIdentity{}, false, true},

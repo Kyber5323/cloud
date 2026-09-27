@@ -65,7 +65,7 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
 };
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Tenant membership is checked before lookup; resource reads filter tenant in SQL, and space-scoped projects and their runtime workspaces additionally require active membership of that workspace, while unscoped projects stay owner-scoped. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/tenants/:tid/projects/:pid/workspaces
  */
 export const getApiV1TenantsTidProjectsPidWorkspaces = (
@@ -173,7 +173,7 @@ export function useGetApiV1TenantsTidProjectsPidWorkspaces<TData = Awaited<Retur
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Tenant membership is checked before lookup; resource reads filter tenant in SQL, and space-scoped projects and their runtime workspaces additionally require active membership of that workspace, while unscoped projects stay owner-scoped. Creates one isolated Workspace and Task display identity. title/baseRef required; baseRef becomes the Workspace's requestedRef, which its Node clones; HEAD means the Project's defaultBranch. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Creates one isolated Workspace and Task display identity. title/baseRef required; baseRef becomes the Workspace's requestedRef, which its Node clones; HEAD means the Project's defaultBranch. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/projects/:pid/workspaces
  */
 export const postApiV1TenantsTidProjectsPidWorkspaces = (
@@ -243,7 +243,7 @@ export const usePostApiV1TenantsTidProjectsPidWorkspaces = <TError = ErrorType<E
       return useMutation(getPostApiV1TenantsTidProjectsPidWorkspacesMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Tenant membership is checked before lookup; resource reads filter tenant in SQL, and space-scoped projects and their runtime workspaces additionally require active membership of that workspace, while unscoped projects stay owner-scoped. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary DELETE /api/v1/tenants/:tid/workspaces/:wid
  */
 export const deleteApiV1TenantsTidWorkspacesWid = (
@@ -313,7 +313,7 @@ export const useDeleteApiV1TenantsTidWorkspacesWid = <TError = ErrorType<Error>,
       return useMutation(getDeleteApiV1TenantsTidWorkspacesWidMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Tenant membership is checked before lookup; resource reads filter tenant in SQL, and space-scoped projects and their runtime workspaces additionally require active membership of that workspace, while unscoped projects stay owner-scoped. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/tenants/:tid/workspaces/:wid
  */
 export const getApiV1TenantsTidWorkspacesWid = (
@@ -413,7 +413,7 @@ export function useGetApiV1TenantsTidWorkspacesWid<TData = Awaited<ReturnType<ty
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Tenant membership is checked before lookup; resource reads filter tenant in SQL, and space-scoped projects and their runtime workspaces additionally require active membership of that workspace, while unscoped projects stay owner-scoped. Administrator response explicitly excludes repository URL, worktree details, credentials, execution output and operation request/result/error details. Administrative stop still requires idle evidence. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Administrator response explicitly excludes repository URL, worktree details, credentials, execution output and operation request/result/error details. Administrative stop still requires idle evidence. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/workspaces/:wid/administrative-stop
  */
 export const postApiV1TenantsTidWorkspacesWidAdministrativeStop = (
@@ -483,7 +483,7 @@ export const usePostApiV1TenantsTidWorkspacesWidAdministrativeStop = <TError = E
       return useMutation(getPostApiV1TenantsTidWorkspacesWidAdministrativeStopMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Tenant membership is checked before lookup; resource reads filter tenant in SQL, and space-scoped projects and their runtime workspaces additionally require active membership of that workspace, while unscoped projects stay owner-scoped. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/workspaces/:wid/start
  */
 export const postApiV1TenantsTidWorkspacesWidStart = (
@@ -553,7 +553,7 @@ export const usePostApiV1TenantsTidWorkspacesWidStart = <TError = ErrorType<Erro
       return useMutation(getPostApiV1TenantsTidWorkspacesWidStartMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Tenant membership is checked before lookup; resource reads filter tenant in SQL, and space-scoped projects and their runtime workspaces additionally require active membership of that workspace, while unscoped projects stay owner-scoped. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/workspaces/:wid/stop
  */
 export const postApiV1TenantsTidWorkspacesWidStop = (

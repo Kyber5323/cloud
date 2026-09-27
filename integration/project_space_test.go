@@ -9,87 +9,67 @@ import (
 	"github.com/wanglongan587/cloud/internal/core"
 )
 
-// callUser runs a public request as the given final user and asserts the status.
-// The fixture's f.call always acts as the bootstrap owner (alice); owner-isolation
-// scenarios need to act as a specific space member.
-func (f *fixture) callUser(t *testing.T, u core.Claims, method, path string, body core.Object, key string, want int) core.Object {
-	t.Helper()
-	gw := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "gateway-a"}}
-	o, status, e := f.client.Call(context.Background(), method, path, "gateway", gw, &u, key, body)
-	must(t, e)
-	if status != want {
-		t.Fatalf("%s %s: want %d got %d %v", method, path, want, status, o)
-	}
-	return o
-}
-
-// TestProjectSpaceScopingAndSharing covers scenarios 2-4, 9-12 and the project
-// workspace-sharing boundary (Step 3). Space membership scopes the member
-// collection and gates the space, and Project / Runtime Workspace visibility
-// follows workspace membership: every active member can read a space-scoped
-// project and its runtime workspace, while a non-member stays fully hidden (404).
-// The tenant-level project list keeps its owner filter.
-func TestProjectSpaceScopingAndSharing(t *testing.T) {
+// TestProjectSpaceScopingAndRoleGates verifies project access through the sole
+// tenant membership and prevents access by an identity outside the tenant.
+func TestProjectSpaceScopingAndRoleGates(t *testing.T) {
 	f := setup(t)
-	space := f.createSpace("Scoped", "scoped", "space-scoped")
+	gw := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "gateway-a"}}
+	space := f.fixtureSpace()
 	sid := space.S("id")
-	bob, bobID := f.addUser(t, "bob", "Bob")
-	f.call("PUT", f.path("/spaces/"+sid+"/members/"+bobID), core.Object{"role": "member", "status": "active", "version": 0}, "", 200)
-	dave, daveID := f.addUser(t, "dave", "Dave")
-	f.call("PUT", f.path("/spaces/"+sid+"/members/"+daveID), core.Object{"role": "member", "status": "active", "version": 0}, "", 200)
-	carol, _ := f.addUser(t, "carol", "Carol") // not a member of `sid`
+	bob, _ := f.addUser(t, "bob", "Bob")
+	carol := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "carol"}, Source: "corp", DisplayName: "Carol"}
 
-	// Scenario 2: a member creates a project inside the space and becomes its owner.
-	created := f.callUser(t, bob, "POST", f.path("/spaces/"+sid+"/projects"), core.Object{"name": "Shared", "repositoryUrl": "https://example.invalid/repo.git", "defaultBranch": "main"}, "bob-project", 202)
-	pid := created.O("resource").S("id")
-	wid := created.O("workspace").S("id")
-	if created.O("resource").S("spaceId") != sid {
-		t.Fatal("space-scoped project missing spaceId")
+	// Scenario 2: a member creates a project inside the space.
+	_, status, e := f.client.Call(context.Background(), "POST", f.path("/spaces/"+sid+"/projects"), "gateway", gw, &bob, "bob-project", core.Object{"name": "Shared", "repositoryUrl": "https://example.invalid/repo.git", "defaultBranch": "main"})
+	must(t, e)
+	if status != 202 {
+		t.Fatalf("member create project: want 202 got %d", status)
+	}
+	// Space projects are visible to members and isolated from non-members.
+	list := f.call("GET", f.path("/spaces/"+sid+"/projects"), nil, "", 200)
+	items := list["items"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("space project list: want 1 got %d", len(items))
+	}
+	pid := core.Object(items[0].(map[string]any)).S("id")
+	if core.Object(items[0].(map[string]any)).S("spaceId") != sid {
+		t.Fatal("project missing spaceId")
+	}
+	// Scenario 3/11: a non-member of this space cannot read the project.
+	_, status, e = f.client.Call(context.Background(), "GET", f.path("/projects/"+pid), "gateway", gw, &carol, "", nil)
+	must(t, e)
+	if status != 403 {
+		t.Fatalf("non-member read: want 403 got %d", status)
+	}
+	// Scenario 4: a member can update business content.
+	p := f.call("GET", f.path("/projects/"+pid), nil, "", 200)
+	_, status, e = f.client.Call(context.Background(), "PATCH", f.path("/projects/"+pid), "gateway", gw, &bob, "", core.Object{"name": "Shared Renamed", "version": p.N("version")})
+	must(t, e)
+	if status != 200 {
+		t.Fatalf("member patch: want 200 got %d", status)
+	}
+	// Scenario 12: optimistic conflict returns 409.
+	_, status, e = f.client.Call(context.Background(), "PATCH", f.path("/projects/"+pid), "gateway", gw, &bob, "", core.Object{"name": "Stale", "version": p.N("version")})
+	must(t, e)
+	if status != 409 {
+		t.Fatalf("stale patch: want 409 got %d", status)
 	}
 
-	// The workspace is the sharing boundary: every member sees every active
-	// project in the space, regardless of creator.
-	bobList := f.callUser(t, bob, "GET", f.path("/spaces/"+sid+"/projects"), nil, "", 200)
-	if len(bobList["items"].([]any)) != 1 || core.Object(bobList["items"].([]any)[0].(map[string]any)).S("id") != pid {
-		t.Fatalf("creator space project list: %v", bobList)
-	}
-	daveList := f.callUser(t, dave, "GET", f.path("/spaces/"+sid+"/projects"), nil, "", 200)
-	if len(daveList["items"].([]any)) != 1 || core.Object(daveList["items"].([]any)[0].(map[string]any)).S("id") != pid {
-		t.Fatalf("member space project list should include bob's project: %v", daveList)
+	// Scenario 9: a member cannot delete the project.
+	after := f.call("GET", f.path("/projects/"+pid), nil, "", 200)
+	_, status, e = f.client.Call(context.Background(), "DELETE", f.path("/projects/"+pid), "gateway", gw, &bob, "bob-delete", core.Object{"version": after.N("version")})
+	must(t, e)
+	if status != 403 {
+		t.Fatalf("member delete project: want 403 got %d", status)
 	}
 
-	// A space member who is not the creator can read the project and its runtime
-	// workspace but cannot delete it (delete rule: creator OR owner/admin → 403);
-	// a non-member of the space stays fully hidden (404, no existence leak).
-	f.callUser(t, dave, "GET", f.path("/projects/"+pid), nil, "", 200)
-	f.callUser(t, dave, "GET", f.path("/workspaces/"+wid), nil, "", 200)
-	f.callUser(t, dave, "DELETE", f.path("/projects/"+pid), core.Object{"version": 1}, "member-delete", 403)
-	f.callUser(t, carol, "GET", f.path("/projects/"+pid), nil, "", 404)
-	f.callUser(t, carol, "GET", f.path("/workspaces/"+wid), nil, "", 404)
-	f.callUser(t, carol, "DELETE", f.path("/projects/"+pid), core.Object{"version": 1}, "nonmember-delete", 404)
-	// The tenant-level list keeps its owner filter: dave sees only his own
-	// projects there (empty in this scenario), even though he can see the shared
-	// project in the space view.
-	ownerList := f.callUser(t, dave, "GET", f.path("/projects"), nil, "", 200)
-	if len(ownerList["items"].([]any)) != 0 {
-		t.Fatalf("tenant project list should stay owner-filtered: %v", ownerList)
-	}
-
-	// Drain so the project reaches active and its version moves past the baseline.
+	// Scenario 10: an owner deletes through the existing lifecycle state machine.
 	f.drain()
-
-	// Scenario 4: the owner patches business content.
-	ownerRead := f.callUser(t, bob, "GET", f.path("/projects/"+pid), nil, "", 200)
-	f.callUser(t, bob, "PATCH", f.path("/projects/"+pid), core.Object{"name": "Shared Renamed", "version": ownerRead.N("version")}, "", 200)
-	// Scenario 12: a stale version conflicts.
-	f.callUser(t, bob, "PATCH", f.path("/projects/"+pid), core.Object{"name": "Stale", "version": ownerRead.N("version")}, "", 409)
-
-	// Scenario 10: the owner deletes through the lifecycle state machine.
-	active := f.callUser(t, bob, "GET", f.path("/projects/"+pid), nil, "", 200)
+	active := f.call("GET", f.path("/projects/"+pid), nil, "", 200)
 	if active.S("lifecycle") != "active" {
 		t.Fatalf("project did not reach active: %s", active.S("lifecycle"))
 	}
-	deleted := f.callUser(t, bob, "DELETE", f.path("/projects/"+pid), core.Object{"version": active.N("version")}, "owner-delete", 202)
+	deleted := f.call("DELETE", f.path("/projects/"+pid), core.Object{"version": active.N("version")}, "owner-delete", 202)
 	if deleted.O("resource").S("lifecycle") != "deleting" || deleted.O("operation").S("id") == "" {
 		t.Fatal("owner delete did not enter lifecycle state machine")
 	}
@@ -99,70 +79,133 @@ func TestProjectSpaceScopingAndSharing(t *testing.T) {
 	}
 }
 
-// TestProjectSpaceDefaultScope covers the hybrid project model (D2): a project
-// created at the tenant level defaults into the tenant's default collaboration
-// space, while the space-scoped path records the given space. The schema keeps
-// space_id nullable for pre-existing unscoped projects, which stay owner-only.
-func TestProjectSpaceDefaultScope(t *testing.T) {
+// TestDifferentMemberCanCreateRuntimeInSharedProject keeps the project owner
+// binding intact while recording the initiating member as the operation actor.
+func TestDifferentMemberCanCreateRuntimeInSharedProject(t *testing.T) {
 	f := setup(t)
-	// Tenant-level project defaults into the bootstrap default space.
-	unscoped := f.call("POST", f.path("/projects"), core.Object{"name": "Unscoped", "repositoryUrl": "https://example.invalid/repo.git", "defaultBranch": "main"}, "unscoped", 202)
-	if unscoped.O("resource").S("spaceId") == "" {
-		t.Fatalf("tenant-level project should default into the default space: %v", unscoped)
-	}
-	// A space-scoped project records its space.
-	space := f.createSpace("Scoped", "scoped", "space-scoped")
-	sid := space.S("id")
 	gw := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "gateway-a"}}
-	scoped, status, e := f.client.Call(context.Background(), "POST", f.path("/spaces/"+sid+"/projects"), "gateway", gw, &f.user, "scoped-project", core.Object{"name": "Scoped", "repositoryUrl": "https://example.invalid/repo.git", "defaultBranch": "main"})
-	must(t, e)
+	bob, bobID := f.addUser(t, "bob", "Bob")
+	created := f.call("POST", f.path("/projects"), core.Object{"name": "Shared", "repositoryUrl": "https://example.invalid/repo.git", "defaultBranch": "main"}, "shared-project", 202)
+	pid := created.O("resource").S("id")
+	f.drain()
+
+	out, status, err := f.client.Call(context.Background(), "POST", f.path("/projects/"+pid+"/workspaces"), "gateway", gw, &bob, "bob-runtime", core.Object{"title": "Bob's task", "baseRef": "main"})
+	must(t, err)
 	if status != 202 {
-		t.Fatalf("space-scoped create: want 202 got %d", status)
+		t.Fatalf("member create runtime in shared project: want 202, got %d (%v)", status, out)
 	}
-	if scoped.O("resource").S("spaceId") != sid {
-		t.Fatalf("space-scoped project missing spaceId: %v", scoped)
+	resource := out.O("resource")
+	if resource.S("ownerUserId") != f.uid || out.O("operation").S("actorUserId") != bobID {
+		t.Fatalf("runtime owner and operation actor diverged from their durable bindings: %v", out)
+	}
+	opid := out.O("operation").S("id")
+	if f.call("GET", f.path("/operations/"+opid), nil, "", 200).S("id") != opid {
+		t.Fatal("project owner could not inspect shared operation")
+	}
+	_, status, err = f.client.Call(context.Background(), "GET", f.path("/operations/"+opid), "gateway", gw, &bob, "", nil)
+	must(t, err)
+	if status != 200 {
+		t.Fatalf("operation actor could not inspect shared operation: %d", status)
+	}
+	f.drain()
+	list, status, err := f.client.Call(context.Background(), "GET", f.path("/projects/"+pid+"/workspaces"), "gateway", gw, &bob, "", nil)
+	must(t, err)
+	if status != 200 {
+		t.Fatalf("member runtime list: want 200 got %d (%v)", status, list)
+	}
+	items := list["items"].([]any)
+	if len(items) != 2 {
+		t.Fatalf("shared project must expose main and isolated runtimes without legacy worktree rows: %v", list)
+	}
+	for _, item := range items {
+		w := core.Object(item.(map[string]any))
+		if w.S("observedState") != "ready" || w.S("baseCommitId") != f.commit || w.S("ownerUserId") != f.uid {
+			t.Fatalf("shared runtime lost Node clone readiness or project ownership: %v", w)
+		}
+	}
+	if f.scalar("SELECT count(*) FROM workspace_worktrees") != 0 || f.scalar("SELECT count(*) FROM project_storage") != 0 {
+		t.Fatal("shared runtime must not reintroduce retired storage or worktree provisioning")
 	}
 }
 
-// TestSpaceMemberLastOwnerRace covers the owner-immutable invariant under
-// concurrency (Step 3A): the owner role can never be demoted or granted through
-// the member API, so concurrent attempts to destroy the ownership (owner
-// self-demote -> 409 ownership_transfer_not_supported) or to create a second
-// owner (member self-promote -> 403) are all rejected, leaving exactly one
-// owner. Ownership transfer is NOT implemented.
-func TestSpaceMemberLastOwnerRace(t *testing.T) {
+// TestConcurrentMembersCannotStartTwoProjectOperations documents the current
+// per-project lifecycle fence when members request separate runtimes together.
+func TestConcurrentMembersCannotStartTwoProjectOperations(t *testing.T) {
 	f := setup(t)
 	gw := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "gateway-a"}}
-	space := f.createSpace("Race", "race", "space-race")
-	sid := space.S("id")
+	bob, _ := f.addUser(t, "bob", "Bob")
+	created := f.call("POST", f.path("/projects"), core.Object{"name": "Shared", "repositoryUrl": "https://example.invalid/repo.git", "defaultBranch": "main"}, "shared-project", 202)
+	pid := created.O("resource").S("id")
+	f.drain()
+
+	type outcome struct {
+		status int
+		body   core.Object
+		err    error
+	}
+	results := make(chan outcome, 2)
+	start := make(chan struct{})
+	actors := []core.Claims{f.user, bob}
+	keys := []string{"runtime-alice", "runtime-bob"}
+	for i := range actors {
+		go func(i int) {
+			<-start
+			body, status, err := f.client.Call(context.Background(), "POST", f.path("/projects/"+pid+"/workspaces"), "gateway", gw, &actors[i], keys[i], core.Object{"title": "Shared task", "baseRef": "main"})
+			results <- outcome{status, body, err}
+		}(i)
+	}
+	close(start)
+	statuses := map[int]int{}
+	for range actors {
+		got := <-results
+		must(t, got.err)
+		statuses[got.status]++
+		if got.status == 409 && got.body.S("code") != "operation_in_progress" {
+			t.Fatalf("unexpected conflict: %v", got.body)
+		}
+	}
+	if statuses[202] != 1 || statuses[409] != 1 || len(statuses) != 2 {
+		t.Fatalf("concurrent runtime operations: want one 202 and one 409, got %v", statuses)
+	}
+	if got := f.scalar("SELECT count(*) FROM workspaces WHERE project_id=$1 AND kind='isolated' AND deleted_at IS NULL", pid); got != 1 {
+		t.Fatalf("concurrent runtime operations created %d isolated workspaces, want 1", got)
+	}
+}
+
+// TestTenantMemberLastAdminRace requires one active administrator after
+// simultaneous demotions of two administrators.
+func TestTenantMemberLastAdminRace(t *testing.T) {
+	f := setup(t)
+	gw := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "gateway-a"}}
 	bob, bobID := f.addUser(t, "bob", "Bob")
-	f.call("PUT", f.path("/spaces/"+sid+"/members/"+bobID), core.Object{"role": "member", "status": "active", "version": 0}, "", 200)
-	// Alice (owner) self-demotes while bob (member) self-promotes — fired
-	// concurrently; both must be rejected, and exactly one owner remains.
+	f.call("PUT", f.path("/members/"+bobID), core.Object{"role": "admin", "status": "active", "version": 1}, "", 200)
+	// Two admins; demoting both concurrently must leave exactly one.
 	subjects := []core.Claims{f.user, bob}
 	ids := []string{f.uid, bobID}
-	bodies := []core.Object{
-		{"role": "member", "status": "active", "version": 1}, // owner self-demote
-		{"role": "admin", "status": "active", "version": 1},  // member self-promote
-	}
 	statuses := make(chan int, 2)
 	for i := range subjects {
 		go func(i int) {
-			_, status, _ := f.client.Call(context.Background(), "PUT", f.path("/spaces/"+sid+"/members/"+ids[i]), "gateway", gw, &subjects[i], "", bodies[i])
+			rowVersion := float64(1)
+			if i == 1 {
+				rowVersion = 2
+			}
+			_, status, _ := f.client.Call(context.Background(), "PUT", f.path("/members/"+ids[i]), "gateway", gw, &subjects[i], "", core.Object{"role": "member", "status": "active", "version": rowVersion})
 			statuses <- status
 		}(i)
 	}
-	got := map[int]int{}
+	success, conflict := 0, 0
 	for range 2 {
-		got[<-statuses]++
+		switch <-statuses {
+		case 200:
+			success++
+		case 409:
+			conflict++
+		}
 	}
-	if got[409] != 1 || got[403] != 1 {
-		t.Fatalf("owner-immutable race: want one 409 and one 403 got %v", got)
+	if success != 1 || conflict != 1 {
+		t.Fatalf("last admin race: success=%d conflict=%d", success, conflict)
 	}
-	if f.scalar("SELECT count(*) FROM collab_workspace_members WHERE workspace_id=$1 AND role='owner' AND status='active'", sid) != 1 {
-		t.Fatal("space lost its last owner")
-	}
-	if f.scalar("SELECT count(*) FROM collab_workspace_members WHERE workspace_id=$1 AND user_id=$2 AND role='owner'", sid, f.uid) != 1 {
-		t.Fatal("alice is no longer the owner")
+	if f.scalar("SELECT count(*) FROM tenant_memberships WHERE tenant_id=$1 AND role='admin' AND status='active'", f.tid) != 1 {
+		t.Fatal("tenant lost its last administrator")
 	}
 }

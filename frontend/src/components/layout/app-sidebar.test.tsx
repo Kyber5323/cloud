@@ -16,11 +16,12 @@ import { renderRoutes } from '@/test/render'
 import { server } from '@/test/msw-server'
 
 const SECOND_SPACE_ID = '77777777-7777-7777-7777-777777777777'
+const SECOND_TENANT_ID = '88888888-8888-8888-8888-888888888888'
 
 function space(id: string, name: string, slug: string) {
   return {
     id,
-    tenantId: TEST_TENANT_ID,
+    tenantId: id === SECOND_SPACE_ID ? SECOND_TENANT_ID : TEST_TENANT_ID,
     name,
     slug,
     description: '',
@@ -29,20 +30,14 @@ function space(id: string, name: string, slug: string) {
     createdAt: '2026-09-20T10:00:00+08:00',
     updatedAt: '2026-09-20T10:00:00+08:00',
     archivedAt: null,
-    role: 'owner',
+    role: 'admin',
   }
 }
 
 function installTwoSpaces() {
   installSignedInSession()
   server.use(
-    http.get('/api/v1/me/tenants', () =>
-      HttpResponse.json({
-        items: [{ id: TEST_TENANT_ID, name: '研发组织', status: 'active', role: 'admin' }],
-        nextCursor: '',
-      }),
-    ),
-    http.get(`/api/v1/tenants/${TEST_TENANT_ID}/spaces`, () =>
+    http.get('/api/v1/me/spaces', () =>
       HttpResponse.json({
         items: [
           space(TEST_SPACE_ID, 'Cloud Dev', 'cloud-dev'),

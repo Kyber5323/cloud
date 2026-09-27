@@ -22,6 +22,10 @@ import type {
 
 import type {
   Error,
+  GetApiV1MeJoinRequests200,
+  GetApiV1MeJoinRequestsParams,
+  GetApiV1MeSpaces200,
+  GetApiV1MeSpacesParams,
   GetApiV1MeTenants200,
   GetApiV1MeTenantsParams,
   User
@@ -51,7 +55,7 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
 };
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Tenant membership is checked before lookup; resource reads filter tenant in SQL, and space-scoped projects and their runtime workspaces additionally require active membership of that workspace, while unscoped projects stay owner-scoped. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/me
  */
 export const getApiV1Me = (
@@ -144,7 +148,195 @@ export function useGetApiV1Me<TData = Awaited<ReturnType<typeof getApiV1Me>>, TE
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Tenant membership is checked before lookup; resource reads filter tenant in SQL, and space-scoped projects and their runtime workspaces additionally require active membership of that workspace, while unscoped projects stay owner-scoped. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists page in ascending creation order; the after cursor is an exclusive tenant UUID.
+ * Lists the verified user's pending and decided join applications without requiring prior tenant membership.
+ * @summary GET /api/v1/me/join-requests
+ */
+export const getApiV1MeJoinRequests = (
+    params?: GetApiV1MeJoinRequestsParams,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<GetApiV1MeJoinRequests200>(
+      {url: `/api/v1/me/join-requests`, method: 'GET',
+        params, signal
+    },
+      options);
+    }
+
+
+
+
+export const getGetApiV1MeJoinRequestsQueryKey = (params?: GetApiV1MeJoinRequestsParams,) => {
+    return [
+    `/api/v1/me/join-requests`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetApiV1MeJoinRequestsQueryOptions = <TData = Awaited<ReturnType<typeof getApiV1MeJoinRequests>>, TError = ErrorType<Error>>(params?: GetApiV1MeJoinRequestsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1MeJoinRequests>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetApiV1MeJoinRequestsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiV1MeJoinRequests>>> = ({ signal }) => getApiV1MeJoinRequests(params, requestOptions, signal);
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getApiV1MeJoinRequests>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetApiV1MeJoinRequestsQueryResult = NonNullable<Awaited<ReturnType<typeof getApiV1MeJoinRequests>>>
+export type GetApiV1MeJoinRequestsQueryError = ErrorType<Error>
+
+
+export function useGetApiV1MeJoinRequests<TData = Awaited<ReturnType<typeof getApiV1MeJoinRequests>>, TError = ErrorType<Error>>(
+ params: undefined |  GetApiV1MeJoinRequestsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1MeJoinRequests>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getApiV1MeJoinRequests>>,
+          TError,
+          Awaited<ReturnType<typeof getApiV1MeJoinRequests>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetApiV1MeJoinRequests<TData = Awaited<ReturnType<typeof getApiV1MeJoinRequests>>, TError = ErrorType<Error>>(
+ params?: GetApiV1MeJoinRequestsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1MeJoinRequests>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getApiV1MeJoinRequests>>,
+          TError,
+          Awaited<ReturnType<typeof getApiV1MeJoinRequests>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetApiV1MeJoinRequests<TData = Awaited<ReturnType<typeof getApiV1MeJoinRequests>>, TError = ErrorType<Error>>(
+ params?: GetApiV1MeJoinRequestsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1MeJoinRequests>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary GET /api/v1/me/join-requests
+ */
+
+export function useGetApiV1MeJoinRequests<TData = Awaited<ReturnType<typeof getApiV1MeJoinRequests>>, TError = ErrorType<Error>>(
+ params?: GetApiV1MeJoinRequestsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1MeJoinRequests>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetApiV1MeJoinRequestsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+/**
+ * Lists every active collaboration space whose tenant has an active membership for the verified user. A space corresponds to exactly one tenant; clients follow all pages before presenting the switcher.
+ * @summary GET /api/v1/me/spaces
+ */
+export const getApiV1MeSpaces = (
+    params?: GetApiV1MeSpacesParams,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<GetApiV1MeSpaces200>(
+      {url: `/api/v1/me/spaces`, method: 'GET',
+        params, signal
+    },
+      options);
+    }
+
+
+
+
+export const getGetApiV1MeSpacesQueryKey = (params?: GetApiV1MeSpacesParams,) => {
+    return [
+    `/api/v1/me/spaces`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetApiV1MeSpacesQueryOptions = <TData = Awaited<ReturnType<typeof getApiV1MeSpaces>>, TError = ErrorType<Error>>(params?: GetApiV1MeSpacesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1MeSpaces>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetApiV1MeSpacesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiV1MeSpaces>>> = ({ signal }) => getApiV1MeSpaces(params, requestOptions, signal);
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getApiV1MeSpaces>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetApiV1MeSpacesQueryResult = NonNullable<Awaited<ReturnType<typeof getApiV1MeSpaces>>>
+export type GetApiV1MeSpacesQueryError = ErrorType<Error>
+
+
+export function useGetApiV1MeSpaces<TData = Awaited<ReturnType<typeof getApiV1MeSpaces>>, TError = ErrorType<Error>>(
+ params: undefined |  GetApiV1MeSpacesParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1MeSpaces>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getApiV1MeSpaces>>,
+          TError,
+          Awaited<ReturnType<typeof getApiV1MeSpaces>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetApiV1MeSpaces<TData = Awaited<ReturnType<typeof getApiV1MeSpaces>>, TError = ErrorType<Error>>(
+ params?: GetApiV1MeSpacesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1MeSpaces>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getApiV1MeSpaces>>,
+          TError,
+          Awaited<ReturnType<typeof getApiV1MeSpaces>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetApiV1MeSpaces<TData = Awaited<ReturnType<typeof getApiV1MeSpaces>>, TError = ErrorType<Error>>(
+ params?: GetApiV1MeSpacesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1MeSpaces>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary GET /api/v1/me/spaces
+ */
+
+export function useGetApiV1MeSpaces<TData = Awaited<ReturnType<typeof getApiV1MeSpaces>>, TError = ErrorType<Error>>(
+ params?: GetApiV1MeSpacesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1MeSpaces>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetApiV1MeSpacesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+/**
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists page in ascending creation order; the after cursor is an exclusive tenant UUID.
  * @summary GET /api/v1/me/tenants
  */
 export const getApiV1MeTenants = (

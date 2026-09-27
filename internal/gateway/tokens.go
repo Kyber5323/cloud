@@ -72,7 +72,7 @@ func (i *Issuer) Issue(identity VerifiedIdentity) (Credentials, error) {
 	if e != nil {
 		return Credentials{}, e
 	}
-	user, e := sign(i.user, &core.Claims{RegisteredClaims: registered(identity.Subject), Kind: "user", Caller: i.serviceSubject, Source: identity.Source, DisplayName: identity.DisplayName})
+	user, e := sign(i.user, &core.Claims{RegisteredClaims: registered(identity.Subject), Kind: "user", Caller: i.serviceSubject, Source: identity.Source, DisplayName: identity.DisplayName, GlobalUserID: identity.GlobalUserID})
 	if e != nil {
 		return Credentials{}, e
 	}

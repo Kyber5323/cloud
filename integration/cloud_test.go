@@ -189,7 +189,7 @@ func TestMigrateUpgradesPreviousSchemaAndData(t *testing.T) {
 		args  []any
 	}{
 		{"INSERT INTO users(id,display_name,status) VALUES($1,'Upgrade user','active')", []any{ids[0]}},
-		{"INSERT INTO tenants(id,name,status) VALUES($1,'Upgrade tenant','active')", []any{ids[1]}},
+		{"INSERT INTO tenants(id,name,status) VALUES($1,'Default','active')", []any{ids[1]}},
 		{"INSERT INTO tenant_memberships(tenant_id,user_id,role,status) VALUES($1,$2,'admin','active')", []any{ids[1], ids[0]}},
 		{"INSERT INTO projects(id,tenant_id,owner_user_id,name,repository_url,default_branch,lifecycle) VALUES($1,$2,$3,'Upgrade project','https://example.invalid/upgrade.git','main','active')", []any{ids[2], ids[1], ids[0]}},
 		{"INSERT INTO project_storage(project_id,substrate_storage_id,observed_state) VALUES($1,'upgrade-storage','ready')", []any{ids[2]}},
@@ -433,21 +433,21 @@ func TestIdentityConcurrencyMembershipAndIsolation(t *testing.T) {
 		t.Fatal("orphan users from login race")
 	}
 	f.call("POST", f.path("/projects"), core.Object{"name": "Denied", "repositoryUrl": "https://example.invalid/repo.git"}, "no-member", 403)
+	f.internal("/internal/v1/access", core.Object{"tenantId": f.tid, "workspaceId": uuid.NewString(), "action": "read"}, 403)
 	f.user.Subject = "alice"
-	f.call("PUT", f.path("/members/"+id), core.Object{"role": "member", "status": "active", "version": 0}, "", 200)
+	f.addMemberID(id, "member")
 	created := f.create("owner-project")
 	f.drain()
 	pid, wid := created.O("resource").S("id"), created.O("workspace").S("id")
 	f.user.Subject = "new-user"
-	// Joining the tenant grants default-space membership, so the project and its
-	// runtime workspace become shared; operations stay scoped to their actor, and
-	// the tenant-level project list keeps its owner filter (the shared project
-	// appears in the default space's own view, not in the personal list).
+	// Joining the tenant grants access to its sole space, including shared
+	// projects, runtime workspaces, and their operations.
 	f.call("GET", f.path("/projects/"+pid), nil, "", 200)
 	f.call("GET", f.path("/workspaces/"+wid), nil, "", 200)
-	f.call("GET", f.path("/operations/"+created.O("operation").S("id")), nil, "", 404)
+	f.call("GET", f.path("/operations/"+created.O("operation").S("id")), nil, "", 200)
+	f.internal("/internal/v1/access", core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "epoch": f.controller.Epoch}, 200)
 	list := f.call("GET", f.path("/projects"), nil, "", 200)
-	if len(list["items"].([]any)) != 0 {
+	if len(list["items"].([]any)) != 1 {
 		t.Fatal("list owner filter missing")
 	}
 	f.user.Subject = "alice"

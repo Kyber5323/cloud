@@ -1,42 +1,33 @@
-# spaces: cloud collaboration space adapter
+# spaces: collaboration-space adapter
 
 ## Responsibility
 
-Wraps the generated orval client into domain hooks and owns the "current space" context and the SSE subscription. It:
+Wraps the generated Cloud client, loads every space joined across tenants, selects the space by route slug, and exposes that space's `tenantId`. A collaboration space is the visible information for one tenant; creating one calls `POST /api/v1/tenants`. Also owns space renaming, space project lists, and SSE invalidation.
 
-- once the session is signed in, resolves the tenant via `GET /api/v1/me/tenants` (the product never shows tenants, so the earliest-created one is taken; the backend lists tenants in ascending creation order, making the pick deterministic) and loads the `GET /spaces` list (`useJoinedSpaces`);
-- offers `useCreateTenant` (`POST /api/v1/tenants`) for a first-time member without a tenant; the backend creates the first space alongside and makes the caller its owner;
-- resolves the route's `:workspaceSlug` against real spaces (an unjoined slug resolves to nothing);
-- queries and mutates space members and space-scoped projects (create / rename / archive / member upsert), invalidating the affected queries on success;
-- subscribes to the `/spaces/:sid/events` SSE stream and only invalidates queries on events (events never carry business state).
-
-It does not: render pages, define routes, probe the session or log in (`features/auth`), or serve mock data.
+It does not own membership (`features/members`), joining (`features/onboarding`), authentication, or project business content.
 
 ## Files
 
 | File | Purpose |
-|---|---|
-| `api.ts` | Domain hooks (useJoinedSpaces / useCreateTenant / useSpaces / useSpaceMembers / useSpaceProjects / useCreateSpace / useUpdateSpace / useArchiveSpace / useUpdateSpaceMember) |
-| `current-space.tsx` | `CurrentSpaceProvider` + `useCurrentSpace`: resolves the route slug to a joined real space and exposes `isPending` / `isError` |
-| `slug.ts` | The backend's slug rule (`isValidSlug`) and name-to-slug derivation (`slugFromName`), shared by the create dialog and onboarding |
-| `use-space-events.ts` | `parseSSEFrames` (pure) + `reconnectDelay` + `useSpaceEvents` (cookie-session fetch stream, exponential-backoff reconnect and invalidation) |
-| `create-space-dialog.tsx` | Create-space dialog: slug normalized to lowercase, reports the slug for navigation |
-| `spaces.test.tsx` | Tests for the behaviors above |
+| --- | --- |
+| `api.ts` | Paginated complete joined-space list, tenant creation, rename, and project hooks |
+| `current-space.tsx` | Derives the active space and its tenant ID from the route slug |
+| `slug.ts` | Backend-compatible slug validation and name derivation |
+| `create-space-dialog.tsx` | Dialog creating a new tenant and its sole space |
+| `use-space-events.ts` | SSE parsing, reconnection, and Query cache invalidation |
+| `*.test.tsx` | Tests for listing, creation, switching, and events |
 
-## Dependencies and consumers
+## Dependencies and invariants
 
-Depends on: `src/api` (generated client), `src/features/auth/session` (sign-in gate), TanStack Query.
+Depends on the generated client, `features/auth/session`, and TanStack Query. Layout, onboarding, projects, and settings consume this module.
 
-May be consumed by: pages and layout components (`projects`, `members`, `settings`, `dashboard-layout`, `app-sidebar`).
-
-## Invariants
-
-- The tenant list is requested only while the session is `signed-in`; space-level queries and below are gated on `tenantId` (`enabled: !!tenantId`);
-- `useJoinedSpaces` answers "no tenant" with `spaces: []`, never `undefined`, so callers distinguish "joined nothing" from "still loading" by `isPending` alone;
-- this module never touches credentials; requests ride the gateway cookie the browser sends on its own;
-- SSE events only trigger invalidation; authoritative state always comes from REST refetches. A dropped stream reconnects with 1s→30s exponential backoff, a successful reconnect invalidates every query under the tenant, and a 401 ends the subscription;
-- `parseSSEFrames` is pure: malformed frames are skipped, never thrown.
+- Request `/me/spaces` only after confirmed sign-in; read all pages so the switcher includes every tenant.
+- Derive `tenantId` from the route-matched space; an unknown slug never borrows the first tenant's privileges.
+- Roles are `admin` and `member`; treat an unknown role as an ordinary member.
+- SSE events only trigger authoritative REST refetches; disconnections reconnect with capped backoff. A 403/404 response refreshes joined spaces and stops the subscription so the UI leaves a space the user can no longer access.
 
 ## Testing
 
-`spaces.test.tsx` mocks the real API with dynamic MSW handlers; under the signed-out baseline it asserts that no tenant request fires and the context stays pending. Slug rules and the reconnect backoff are pure-function tests. Tests make no network calls.
+MSW replaces the generated client's network boundary; pure tests cover slugs, SSE frames, and reconnect delays.
+
+Creation uses shared `CreateFormSubmit` error and pending feedback. SSE handles tenant membership revocation, plugin selection and catalog updates by refreshing the corresponding queries.

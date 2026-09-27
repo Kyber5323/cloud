@@ -28,7 +28,9 @@ import type {
   Error,
   GetApiV1TenantsTidMembers200,
   GetApiV1TenantsTidMembersParams,
+  HuaweiMember,
   Member,
+  PostApiV1TenantsTidMembersHuaweiBody,
   PutApiV1TenantsTidMembersUidBody
 } from '../generated.schemas';
 
@@ -56,7 +58,7 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
 };
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Tenant membership is checked before lookup; resource reads filter tenant in SQL, and space-scoped projects and their runtime workspaces additionally require active membership of that workspace, while unscoped projects stay owner-scoped. Administrator only. Updating an existing membership requires matching version; new membership uses version=0. Last effective administrator cannot be disabled/demoted, including concurrent changes. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Active tenant members may read the roster. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/tenants/:tid/members
  */
 export const getApiV1TenantsTidMembers = (
@@ -157,7 +159,76 @@ export function useGetApiV1TenantsTidMembers<TData = Awaited<ReturnType<typeof g
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Tenant membership is checked before lookup; resource reads filter tenant in SQL, and space-scoped projects and their runtime workspaces additionally require active membership of that workspace, while unscoped projects stay owner-scoped. Administrator only. Updating an existing membership requires matching version; new membership uses version=0. Last effective administrator cannot be disabled/demoted, including concurrent changes. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Tenant administrators add a selected Huawei person by stable globalUserId. Cloud searches Tianzhou again and verifies current employment before creating or reactivating membership.
+ * @summary POST /api/v1/tenants/:tid/members/huawei
+ */
+export const postApiV1TenantsTidMembersHuawei = (
+    tid: string,
+    postApiV1TenantsTidMembersHuaweiBody: PostApiV1TenantsTidMembersHuaweiBody,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<HuaweiMember>(
+      {url: `/api/v1/tenants/${tid}/members/huawei`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: postApiV1TenantsTidMembersHuaweiBody, signal
+    },
+      options);
+    }
+
+
+
+
+export const getPostApiV1TenantsTidMembersHuaweiMutationKey = () => ['postApiV1TenantsTidMembersHuawei'] as const;
+
+export const getPostApiV1TenantsTidMembersHuaweiMutationOptions = <TError = ErrorType<Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidMembersHuawei>>, TError,PostApiV1TenantsTidMembersHuaweiMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidMembersHuawei>>, TError,PostApiV1TenantsTidMembersHuaweiMutationVariables, TContext> => {
+
+const mutationKey = getPostApiV1TenantsTidMembersHuaweiMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postApiV1TenantsTidMembersHuawei>>, PostApiV1TenantsTidMembersHuaweiMutationVariables> = (props) => {
+          const {tid,data} = props ?? {};
+
+          return  postApiV1TenantsTidMembersHuawei(tid,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PostApiV1TenantsTidMembersHuaweiMutationResult = NonNullable<Awaited<ReturnType<typeof postApiV1TenantsTidMembersHuawei>>>
+    export type PostApiV1TenantsTidMembersHuaweiMutationBody = PostApiV1TenantsTidMembersHuaweiBody
+    export type PostApiV1TenantsTidMembersHuaweiMutationError = ErrorType<Error>
+    export type PostApiV1TenantsTidMembersHuaweiMutationVariables = {tid: string;data: PostApiV1TenantsTidMembersHuaweiBody}
+
+    /**
+ * @summary POST /api/v1/tenants/:tid/members/huawei
+ */
+export const usePostApiV1TenantsTidMembersHuawei = <TError = ErrorType<Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidMembersHuawei>>, TError,PostApiV1TenantsTidMembersHuaweiMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof postApiV1TenantsTidMembersHuawei>>,
+        TError,
+        PostApiV1TenantsTidMembersHuaweiMutationVariables,
+        TContext
+      > => {
+      return useMutation(getPostApiV1TenantsTidMembersHuaweiMutationOptions(options), queryClient);
+    }
+    /**
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Administrator only. Existing memberships require matching version; new and disabled memberships must enter through a fresh directory check, invitation redemption or approved application. Last effective administrator cannot be disabled/demoted, including concurrent changes. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary PUT /api/v1/tenants/:tid/members/:uid
  */
 export const putApiV1TenantsTidMembersUid = (

@@ -82,10 +82,8 @@ type Store struct {
 	Assist     InputAssistProvider
 
 	// Events broadcasts committed collaboration-space invalidation notices to live
-	// SSE subscribers. Space association is optional (projects.space_id is nullable):
-	// a space-scoped project gates visibility to active space members (the
-	// resource-sharing boundary), while an unscoped project keeps owner-based
-	// authorization.
+	// SSE subscribers. Every project belongs to its tenant's sole collaboration
+	// space; current tenant membership gates visibility and authorization.
 	Events *SpaceHub
 
 	// Signals carries at-most-once work hints to the lease-holding Controller's Watch stream;
@@ -320,13 +318,55 @@ func identity(t *transaction, source, subject, name string) Object {
 	return u
 }
 
+// identityWithAlias binds the two independently verified Huawei identifiers to
+// one user. A conflicting binding is never merged by name or employee number.
+func identityWithAlias(t *transaction, c *Claims) Object {
+	if c.Source != "huawei-corp" || c.GlobalUserID == "" {
+		return identity(t, c.Source, c.Subject, c.DisplayName)
+	}
+	globalID := canonicalGlobalID(c.GlobalUserID)
+	require(globalID != "", 401, "invalid_identity")
+	byUUID := t.one("SELECT u.* FROM users u JOIN user_identities i ON i.user_id=u.id WHERE i.source='huawei-corp' AND i.subject=$1", c.Subject)
+	byGlobal := t.one("SELECT u.* FROM users u JOIN user_identities i ON i.user_id=u.id WHERE i.source='huawei-global' AND i.subject=$1", globalID)
+	require(byUUID == nil || byGlobal == nil || byUUID.S("id") == byGlobal.S("id"), 409, "identity_conflict")
+	u := byUUID
+	if u == nil {
+		u = byGlobal
+	}
+	if u == nil {
+		u = identity(t, c.Source, c.Subject, c.DisplayName)
+		byUUID = u
+	}
+	if byUUID == nil {
+		t.exec("INSERT INTO user_identities(user_id,source,subject) VALUES($1,'huawei-corp',$2)", u.S("id"), c.Subject)
+	}
+	if byGlobal == nil {
+		t.exec("INSERT INTO user_identities(user_id,source,subject) VALUES($1,'huawei-global',$2)", u.S("id"), globalID)
+	}
+	require(u.S("status") == "active" && u["deletedAt"] == nil, 403, "user_disabled")
+	return u
+}
+
+func canonicalGlobalID(s string) string {
+	if s == "" || len(s) > 20 {
+		return ""
+	}
+	for _, ch := range s {
+		if ch < '0' || ch > '9' {
+			return ""
+		}
+	}
+	s = strings.TrimLeft(s, "0")
+	return s
+}
+
 // Bootstrap atomically provisions a tenant, its initial administrator, and the
-// tenant's default collaboration space from a deployment command.
+// tenant's sole collaboration space from a deployment command.
 func (s *Store) Bootstrap(ctx context.Context, name, source, subject, display string) (Object, error) {
 	return s.transact(ctx, func(t *transaction) Object {
 		require(name != "" && len(name) <= 200, 400, "invalid_name")
 		u := identity(t, source, subject, display)
-		tenant, space := provisionTenant(t, u.S("id"), name, "Default", "default")
+		tenant, space := provisionTenant(t, u.S("id"), name, "default-"+strings.ReplaceAll(newID(), "-", ""))
 		return Object{"tenantId": tenant.S("id"), "userId": u.S("id"), "spaceId": space.S("id")}
 	})
 }
@@ -417,28 +457,16 @@ func membership(t *transaction, tid, uid string, admin bool) Object {
 	return m
 }
 
-// project loads a live project in the tenant and applies project access:
-// a space-scoped project (space_id set) is reachable by any active member of
-// that workspace (the resource-sharing boundary), while an unscoped (legacy)
-// project keeps owner-only access. Non-members stay hidden (404, no existence
-// leak), identically to the previous owner-filtered lookup.
+// project loads a tenant project only when the caller is an active tenant
+// member of its sole collaboration space. Unknown projects stay hidden.
 func project(t *transaction, tid, uid, pid string) Object {
-	require(validID(pid), 404, "not_found")
-	p := t.one("SELECT * FROM projects WHERE id=$1 AND tenant_id=$2 AND deleted_at IS NULL", pid, tid)
-	require(p != nil, 404, "not_found")
-	if sid := p.S("spaceId"); sid != "" {
-		require(workspaceRole(t, sid, uid) != "", 404, "not_found")
-	} else if p.S("ownerUserId") != uid {
-		reject(404, "not_found")
-	}
+	p, _ := projectInSpace(t, tid, uid, pid)
 	return p
 }
 
 // workspace loads a live runtime workspace in the tenant. Non-admin access
-// inherits the parent project's access: a runtime workspace of a space-scoped
-// project is reachable by any active member of that workspace, while a runtime
-// workspace of an unscoped (legacy) project keeps owner-only access. The admin
-// form (administrative-stop) requires tenant administration.
+// inherits the parent project's tenant membership. The admin form
+// (administrative-stop) requires tenant administration.
 func workspace(t *transaction, tid, uid, wid string, admin bool) Object {
 	require(validID(wid), 404, "not_found")
 	if admin {
@@ -449,11 +477,7 @@ func workspace(t *transaction, tid, uid, wid string, admin bool) Object {
 	w := t.one("SELECT * FROM workspaces WHERE id=$1 AND tenant_id=$2 AND deleted_at IS NULL", wid, tid)
 	require(w != nil, 404, "not_found")
 	proj := t.one("SELECT space_id FROM projects WHERE id=$1 AND tenant_id=$2", w.S("projectId"), tid)
-	if proj == nil || proj.S("spaceId") == "" {
-		require(w.S("ownerUserId") == uid, 404, "not_found")
-	} else {
-		require(workspaceRole(t, proj.S("spaceId"), uid) != "", 404, "not_found")
-	}
+	require(proj != nil && workspaceRole(t, proj.S("spaceId"), uid) != "", 404, "not_found")
 	return w
 }
 

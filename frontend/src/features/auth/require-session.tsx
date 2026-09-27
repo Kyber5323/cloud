@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useSession } from '@/features/auth/session'
-import { loginPath } from '@/lib/paths'
+import { joinedLinkPath, loginPath, PENDING_JOIN_PATH_KEY } from '@/lib/paths'
 
 /**
  * Route gate: renders `children` only for a signed-in session. While the
@@ -15,6 +15,17 @@ export function RequireSession({ children }: { children: ReactNode }) {
   const location = useLocation()
   if (session.status === 'loading') return null
   if (session.status === 'signed-out') {
+    const joinPath = joinedLinkPath(location.pathname)
+    if (joinPath) {
+      // Gateway persists returnTo in login attempts. Keep the bearer link in
+      // this browser tab and give Gateway only a tokenless return path.
+      try {
+        sessionStorage.setItem(PENDING_JOIN_PATH_KEY, joinPath)
+      } catch {
+        return <Navigate to={loginPath('/onboarding')} replace />
+      }
+      return <Navigate to={loginPath('/join/continue')} replace />
+    }
     return <Navigate to={loginPath(location.pathname + location.search)} replace />
   }
   if (session.status === 'disabled') {

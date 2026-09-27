@@ -3,6 +3,8 @@ package integration
 import (
 	"bufio"
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -67,14 +69,13 @@ func nextEvent(t *testing.T, res *http.Response, wantType string) {
 func TestSpaceEventsAuthorizationAndCommitOrder(t *testing.T) {
 	f := setup(t)
 	gw := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "gateway-a"}}
-	space := f.createSpace("Stream", "stream", "space-stream")
+	space := f.fixtureSpace()
 	sid := space.S("id")
-	bob, bobID := f.addUser(t, "bob", "Bob")
-	f.call("PUT", f.path("/spaces/"+sid+"/members/"+bobID), core.Object{"role": "member", "status": "active", "version": 0}, "", 200)
-	carol, _ := f.addUser(t, "carol", "Carol") // not a member of sid
+	bob, _ := f.addUser(t, "bob", "Bob")
+	carol := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "carol"}, Source: "corp", DisplayName: "Carol"}
 
 	// Scenario 15: a non-member cannot subscribe.
-	refused := f.subscribe(t, carol, sid, 404)
+	refused := f.subscribe(t, carol, sid, 403)
 	refused.Body.Close()
 
 	// A member subscribes and receives committed events only.
@@ -111,4 +112,75 @@ func TestSpaceEventsAuthorizationAndCommitOrder(t *testing.T) {
 	if status != 200 || len(list["items"].([]any)) != 1 {
 		t.Fatalf("project list missing evented project: %d %v", status, list)
 	}
+}
+
+// TestRemovedMemberLosesOpenEventStream covers revocation of an already
+// established subscription, not only rejection of a new connection.
+func TestRemovedMemberLosesOpenEventStream(t *testing.T) {
+	f := setup(t)
+	space := f.fixtureSpace()
+	bob, bobID := f.addUser(t, "bob", "Bob")
+	stream := f.subscribe(t, bob, space.S("id"), 200)
+	t.Cleanup(func() { stream.Body.Close() })
+
+	f.call("PUT", f.path("/members/"+bobID), core.Object{"role": "member", "status": "disabled", "version": 1}, "", 200)
+
+	type lineOrError struct {
+		line string
+		err  error
+	}
+	result := make(chan lineOrError, 1)
+	go func() {
+		line, err := bufio.NewReader(stream.Body).ReadString('\n')
+		result <- lineOrError{line, err}
+	}()
+	select {
+	case got := <-result:
+		if got.line != "" || !errors.Is(got.err, io.EOF) {
+			t.Fatalf("removed member received an event or open stream: line=%q err=%v", got.line, got.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("removed member's event stream remained open")
+	}
+}
+
+// TestNewMembershipNotifiesOnlineMembers checks the three admission paths
+// against an already open member stream and keeps idempotent replay silent.
+func TestNewMembershipNotifiesOnlineMembers(t *testing.T) {
+	f := setup(t)
+	stream := f.subscribe(t, f.user, f.fixtureSpace().S("id"), 200)
+	t.Cleanup(func() { stream.Body.Close() })
+
+	inviteToken := joinToken('n')
+	f.call("POST", f.path("/invitations"), core.Object{"token": inviteToken}, "notify-invite", 201)
+	bob := joinUser("bob")
+	joinCall(t, f, bob, "POST", "/api/v1/join/invitations/redeem", "notify-redeem", core.Object{"token": inviteToken}, 200)
+	nextEvent(t, stream, "space.member_updated")
+
+	// An idempotent replay returns the recorded response without a fresh notice.
+	notices, cancel := f.store.Events.Subscribe(f.fixtureSpace().S("id"))
+	t.Cleanup(cancel)
+	joinCall(t, f, bob, "POST", "/api/v1/join/invitations/redeem", "notify-redeem", core.Object{"token": inviteToken}, 200)
+	select {
+	case event := <-notices:
+		t.Fatalf("idempotent redemption published an event: %v", event)
+	default:
+	}
+
+	linkToken := joinToken('o')
+	f.call("POST", f.path("/join-links"), core.Object{"token": linkToken}, "notify-link", 201)
+	request := joinCall(t, f, joinUser("carol"), "POST", "/api/v1/join/requests", "notify-request", core.Object{"token": linkToken}, 201)
+	f.call("POST", f.path("/join-requests/"+request.S("id")+"/approve"), core.Object{"version": request.N("version")}, "notify-approval", 200)
+	nextEvent(t, stream, "space.member_updated")
+
+	person := core.DirectoryPerson{GlobalUserID: "205045249610656", Name: "Employee", Employed: true}
+	_, status, err := f.store.Public(context.Background(), &core.PublicRequest{
+		Method: "POST", Path: f.path("/members/huawei"), TenantID: f.tid, Key: "notify-directory", Identity: &f.user,
+		Body: core.Object{"keyword": "Employee", "globalUserId": person.GlobalUserID, "role": "member"}, Person: &person,
+	})
+	must(t, err)
+	if status != 200 {
+		t.Fatalf("directory add: want 200 got %d", status)
+	}
+	nextEvent(t, stream, "space.member_updated")
 }

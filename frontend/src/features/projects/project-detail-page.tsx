@@ -26,7 +26,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useSession } from '@/features/auth/session'
 import { ProjectIcon } from '@/features/projects/components/project-icon'
 import {
   useCloudProject,
@@ -53,8 +52,6 @@ export function ProjectDetailPage({ slug }: { slug: string }) {
   const [renameOpen, setRenameOpen] = useState(false)
   const [renameDraft, setRenameDraft] = useState('')
   const role = cloudMode ? normalizeSpaceRole(space.role) : 'member'
-  const { session } = useSession()
-  const currentUserId = session.status === 'signed-in' ? session.user.id : undefined
   const version = detail.data?.version ?? 0
 
   return (
@@ -65,7 +62,6 @@ export function ProjectDetailPage({ slug }: { slug: string }) {
         project={project}
         cloudMode={cloudMode}
         role={role}
-        currentUserId={currentUserId}
         version={version}
         renameOpen={renameOpen}
         renameDraft={renameDraft}
@@ -94,7 +90,6 @@ function ProjectChrome({
   project,
   cloudMode,
   role,
-  currentUserId,
   version,
   renameOpen,
   renameDraft,
@@ -106,7 +101,6 @@ function ProjectChrome({
   project: Project | undefined
   cloudMode: boolean
   role: SpaceRole
-  currentUserId: string | undefined
   version: number
   renameOpen: boolean
   renameDraft: string
@@ -127,7 +121,7 @@ function ProjectChrome({
               projectId={project.id}
               projectTitle={project.title}
               version={version}
-              canDelete={canDeleteProject(role, currentUserId, project.leadId)}
+              canDelete={canDeleteProject(role)}
               onRename={() => {
                 onRenameDraftChange(project.title)
                 onRenameOpenChange(true)
@@ -150,21 +144,9 @@ function ProjectChrome({
   )
 }
 
-/**
- * True when this member may delete the project in the space (Step 3 backend
- * rule): the project creator may always delete their own project, otherwise a
- * workspace owner or admin may. A member who merely reads stays hidden.
- */
-function canDeleteProject(
-  role: SpaceRole,
-  currentUserId: string | undefined,
-  projectOwnerId: string | undefined,
-): boolean {
-  return (
-    role === 'owner' ||
-    role === 'admin' ||
-    (currentUserId != null && currentUserId === projectOwnerId)
-  )
+/** True for roles allowed to delete projects in the space. */
+function canDeleteProject(role: SpaceRole): boolean {
+  return role === 'admin'
 }
 
 /**

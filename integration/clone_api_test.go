@@ -107,7 +107,7 @@ func TestPublicClonesAcceptOnceAndReflectExecutionFacts(t *testing.T) {
 	f.user.Subject = "member"
 	member := f.call("GET", "/api/v1/me", nil, "", 200)
 	f.user.Subject = "alice"
-	f.call("PUT", f.path("/members/"+member.S("id")), core.Object{"role": "member", "status": "active", "version": 0}, "", 200)
+	f.addMemberID(member.S("id"), "member")
 	f.user.Subject = "member"
 	if others := f.call("GET", f.path("/clones"), nil, "", 200); len(others["items"].([]any)) != 0 {
 		t.Fatal("clone visible to another member", others)

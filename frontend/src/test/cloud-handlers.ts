@@ -4,9 +4,9 @@ import type { Issue, IssueStatusColumn, TenantMember } from '@/features/issues/t
 
 /**
  * Shared fixtures for tests that exercise the cloud-backed flow: a signed-in
- * session, the tenant list, and one space whose slug is `cloud-dev`. Tests
+ * session and one joined space whose slug is `cloud-dev`. Tests
  * install them with {@link installSignedInSession} (session only) or
- * {@link installCloudSpaceHandlers} (session, tenant and space). The
+ * {@link installCloudSpaceHandlers} (session and space). The
  * baseline server already answers the probe with 401, so "signed out" needs
  * no handler.
  */
@@ -32,19 +32,13 @@ export function installSignedInSession(): void {
 
 /**
  * Installs MSW handlers for the shared cloud fixtures: a signed-in session,
- * one active tenant and one `cloud-dev` space where the member holds the
+ * one `cloud-dev` tenant space where the member holds the
  * given role.
  */
 export function installCloudSpaceHandlers(role: string): void {
   installSignedInSession()
   server.use(
-    http.get('/api/v1/me/tenants', () =>
-      HttpResponse.json({
-        items: [{ id: TEST_TENANT_ID, name: '研发组织', status: 'active', role: 'admin' }],
-        nextCursor: '',
-      }),
-    ),
-    http.get(`/api/v1/tenants/${TEST_TENANT_ID}/spaces`, () =>
+    http.get('/api/v1/me/spaces', () =>
       HttpResponse.json({
         items: [
           {

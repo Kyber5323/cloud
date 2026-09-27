@@ -53,7 +53,7 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 /**
- * Checks final user, active membership, tenant and owner. read checks ownership; execute additionally requires current controller lease epoch, open admission, ready workspace and a fresh initialized Node. This lookup is not an execution reservation; use admissions.
+ * Checks final user, active tenant membership and tenant scope. Execute additionally requires current controller lease epoch, open admission, ready workspace and a fresh initialized Node. This lookup is not an execution reservation; use admissions.
  * @summary access
  */
 export const postInternalV1Access = (
@@ -1011,7 +1011,7 @@ export const usePostInternalV1OperationsOidEffectsEidResult = <TError = ErrorTyp
       return useMutation(getPostInternalV1OperationsOidEffectsEidResultMutationOptions(options), queryClient);
     }
     /**
- * Controller requests require an independent controller service credential; holder, active database-time lease epoch and operation version are checked. Operation lookup follows project owner; administrative-stop actor receives only the restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Controller requests require an independent controller service credential; holder, active database-time lease epoch and operation version are checked. Active tenant members may inspect project operations; administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary snapshot
  */
 export const postInternalV1OperationsOidSnapshot = (

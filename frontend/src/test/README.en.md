@@ -16,7 +16,7 @@ Environment setup and test doubles shared by every test. The goal is that each t
 | `issue-fixtures.ts` | `makeIssue(id, title, overrides)` / `makeStatus(key)`: builds `Issue` / status-column fixtures matching the real Cloud contract, for reuse across issue tests. |
 | `issue-fixtures.test.ts` | Verifies the fixtures' defaults and override precedence, which other tests rely on. |
 | `msw-server.ts` | MSW node server: the mock-domain handlers plus a baseline `GET /api/v1/me → 401` (every render starts signed out) and `GET /auth/providers → ['github']` (a production-shaped gateway; tests of the developer login override it). |
-| `cloud-handlers.ts` | Shared MSW doubles for the cloud flow: `installSignedInSession` (session probe), `installCloudSpaceHandlers` (session + test tenant + `cloud-dev` space) and fixtures such as `TEST_USER`. |
+| `cloud-handlers.ts` | Shared MSW doubles for the session probe and the `cloud-dev` tenant space returned by `/me/spaces`, plus fixtures such as `TEST_USER`. |
 | `navigation.ts` | `installFakeNavigation()`: swaps external navigation and new-tab opening, recording `destinations` and `openedTabs`; restored when the test finishes. |
 | `render.tsx` | `renderWithProviders` / `renderAtRoute` / `renderRoutes`: render entries that wire QueryClient, `SessionProvider`, Sidebar and (for the first two) `CurrentSpaceProvider`; `renderAtRoute` resolves the slug from the initial path with the app's `WORKSPACE_ROUTE_PATTERN` (`/w/:workspaceSlug`). |
 

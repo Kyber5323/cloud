@@ -80,6 +80,17 @@ func run() (runErr error) {
 	if e != nil {
 		return e
 	}
+	var directory router.Directory
+	if cfg.Directory.Endpoint != "" {
+		key, readErr := os.ReadFile(cfg.Directory.AppKeyFile)
+		if readErr != nil {
+			return fmt.Errorf("read directory app key: %w", readErr)
+		}
+		directory, e = router.NewTianzhouClient(cfg.Directory.Endpoint, cfg.Directory.HWID, cfg.Directory.Environment, string(key), nil)
+		if e != nil {
+			return e
+		}
+	}
 	// The marketplace sync loop is owned by this process like gateway.RunCleanup:
 	// the ctx cancellation on shutdown stops it and the WaitGroup below waits
 	// for the in-flight sync (network + scan only; no database transaction
@@ -95,7 +106,7 @@ func run() (runErr error) {
 		}()
 	}
 	gin.SetMode(cfg.Server.Mode)
-	server := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Server.Port), Handler: router.New(store, auth, log), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: cfg.Server.ReadTimeout, WriteTimeout: cfg.Server.WriteTimeout, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Server.Port), Handler: router.New(store, auth, log, directory), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: cfg.Server.ReadTimeout, WriteTimeout: cfg.Server.WriteTimeout, IdleTimeout: 60 * time.Second}
 	// The control listener is bound before serving so a taken port fails startup, not a Controller.
 	control, e := net.Listen("tcp", cfg.Control.GRPCAddr)
 	if e != nil {

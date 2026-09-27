@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { DialogFormField } from '@/components/common/dialog-form-field'
-import { Button } from '@/components/ui/button'
+import { CreateFormSubmit } from '@/components/common/create-form-submit'
 import {
   Dialog,
   DialogContent,
@@ -76,10 +76,7 @@ function CreateProjectFields({
         hint={branchValid ? undefined : '请填写具体分支名，不能为空或 HEAD'}
         required
       />
-      {errorCode && <p className="text-xs text-destructive">创建失败：{errorCode}</p>}
-      <Button type="submit" className="w-full" disabled={!submittable}>
-        {pending ? '创建中…' : '创建'}
-      </Button>
+      <CreateFormSubmit pending={pending} submittable={submittable} errorCode={errorCode} />
     </form>
   )
 }
@@ -105,7 +102,7 @@ export function CreateProjectDialog({
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>新建项目</DialogTitle>
-          <DialogDescription>项目创建后由后端异步完成存储与运行环境初始化。</DialogDescription>
+          <DialogDescription>项目创建后将异步启动运行环境并克隆所选分支。</DialogDescription>
         </DialogHeader>
         <CreateProjectFields
           pending={createProject.isPending}

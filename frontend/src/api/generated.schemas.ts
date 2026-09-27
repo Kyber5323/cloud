@@ -266,8 +266,7 @@ export interface ControllerProject {
   repositoryUrl: string;
   /** @nullable */
   secretRef: string | null;
-  /** @nullable */
-  spaceId: string | null;
+  spaceId: string;
   tenantId: string;
   version: number;
 }
@@ -293,6 +292,13 @@ export interface ControllerWorkspace {
   runtimeGeneration: number;
   tenantId: string;
   version: number;
+}
+
+export interface DirectoryPerson {
+  departmentName: string;
+  employeeNumber: string;
+  globalUserId: string;
+  name: string;
 }
 
 export type EffectRequestKind = typeof EffectRequestKind[keyof typeof EffectRequestKind];
@@ -429,6 +435,15 @@ export interface FormDescriptor {
   title?: string | null;
 }
 
+export interface HuaweiMember {
+  displayName: string;
+  role: string;
+  status: string;
+  tenantId: string;
+  userId: string;
+  version: number;
+}
+
 export type IdleRefusalErrorCode = typeof IdleRefusalErrorCode[keyof typeof IdleRefusalErrorCode];
 
 
@@ -439,6 +454,21 @@ export const IdleRefusalErrorCode = {
 export interface IdleRefusal {
   accepted: boolean;
   errorCode: IdleRefusalErrorCode;
+}
+
+export interface Invitation {
+  /** @nullable */
+  consumedAt?: string | null;
+  /** @nullable */
+  consumedBy?: string | null;
+  createdAt: string;
+  createdBy: string;
+  expiresAt: string;
+  id: string;
+  /** @nullable */
+  revokedAt?: string | null;
+  tenantId: string;
+  version: number;
 }
 
 export type IssueAssigneeType = typeof IssueAssigneeType[keyof typeof IssueAssigneeType];
@@ -658,6 +688,51 @@ export interface IssueView {
   ownerUserId: string;
   tenantId: string;
   updatedAt: string;
+  version: number;
+}
+
+export interface JoinLink {
+  createdAt: string;
+  createdBy: string;
+  expiresAt: string;
+  id: string;
+  /** @nullable */
+  revokedAt?: string | null;
+  tenantId: string;
+  version: number;
+}
+
+export type JoinRequestStatus = typeof JoinRequestStatus[keyof typeof JoinRequestStatus];
+
+
+export const JoinRequestStatus = {
+  pending: 'pending',
+  approved: 'approved',
+  rejected: 'rejected',
+} as const;
+
+export interface JoinRequest {
+  createdAt: string;
+  /** @nullable */
+  decidedAt?: string | null;
+  /** @nullable */
+  decidedBy?: string | null;
+  displayName?: string;
+  id: string;
+  linkId: string;
+  name?: string;
+  status: JoinRequestStatus;
+  tenantId: string;
+  userId: string;
+  version: number;
+}
+
+export interface JoinedMembership {
+  name: string;
+  role: string;
+  status: string;
+  tenantId: string;
+  userId: string;
   version: number;
 }
 
@@ -920,8 +995,7 @@ export interface Project {
   name: string;
   ownerUserId: string;
   repositoryUrl: string;
-  /** @nullable */
-  spaceId: string | null;
+  spaceId: string;
   tenantId: string;
   version: number;
 }
@@ -997,37 +1071,6 @@ export interface SpaceListItem {
   tenantId: string;
   updatedAt: string;
   version: number;
-}
-
-export type SpaceMemberRole = typeof SpaceMemberRole[keyof typeof SpaceMemberRole];
-
-
-export const SpaceMemberRole = {
-  owner: 'owner',
-  admin: 'admin',
-  member: 'member',
-} as const;
-
-export interface SpaceMember {
-  /** @nullable */
-  createdBy: string | null;
-  joinedAt: string;
-  role: SpaceMemberRole;
-  status: string;
-  userId: string;
-  version: number;
-  workspaceId: string;
-}
-
-export interface SpaceMemberListItem {
-  displayName: string;
-  id: string;
-  joinedAt: string;
-  role: string;
-  status: string;
-  userId: string;
-  version: number;
-  workspaceId: string;
 }
 
 export type SpacePluginDesiredState = typeof SpacePluginDesiredState[keyof typeof SpacePluginDesiredState];
@@ -1210,6 +1253,48 @@ export interface WorkspaceListItem {
   version: number;
 }
 
+export type PostApiV1JoinInvitationsRedeemBody = {
+  token: string;
+};
+
+export type PostApiV1JoinRequestsBody = {
+  token: string;
+};
+
+export type GetApiV1MeJoinRequestsParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * Exclusive UUID cursor, ascending stable ordering.
+ */
+after?: string;
+};
+
+export type GetApiV1MeJoinRequests200 = {
+  items: JoinRequest[];
+  nextCursor: string;
+};
+
+export type GetApiV1MeSpacesParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * Exclusive UUID cursor, ascending stable ordering.
+ */
+after?: string;
+};
+
+export type GetApiV1MeSpaces200 = {
+  items: SpaceListItem[];
+  nextCursor: string;
+};
+
 export type GetApiV1MeTenantsParams = {
 /**
  * @minimum 1
@@ -1230,7 +1315,7 @@ export type GetApiV1MeTenants200 = {
 export type PostApiV1TenantsBody = {
   name: string;
   /**
-     * Lowercase, immutable, unique per tenant.
+     * Lowercase, immutable, globally unique.
      * @pattern ^[a-z0-9][a-z0-9-]{0,63}$
      */
   slug: string;
@@ -1262,6 +1347,32 @@ export type PostApiV1TenantsTidClonesBody = {
 export type GetApiV1TenantsTidCollaborationTargets200 = {
   items: CollaborationTarget[];
   nextCursor: string;
+};
+
+export type GetApiV1TenantsTidInvitationsParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * Exclusive UUID cursor, ascending stable ordering.
+ */
+after?: string;
+};
+
+export type GetApiV1TenantsTidInvitations200 = {
+  items: Invitation[];
+  nextCursor: string;
+};
+
+export type PostApiV1TenantsTidInvitationsBody = {
+  token: string;
+};
+
+export type DeleteApiV1TenantsTidInvitationsIidBody = {
+  /** @minimum 0 */
+  version: number;
 };
 
 export type GetApiV1TenantsTidIssueGroups200GroupsItem = {
@@ -1699,6 +1810,59 @@ export type GetApiV1TenantsTidIssuesIidTimeline200 = {
   nextCursor: string;
 };
 
+export type GetApiV1TenantsTidJoinLinksParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * Exclusive UUID cursor, ascending stable ordering.
+ */
+after?: string;
+};
+
+export type GetApiV1TenantsTidJoinLinks200 = {
+  items: JoinLink[];
+  nextCursor: string;
+};
+
+export type PostApiV1TenantsTidJoinLinksBody = {
+  token: string;
+};
+
+export type DeleteApiV1TenantsTidJoinLinksLidBody = {
+  /** @minimum 0 */
+  version: number;
+};
+
+export type GetApiV1TenantsTidJoinRequestsParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * Exclusive UUID cursor, ascending stable ordering.
+ */
+after?: string;
+};
+
+export type GetApiV1TenantsTidJoinRequests200 = {
+  items: JoinRequest[];
+  nextCursor: string;
+};
+
+export type PostApiV1TenantsTidJoinRequestsRidApproveBody = {
+  /** @minimum 0 */
+  version: number;
+};
+
+export type PostApiV1TenantsTidJoinRequestsRidRejectBody = {
+  /** @minimum 0 */
+  version: number;
+};
+
 export type GetApiV1TenantsTidLabelsParams = {
 /**
  * @minimum 1
@@ -1754,6 +1918,20 @@ export type GetApiV1TenantsTidMembers200 = {
   nextCursor: string;
 };
 
+export type PostApiV1TenantsTidMembersHuaweiBodyRole = typeof PostApiV1TenantsTidMembersHuaweiBodyRole[keyof typeof PostApiV1TenantsTidMembersHuaweiBodyRole];
+
+
+export const PostApiV1TenantsTidMembersHuaweiBodyRole = {
+  admin: 'admin',
+  member: 'member',
+} as const;
+
+export type PostApiV1TenantsTidMembersHuaweiBody = {
+  globalUserId: string;
+  keyword: string;
+  role?: PostApiV1TenantsTidMembersHuaweiBodyRole;
+};
+
 export type PutApiV1TenantsTidMembersUidBodyRole = typeof PutApiV1TenantsTidMembersUidBodyRole[keyof typeof PutApiV1TenantsTidMembersUidBodyRole];
 
 
@@ -1784,6 +1962,18 @@ export type PostApiV1TenantsTidOperationsOidRetryBody = {
 
 export type PostApiV1TenantsTidOperationsOidRetry202 = {
   operation: Operation | AdminOperation;
+};
+
+export type GetApiV1TenantsTidPeopleParams = {
+/**
+ * @minLength 2
+ * @maxLength 100
+ */
+keyword: string;
+};
+
+export type GetApiV1TenantsTidPeople200 = {
+  items: DirectoryPerson[];
 };
 
 export type GetApiV1TenantsTidProjectsParams = {
@@ -1893,76 +2083,11 @@ export type GetApiV1TenantsTidSpaces200 = {
   nextCursor: string;
 };
 
-export type PostApiV1TenantsTidSpacesBody = {
-  description?: string;
-  name: string;
-  /**
-     * Lowercase, immutable, unique per tenant.
-     * @pattern ^[a-z0-9][a-z0-9-]{0,63}$
-     */
-  slug: string;
-};
-
-export type DeleteApiV1TenantsTidSpacesSpaceIdBody = {
-  /** @minimum 0 */
-  version: number;
-};
-
 export type PatchApiV1TenantsTidSpacesSpaceIdBody = {
   description?: string;
   name: string;
   /** @minimum 0 */
   version: number;
-};
-
-export type GetApiV1TenantsTidSpacesSpaceIdMembersParams = {
-/**
- * @minimum 1
- * @maximum 100
- */
-limit?: number;
-/**
- * Exclusive UUID cursor, ascending stable ordering.
- */
-after?: string;
-};
-
-export type GetApiV1TenantsTidSpacesSpaceIdMembers200 = {
-  items: SpaceMemberListItem[];
-  nextCursor: string;
-};
-
-export type PostApiV1TenantsTidSpacesSpaceIdMembersBody = {
-  email: string;
-};
-
-export type DeleteApiV1TenantsTidSpacesSpaceIdMembersUidBody = {
-  /** @minimum 0 */
-  version: number;
-};
-
-export type PutApiV1TenantsTidSpacesSpaceIdMembersUidBodyRole = typeof PutApiV1TenantsTidSpacesSpaceIdMembersUidBodyRole[keyof typeof PutApiV1TenantsTidSpacesSpaceIdMembersUidBodyRole];
-
-
-export const PutApiV1TenantsTidSpacesSpaceIdMembersUidBodyRole = {
-  owner: 'owner',
-  admin: 'admin',
-  member: 'member',
-} as const;
-
-export type PutApiV1TenantsTidSpacesSpaceIdMembersUidBodyStatus = typeof PutApiV1TenantsTidSpacesSpaceIdMembersUidBodyStatus[keyof typeof PutApiV1TenantsTidSpacesSpaceIdMembersUidBodyStatus];
-
-
-export const PutApiV1TenantsTidSpacesSpaceIdMembersUidBodyStatus = {
-  active: 'active',
-  disabled: 'disabled',
-} as const;
-
-export type PutApiV1TenantsTidSpacesSpaceIdMembersUidBody = {
-  role: PutApiV1TenantsTidSpacesSpaceIdMembersUidBodyRole;
-  status: PutApiV1TenantsTidSpacesSpaceIdMembersUidBodyStatus;
-  /** @minimum 0 */
-  version?: number;
 };
 
 export type DeleteApiV1TenantsTidSpacesSpaceIdPluginsBody = {

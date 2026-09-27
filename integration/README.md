@@ -38,3 +38,5 @@ task test:race
 ```
 
 参见 [本地验证](../README.md#本地验证)、[核心不变量与契约](../docs/core-contract.md) 与 [Taskfile.yml](../Taskfile.yml)。
+
+合入上游后的回归覆盖：`tenant_upstream_migration_test.go` 校验 0016 升级至 0017 不改写运行时、克隆或插件记录；`project_space_test.go` 验证非创建者新建运行时后可见且完成 Node 克隆；插件测试使用不同租户验证空间隔离，停用成员后立即拒绝读取。

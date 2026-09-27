@@ -26,6 +26,8 @@ type VerifiedIdentity struct {
 	Source      string
 	Subject     string
 	DisplayName string
+	// GlobalUserID is the verified Huawei directory key, never an employee number.
+	GlobalUserID string
 }
 
 // ErrProviderRejected reports an external provider answer that cannot yield an identity: a rejected
@@ -66,6 +68,16 @@ func Normalize(identity VerifiedIdentity) (VerifiedIdentity, error) {
 		identity.DisplayName = ""
 	}
 	identity.DisplayName = truncateBytes(identity.DisplayName, MaxDisplayNameLength)
+	if identity.GlobalUserID != "" {
+		if identity.Source != "huawei-corp" || len(identity.GlobalUserID) > 20 {
+			return VerifiedIdentity{}, fmt.Errorf("%w: invalid global user id", ErrProviderRejected)
+		}
+		for _, digit := range identity.GlobalUserID {
+			if digit < '0' || digit > '9' {
+				return VerifiedIdentity{}, fmt.Errorf("%w: invalid global user id", ErrProviderRejected)
+			}
+		}
+	}
 	return identity, nil
 }
 

@@ -153,11 +153,26 @@ func (a *Authenticator) readUser(ctx context.Context, token string) (gateway.Ver
 	if uuid == "" {
 		return gateway.VerifiedIdentity{}, fmt.Errorf("%w: missing stable uuid", gateway.ErrProviderRejected)
 	}
+	globalID := strings.TrimSpace(rawString(out["globalUserId"]))
+	if globalID == "" {
+		globalID = strings.TrimSpace(rawString(out["globalUserID"]))
+	}
+	if globalID == "" {
+		var number json.Number
+		if e := json.Unmarshal(out["globalUserId"], &number); e == nil {
+			globalID = number.String()
+		} else if e := json.Unmarshal(out["globalUserID"], &number); e == nil {
+			globalID = number.String()
+		}
+	}
+	if globalID == "" {
+		return gateway.VerifiedIdentity{}, fmt.Errorf("%w: missing global user id", gateway.ErrProviderRejected)
+	}
 	name := uuid
 	if configured := strings.TrimSpace(rawString(out[a.displayNameField])); a.displayNameField != "" && configured != "" {
 		name = configured
 	}
-	return gateway.VerifiedIdentity{Source: Source, Subject: uuid, DisplayName: name}, nil
+	return gateway.Normalize(gateway.VerifiedIdentity{Source: Source, Subject: uuid, DisplayName: name, GlobalUserID: globalID})
 }
 
 func rawString(raw json.RawMessage) string {

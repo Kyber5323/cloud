@@ -28,6 +28,10 @@ func Routes() []Route {
 	return []Route{
 		{"GET", "/api/v1/me", "", nil},
 		{"GET", "/api/v1/me/tenants", "", nil},
+		{"GET", "/api/v1/me/spaces", "", nil},
+		{"GET", "/api/v1/me/join-requests", "", nil},
+		{"POST", "/api/v1/join/invitations/redeem", "", []string{"token"}},
+		{"POST", "/api/v1/join/requests", "", []string{"token"}},
 		{"POST", "/api/v1/tenants", "", []string{"name", "slug"}},
 		{"GET", "/api/v1/tenants/:tid/members", "", nil},
 		{"PUT", "/api/v1/tenants/:tid/members/:uid", "", []string{"role", "status", "version"}},
@@ -73,6 +77,17 @@ func Routes() []Route {
 		{"GET", "/api/v1/tenants/:tid/issues/:iid/interactions", "", nil},
 		{"POST", "/api/v1/tenants/:tid/issues/:iid/collaboration/assist", "", []string{"targetId", "values"}},
 		{"POST", "/api/v1/tenants/:tid/issues/:iid/interactions/:ixid/confirm", "", []string{"values", "contextRefs"}},
+		{"GET", "/api/v1/tenants/:tid/people", "", nil},
+		{"POST", "/api/v1/tenants/:tid/members/huawei", "", []string{"keyword", "globalUserId", "role"}},
+		{"GET", "/api/v1/tenants/:tid/invitations", "", nil},
+		{"POST", "/api/v1/tenants/:tid/invitations", "", []string{"token"}},
+		{"DELETE", "/api/v1/tenants/:tid/invitations/:iid", "", []string{"version"}},
+		{"GET", "/api/v1/tenants/:tid/join-links", "", nil},
+		{"POST", "/api/v1/tenants/:tid/join-links", "", []string{"token"}},
+		{"DELETE", "/api/v1/tenants/:tid/join-links/:lid", "", []string{"version"}},
+		{"GET", "/api/v1/tenants/:tid/join-requests", "", nil},
+		{"POST", "/api/v1/tenants/:tid/join-requests/:rid/approve", "", []string{"version"}},
+		{"POST", "/api/v1/tenants/:tid/join-requests/:rid/reject", "", []string{"version"}},
 		{"GET", "/api/v1/tenants/:tid/projects", "", nil},
 		{"POST", "/api/v1/tenants/:tid/projects", "", []string{"name", "repositoryUrl", "defaultBranch", "credentialRefId"}},
 		{"GET", "/api/v1/tenants/:tid/projects/:pid", "", nil},
@@ -92,14 +107,8 @@ func Routes() []Route {
 		{"GET", "/api/v1/tenants/:tid/resource-status", "", nil},
 		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/administrative-stop", "", []string{"version"}},
 		{"GET", "/api/v1/tenants/:tid/spaces", "", nil},
-		{"POST", "/api/v1/tenants/:tid/spaces", "", []string{"name", "slug", "description"}},
 		{"GET", "/api/v1/tenants/:tid/spaces/:spaceId", "", nil},
 		{"PATCH", "/api/v1/tenants/:tid/spaces/:spaceId", "", []string{"name", "description", "version"}},
-		{"DELETE", "/api/v1/tenants/:tid/spaces/:spaceId", "", []string{"version"}},
-		{"GET", "/api/v1/tenants/:tid/spaces/:spaceId/members", "", nil},
-		{"POST", "/api/v1/tenants/:tid/spaces/:spaceId/members", "", []string{"email"}},
-		{"PUT", "/api/v1/tenants/:tid/spaces/:spaceId/members/:uid", "", []string{"role", "status", "version"}},
-		{"DELETE", "/api/v1/tenants/:tid/spaces/:spaceId/members/:uid", "", []string{"version"}},
 		{"GET", "/api/v1/tenants/:tid/spaces/:spaceId/projects", "", nil},
 		{"POST", "/api/v1/tenants/:tid/spaces/:spaceId/projects", "", []string{"name", "repositoryUrl", "defaultBranch", "credentialRefId"}},
 		{"GET", "/api/v1/tenants/:tid/spaces/:spaceId/plugins/catalog", "", nil},
@@ -125,7 +134,11 @@ func Routes() []Route {
 }
 
 // New injects the store, trust configuration, and logger. No public user CRUD is registered.
-func New(store *core.Store, auth *core.Authenticator, log *zap.Logger) *gin.Engine {
+func New(store *core.Store, auth *core.Authenticator, log *zap.Logger, directories ...Directory) *gin.Engine {
+	var directory Directory
+	if len(directories) > 0 {
+		directory = directories[0]
+	}
 	r := gin.New()
 	r.Use(func(c *gin.Context) {
 		id := uuid.NewString()
@@ -171,6 +184,29 @@ func New(store *core.Store, auth *core.Authenticator, log *zap.Logger) *gin.Engi
 					return
 				}
 			}
+			if public && directory != nil && (strings.HasPrefix(route.Path, "/api/v1/join/") || strings.HasPrefix(route.Path, "/api/v1/tenants/:tid/invitations") || strings.HasPrefix(route.Path, "/api/v1/tenants/:tid/join-links") || strings.HasPrefix(route.Path, "/api/v1/tenants/:tid/join-requests")) {
+				// Corporate admission always rechecks the directory. Private
+				// links belong to public deployments and cannot bypass employment.
+				failure(c, &core.Fault{Code: "not_found", Status: 404, Params: core.Object{}})
+				return
+			}
+			if public && route.Path == "/api/v1/tenants/:tid/people" {
+				if e := store.AuthorizeTenantAdmin(c.Request.Context(), c.Param("tid"), user); e != nil {
+					failure(c, core.ErrorCode(e))
+					return
+				}
+				if directory == nil {
+					failure(c, &core.Fault{Code: "directory_unavailable", Status: 503, Params: core.Object{}})
+					return
+				}
+				people, e := directory.Search(c.Request.Context(), c.Query("keyword"))
+				if e != nil {
+					failure(c, core.ErrorCode(e))
+					return
+				}
+				c.JSON(200, gin.H{"items": people})
+				return
+			}
 			body := core.Object{}
 			if c.Request.Method != "GET" {
 				c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
@@ -213,6 +249,32 @@ func New(store *core.Store, auth *core.Authenticator, log *zap.Logger) *gin.Engi
 			var out core.Object
 			status := 200
 			if public {
+				var person *core.DirectoryPerson
+				if route.Path == "/api/v1/tenants/:tid/members/huawei" {
+					if e := store.AuthorizeTenantAdmin(c.Request.Context(), c.Param("tid"), user); e != nil {
+						failure(c, core.ErrorCode(e))
+						return
+					}
+					if directory == nil {
+						failure(c, &core.Fault{Code: "directory_unavailable", Status: 503, Params: core.Object{}})
+						return
+					}
+					people, searchErr := directory.Search(c.Request.Context(), body.S("keyword"))
+					if searchErr != nil {
+						failure(c, core.ErrorCode(searchErr))
+						return
+					}
+					for i := range people {
+						if people[i].GlobalUserID == body.S("globalUserId") && people[i].Employed {
+							person = &people[i]
+							break
+						}
+					}
+					if person == nil {
+						failure(c, &core.Fault{Code: "person_not_found", Status: 404, Params: core.Object{}})
+						return
+					}
+				}
 				limit := 0
 				if v := c.Query("limit"); v != "" {
 					limit, e = strconv.Atoi(v)
@@ -221,7 +283,7 @@ func New(store *core.Store, auth *core.Authenticator, log *zap.Logger) *gin.Engi
 						return
 					}
 				}
-				out, status, e = store.Public(c.Request.Context(), &core.PublicRequest{Method: c.Request.Method, Path: c.Request.URL.Path, TenantID: c.Param("tid"), ProjectID: c.Param("pid"), WorkspaceID: c.Param("wid"), SpaceID: c.Param("spaceId"), OperationID: c.Param("oid"), CloneID: c.Param("cloneId"), UserID: c.Param("uid"), IssueID: c.Param("iid"), CommentID: c.Param("cid"), LabelID: c.Param("lid"), StatusID: c.Param("sid"), ViewID: c.Param("vid"), RunID: c.Param("rid"), ContextRefID: c.Param("crid"), InteractionID: c.Param("ixid"), FormRef: c.Param("formRef"), Key: c.GetHeader("Idempotency-Key"), Limit: limit, After: c.Query("after"), Query: c.Query("q"), GroupBy: c.Query("by"), Body: body, Identity: user})
+				out, status, e = store.Public(c.Request.Context(), &core.PublicRequest{Method: c.Request.Method, Path: c.Request.URL.Path, TenantID: c.Param("tid"), ProjectID: c.Param("pid"), WorkspaceID: c.Param("wid"), SpaceID: c.Param("spaceId"), OperationID: c.Param("oid"), CloneID: c.Param("cloneId"), UserID: c.Param("uid"), IssueID: c.Param("iid"), CommentID: c.Param("cid"), LabelID: c.Param("lid"), StatusID: c.Param("sid"), ViewID: c.Param("vid"), RunID: c.Param("rid"), ContextRefID: c.Param("crid"), InteractionID: c.Param("ixid"), FormRef: c.Param("formRef"), InvitationID: c.Param("iid"), JoinLinkID: c.Param("lid"), JoinRequestID: c.Param("rid"), Key: c.GetHeader("Idempotency-Key"), Limit: limit, After: c.Query("after"), Query: c.Query("q"), GroupBy: c.Query("by"), Body: body, Identity: user, Person: person})
 			} else {
 				out, e = store.Control(c.Request.Context(), &core.ControlRequest{Action: route.Action, OperationID: c.Param("oid"), EffectID: c.Param("eid"), TicketID: c.Param("ticket"), Body: body, Service: service, Identity: user})
 			}
@@ -277,6 +339,17 @@ func sseEvents(store *core.Store, auth *core.Authenticator, c *gin.Context) {
 		case <-c.Request.Context().Done():
 			return
 		case ev := <-stream:
+			// The member may have been disabled while this connection was open.
+			// Recheck both credentials and the REST membership path before each
+			// notice so the revocation event itself cannot reach the old member.
+			_, currentUser, fault := verifyPublicCredentials(c, auth)
+			if fault != nil {
+				return
+			}
+			_, status, err := store.Public(c.Request.Context(), &core.PublicRequest{Method: "GET", Path: "/api/v1/tenants/" + tid + "/spaces/" + sid, TenantID: tid, SpaceID: sid, Identity: currentUser})
+			if err != nil || status != 200 {
+				return
+			}
 			b, err := json.Marshal(ev)
 			if err != nil {
 				return

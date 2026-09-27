@@ -2,207 +2,77 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
+import type { Project } from '@/api/generated.schemas'
 import { server } from '@/test/msw-server'
-import type { Project, Space } from '@/api/generated.schemas'
-import { useArchiveSpace, useCreateSpace, useSpaceProjects } from './api'
+import { useCreateTenant, useSpaceProjects } from './api'
 
 const TENANT_ID = '11111111-1111-1111-1111-111111111111'
-const SPACE_ID = '22222222-2222-2222-2222-222222222222'
-const CREATE_URL = `/api/v1/tenants/${TENANT_ID}/spaces`
-const ARCHIVE_URL = `/api/v1/tenants/${TENANT_ID}/spaces/${SPACE_ID}`
-const CREATE_INPUT = { name: 'Team Space', slug: 'team', description: '' }
+const SPACE_A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+const SPACE_B = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
 
-/** The headers one request arrived with. */
-interface Recorded {
-  key: string | null
-  contentType: string | null
-}
-
-function wrapper(queryClient: QueryClient) {
+function wrapper(client: QueryClient) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
 }
 
-/**
- * A client whose mutations retry once, immediately. React Query reads `retry`
- * from the mutation options, and the client's defaults are merged into them,
- * which is what makes a failed attempt re-enter `mutationFn` — the exact path
- * the idempotency key has to survive.
- */
-function retryingClient(): QueryClient {
-  return new QueryClient({ defaultOptions: { mutations: { retry: 1, retryDelay: 0 } } })
-}
-
-/** Mounts the create hook; pass a client to control how mutations retry. */
-function mountCreate(client = new QueryClient()) {
-  return renderHook(() => useCreateSpace(TENANT_ID), { wrapper: wrapper(client) })
-}
-
-/** Mounts the archive hook for SPACE_ID; `client` works as in mountCreate. */
-function mountArchive(client = new QueryClient()) {
-  return renderHook(() => useArchiveSpace(TENANT_ID, SPACE_ID), { wrapper: wrapper(client) })
-}
-
-/** MSW handler for one space endpoint that records every request's headers. */
-function spaceEndpoint(
-  method: 'post' | 'delete',
-  url: string,
-  seen: Recorded[],
-  reply: () => Response,
-) {
-  const resolver = ({ request }: { request: Request }) => {
-    seen.push({
-      key: request.headers.get('Idempotency-Key'),
-      contentType: request.headers.get('Content-Type'),
-    })
-    return reply()
-  }
-  return method === 'post' ? http.post(url, resolver) : http.delete(url, resolver)
-}
-
-/** Replies with a space, failing the first `failures` attempts when asked. */
-function spaceReply(failures = 0): () => Response {
-  let attempts = 0
-  return () => {
-    attempts += 1
-    if (attempts <= failures) return new HttpResponse(null, { status: 500 })
-    return HttpResponse.json(spaceFixture())
-  }
-}
-
-/** Asserts the first recorded request carried a usable key and the JSON type. */
-function expectKeyed(seen: Recorded[]): void {
-  expect(seen[0]?.key).toBeTruthy()
-  expect(seen[0]?.key).not.toBe('')
-  expect(seen[0]?.contentType).toContain('application/json')
-}
-
-function spaceFixture(overrides: Partial<Space> = {}): Space {
-  return {
-    id: SPACE_ID,
-    tenantId: TENANT_ID,
-    name: 'Team Space',
-    slug: 'team',
-    description: '',
-    createdBy: 'u1',
-    version: 1,
-    createdAt: '2026-09-21T10:00:00+08:00',
-    updatedAt: '2026-09-21T10:00:00+08:00',
-    archivedAt: null,
-    ...overrides,
-  }
-}
-
-describe('useCreateSpace', () => {
-  it('sends a non-empty key, keeps JSON, and mints a fresh key per mutate() call', async () => {
-    const seen: Recorded[] = []
-    server.use(spaceEndpoint('post', CREATE_URL, seen, spaceReply()))
-    const { result } = mountCreate()
-
-    result.current.mutate(CREATE_INPUT)
-
+describe('useCreateTenant', () => {
+  it('reuses the idempotency key when a request is retried', async () => {
+    const keys: Array<string | null> = []
+    server.use(
+      http.post('/api/v1/tenants', ({ request }) => {
+        keys.push(request.headers.get('Idempotency-Key'))
+        if (keys.length === 1) return new HttpResponse(null, { status: 500 })
+        return HttpResponse.json({ tenant: { id: TENANT_ID }, space: { id: SPACE_A } })
+      }),
+    )
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: 1, retryDelay: 0 } } })
+    const { result } = renderHook(() => useCreateTenant(), { wrapper: wrapper(client) })
+    result.current.mutate({ name: 'Team', slug: 'team' })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(seen).toHaveLength(1)
-    expectKeyed(seen)
-    result.current.mutate({ name: 'Second', slug: 'second', description: '' })
-    await waitFor(() => expect(seen).toHaveLength(2))
-    expectKeyed(seen)
-    expect(seen[1]?.key).toBeTruthy()
-    expect(seen[1]?.key).not.toBe(seen[0]?.key)
-  })
-
-  it('replays one Idempotency-Key across retries of the same mutation', async () => {
-    const seen: Recorded[] = []
-    server.use(spaceEndpoint('post', CREATE_URL, seen, spaceReply(1)))
-    const { result } = mountCreate(retryingClient())
-
-    result.current.mutate(CREATE_INPUT)
-
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(seen).toHaveLength(2)
-    // A retry must replay the original key, or the backend creates a second space.
-    expect(seen[1]?.key).toBe(seen[0]?.key)
-    expectKeyed(seen)
+    expect(keys).toHaveLength(2)
+    expect(keys[0]).toBeTruthy()
+    expect(keys[1]).toBe(keys[0])
   })
 })
 
-describe('useSpaceProjects workspace scoping', () => {
-  const SPACE_A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
-  const SPACE_B = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
-
-  function projectFixture(spaceId: string): Project {
+describe('useSpaceProjects', () => {
+  function project(spaceId: string): Project {
     return {
-      id: 'pppppppp-pppp-pppp-pppp-pppppppppppp',
+      id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
       tenantId: TENANT_ID,
       name: `Project in ${spaceId}`,
       repositoryUrl: 'https://example.com/repo.git',
       defaultBranch: 'main',
-      ownerUserId: 'u1',
+      ownerUserId: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
       spaceId,
       lifecycle: 'active',
       version: 1,
-      createdAt: '2026-09-21T10:00:00+08:00',
+      createdAt: '2026-09-21T10:00:00Z',
       deletedAt: null,
       credentialRefId: null,
     }
   }
 
-  it('keys each space project list by space id and never crosses spaces', async () => {
+  it('rekeys the project list when the selected space changes', async () => {
     server.use(
       http.get(`/api/v1/tenants/${TENANT_ID}/spaces/${SPACE_A}/projects`, () =>
-        HttpResponse.json({ items: [projectFixture(SPACE_A)], nextCursor: '' }),
+        HttpResponse.json({ items: [project(SPACE_A)], nextCursor: '' }),
       ),
       http.get(`/api/v1/tenants/${TENANT_ID}/spaces/${SPACE_B}/projects`, () =>
-        HttpResponse.json({ items: [projectFixture(SPACE_B)], nextCursor: '' }),
+        HttpResponse.json({ items: [project(SPACE_B)], nextCursor: '' }),
       ),
     )
-    const queryClient = new QueryClient()
+    const client = new QueryClient()
     const { result, rerender } = renderHook(
-      ({ spaceId }: { spaceId: string | undefined }) => useSpaceProjects(TENANT_ID, spaceId),
-      { wrapper: wrapper(queryClient), initialProps: { spaceId: SPACE_A } },
+      ({ spaceId }: { spaceId: string }) => useSpaceProjects(TENANT_ID, spaceId),
+      { wrapper: wrapper(client), initialProps: { spaceId: SPACE_A } },
     )
-
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.data?.items[0]?.name).toContain(SPACE_A)
-
-    // Switch the active workspace: the query is re-keyed to B, and the cached
-    // A list must not leak into B's result.
+    await waitFor(() => expect(result.current.data?.items[0]?.spaceId).toBe(SPACE_A))
     rerender({ spaceId: SPACE_B })
-    await waitFor(() => expect(result.current.data?.items[0]?.name).toContain(SPACE_B))
-    expect(result.current.data?.items[0]?.name).not.toContain(SPACE_A)
+    await waitFor(() => expect(result.current.data?.items[0]?.spaceId).toBe(SPACE_B))
     expect(
-      queryClient.getQueryData([`/api/v1/tenants/${TENANT_ID}/spaces/${SPACE_A}/projects`]),
+      client.getQueryData([`/api/v1/tenants/${TENANT_ID}/spaces/${SPACE_A}/projects`]),
     ).toBeTruthy()
-    expect(
-      queryClient.getQueryData([`/api/v1/tenants/${TENANT_ID}/spaces/${SPACE_B}/projects`]),
-    ).toBeTruthy()
-  })
-})
-
-describe('useArchiveSpace', () => {
-  it('sends a non-empty Idempotency-Key on DELETE', async () => {
-    const seen: Recorded[] = []
-    server.use(spaceEndpoint('delete', ARCHIVE_URL, seen, spaceReply()))
-    const { result } = mountArchive()
-
-    result.current.mutate(1)
-
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(seen).toHaveLength(1)
-    expectKeyed(seen)
-  })
-
-  it('replays one Idempotency-Key across retries of the same archive', async () => {
-    const seen: Recorded[] = []
-    server.use(spaceEndpoint('delete', ARCHIVE_URL, seen, spaceReply(1)))
-    const { result } = mountArchive(retryingClient())
-
-    result.current.mutate(1)
-
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(seen).toHaveLength(2)
-    expect(seen[1]?.key).toBe(seen[0]?.key)
-    expectKeyed(seen)
   })
 })

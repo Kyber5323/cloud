@@ -8,9 +8,11 @@ Cloud 是唯一业务权威存储。Gateway 转发查询/生命周期到 cloud�
 
 每个未软删 Project 通过延迟约束触发器检查恰有一个未软删 main Workspace，允许在同一事务原子创建或整体删除；不能单独删 main。partial unique index 防止两个 main。isolated Workspace 有唯一 Task 展示身份。每个 Workspace 保存自己的 `requested_ref` 与 clone 得到的 `base_commit_id`；Cloud 不再为 Workspace 建立 linked worktree，历史 `workspace_worktrees` 行只保留、不再新增。
 
-租户有两条创建路径，共用同一事务形态：`cloudctl bootstrap` 为部署创建租户、首位管理员与 slug 固定为 `default` 的空间；`POST /api/v1/tenants` 让已验证身份的用户为自己创建租户，租户借用请求中第一个空间的 `name`，空间使用请求中的 `slug`，调用者同时成为租户 admin 与空间 owner。自助创建的租户没有 `default` 空间，租户级 `POST /tenants/{tid}/projects` 对其返回 404；项目应通过空间级路径创建。
+每个租户恰有一个可见协作空间，`tenant_memberships` 是唯一的成员角色与状态权威。`cloudctl bootstrap` 为部署原子创建租户、唯一空间与首位管理员，空间 slug 使用生成的全局唯一值；`POST /api/v1/tenants` 允许已验证用户用名称与全局唯一 slug 创建自己的空间和租户，并成为首位管理员。用户可拥有和加入多个租户，通过 `GET /api/v1/me/spaces` 取得完整分页列表并切换。租户级与空间级项目路径均指向该唯一空间；空间 slug 不可变、不可复用，改名同时更新租户与空间。空间级创建、归档和成员写接口已停用。
 
-角色只分 admin/member。查询在 SQL 中过滤 tenant+owner；admin 不享有跨用户业务读权限。管理员成员列表只含身份显示信息和角色状态；资源状态只含资源 UUID、owner、kind、运行状态/generation/version。administrative-stop 的响应以及 operation GET/retry 使用专门投影，不含 repositoryUrl、secretRef、worktree、request/result/error 明细。最后一个有效管理员不能被删除/停用/降级；用户停用或租户启用也受 PG 延迟约束保护。没有公共用户删除或停用 CRUD。
+角色只分 admin/member，管理员平权。活动租户成员可读取和操作同租户的共享 Project 与运行时 Workspace；Project 的 `owner_user_id` 继续作为持久归属与凭据外键，不是额外的成员授权来源。项目删除和行政停止需管理员；行政停止响应使用受限投影，不含 repositoryUrl、secretRef、worktree、request/result/error 明细。最后一个有效管理员不能被停用或降级；成员停用立即拒绝新请求和准入，已建立的 SSE 流在投递下一条通知前重新校验成员身份并关闭。已开始的任务保留原生命周期与审计引用。没有公共用户删除或停用 CRUD。
+
+内网管理员通过 Ora 服务端搜索天舟，添加时重查所选人员与在职状态，以 `globalUserId` 建立成员关系。IDaaS 的 `uuid` 仍是登录身份键；经验证的 `globalUserId` 是同一用户的目录关联键，冲突时拒绝自动合并，工号不参与授权。公网管理员可创建 7 天单次普通成员邀请和 30 天可重复申请链接；申请经管理员批准才加入。链接可撤销，数据库只保存令牌摘要。租户成员 PUT 只修改既有成员的角色或停用状态，不能直接新增或恢复成员；重新加入仍须新一轮目录核验、邀请或审批。
 
 ## 幂等与并发
 

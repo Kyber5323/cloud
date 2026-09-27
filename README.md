@@ -8,6 +8,8 @@
 
 ## 本地验证
 
+租户即协作空间的迁移为 `0017_tenant_membership_and_join.sql`，接在上游 0014 克隆协调、0015 插件市场、0016 独立运行时迁移之后；已发布迁移保持不变。活动租户成员共享项目和运行时访问权限，每个运行时按上游流程独立克隆仓库。同一项目的生命周期操作仍串行执行，成员共享不提供同时编辑同一目录的冲突合并。旧 PR 使用过 0014 租户迁移的测试库需要重建；其他不兼容测试数据也不会被静默改写。
+
 Windows 可在项目 `.local/` 隔离安装并启动 PostgreSQL 17.11，不创建系统服务：
 
 ```powershell
@@ -50,7 +52,7 @@ go run ./cmd/cloudctl -command bootstrap -name '研发组织' -source 'huawei-co
 go run ./cmd/cloudctl -command credential-ref -tenant '<tenant UUID>' -owner '<user UUID>' -secret-ref 'infra-secret://git/team/account'
 ```
 
-`bootstrap` 原子创建租户、首位管理员与 `default` 空间，是部署操作；重复执行会新建租户。当 `-source` 为 `huawei-corp` 时，`-subject` 必须传入 IDaaS 返回的稳定 `uuid`（形如 `uuid~...`），勿填工号或 W3 账号——否则该员工首次登录会被当成新用户，并在前端被引导去创建自己的新租户。`credential-ref` 只保存基础设施引用，不接收 Git 密钥值；引用受 tenant+owner 外键约束。已登录用户也可以通过 `POST /api/v1/tenants` 为自己创建租户：请求体只有第一个协作空间的 `name` 与 `slug`，租户借用该名称，调用者成为租户管理员和空间 owner；租户是产品不展示的隐式容器。加入已有租户仍须先经有效 gateway 身份访问 `/api/v1/me` 建立 user，再由管理员通过成员 API 显式添加；没有外部组自动授权。
+`bootstrap` 原子创建租户、唯一协作空间与首位管理员，是部署操作；重复执行会新建租户和全局唯一的空间 slug。当 `-source` 为 `huawei-corp` 时，`-subject` 必须传入 IDaaS 返回的稳定 `uuid`（形如 `uuid~...`），勿填工号或 W3 账号。`credential-ref` 只保存基础设施引用，不接收 Git 密钥值；引用受 tenant+owner 外键约束。已登录用户也可以通过 `POST /api/v1/tenants` 为自己创建租户和唯一空间：请求体为 `name` 与全平台唯一的 `slug`，调用者成为租户管理员。用户可创建、加入并切换多个空间，`GET /api/v1/me/spaces` 返回其活动空间列表。内网管理员可通过天舟目录搜索和添加在职人员；公网管理员可分享 7 天单次邀请链接或 30 天申请链接，申请须审批。无公开空间目录，也不按工号、姓名或邮箱自动授权。
 
 生产启动前在配置中设置内部验证公钥，见 [认证配置与凭据](docs/authentication.md)。空 trust 配置会启动失败：
 
