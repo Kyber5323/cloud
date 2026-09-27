@@ -938,6 +938,98 @@ export interface User {
   version: number;
 }
 
+/**
+ * The authored graph document: nodes, edges, viewport, editor annotations and global variables. Stored and returned whole; the editor is its only reader.
+ */
+export type WorkflowGraph = { [key: string]: unknown };
+
+export interface Workflow {
+  createdAt: string;
+  /** @nullable */
+  deletedAt: string | null;
+  description: string;
+  /** The authored graph document: nodes, edges, viewport, editor annotations and global variables. Stored and returned whole; the editor is its only reader. */
+  graph: WorkflowGraph;
+  id: string;
+  name: string;
+  tenantId: string;
+  updatedAt: string;
+  version: number;
+}
+
+/**
+ * The frozen graph document this run executed against, from the snapshot it captured.
+ * @nullable
+ */
+export type WorkflowRunDefinitionSnapshot = { [key: string]: unknown } | null;
+
+/**
+ * The kickoff input passed to the run's start node.
+ */
+export type WorkflowRunInput = { [key: string]: unknown };
+
+/**
+ * Per-node execution state keyed by node id: status, output, error, timestamps.
+ */
+export type WorkflowRunNodeStates = { [key: string]: unknown };
+
+export type WorkflowRunRoundsItem = { [key: string]: unknown };
+
+export type WorkflowRunStatus = typeof WorkflowRunStatus[keyof typeof WorkflowRunStatus];
+
+
+export const WorkflowRunStatus = {
+  pending: 'pending',
+  running: 'running',
+  awaiting_input: 'awaiting_input',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+export interface WorkflowRun {
+  createdAt: string;
+  /**
+     * The frozen graph document this run executed against, from the snapshot it captured.
+     * @nullable
+     */
+  definitionSnapshot?: WorkflowRunDefinitionSnapshot;
+  error: string;
+  /** @nullable */
+  finishedAt: string | null;
+  id: string;
+  /** The kickoff input passed to the run's start node. */
+  input: WorkflowRunInput;
+  name: string;
+  /** Per-node execution state keyed by node id: status, output, error, timestamps. */
+  nodeStates: WorkflowRunNodeStates;
+  rounds: WorkflowRunRoundsItem[];
+  snapshotId: string;
+  /** @nullable */
+  startedAt: string | null;
+  status: WorkflowRunStatus;
+  tenantId: string;
+  updatedAt: string;
+  workflowId: string;
+  workflowName: string;
+}
+
+/**
+ * The graph document frozen at publish time; restoring this snapshot writes it back to the workflow's live graph.
+ */
+export type WorkflowSnapshotGraph = { [key: string]: unknown };
+
+export interface WorkflowSnapshot {
+  createdAt: string;
+  /** The graph document frozen at publish time; restoring this snapshot writes it back to the workflow's live graph. */
+  graph: WorkflowSnapshotGraph;
+  id: string;
+  name: string;
+  tenantId: string;
+  version: number;
+  workflowId: string;
+}
+
 export type WorkspaceListItemDesiredState = typeof WorkspaceListItemDesiredState[keyof typeof WorkspaceListItemDesiredState];
 
 
@@ -1396,6 +1488,18 @@ export type PostApiV1TenantsTidIssuesIidMoveBody = {
   version: number;
 };
 
+export type GetApiV1TenantsTidIssuesIidRunsParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * Exclusive UUID cursor, ascending stable ordering.
+ */
+after?: string;
+};
+
 export type GetApiV1TenantsTidIssuesIidRuns200 = {
   items: IssueRun[];
   nextCursor: string;
@@ -1754,6 +1858,109 @@ export type PostApiV1TenantsTidSpacesSpaceIdProjects202 = {
   operation: Operation;
   resource: Project;
   workspace: Workspace;
+};
+
+export type GetApiV1TenantsTidWorkflowsParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * Exclusive UUID cursor, ascending stable ordering.
+ */
+after?: string;
+};
+
+export type GetApiV1TenantsTidWorkflows200 = {
+  items: Workflow[];
+  nextCursor: string;
+};
+
+export type PostApiV1TenantsTidWorkflowsBodyGraph = { [key: string]: unknown };
+
+export type PostApiV1TenantsTidWorkflowsBody = {
+  description?: string;
+  graph?: PostApiV1TenantsTidWorkflowsBodyGraph;
+  name: string;
+};
+
+export type PostApiV1TenantsTidWorkflows200 = {
+  resource: Workflow;
+};
+
+export type DeleteApiV1TenantsTidWorkflowsWfidBody = {
+  /** @minimum 0 */
+  version: number;
+};
+
+export type PutApiV1TenantsTidWorkflowsWfidBodyGraph = { [key: string]: unknown };
+
+export type PutApiV1TenantsTidWorkflowsWfidBody = {
+  description?: string;
+  graph?: PutApiV1TenantsTidWorkflowsWfidBodyGraph;
+  name: string;
+  /** @minimum 0 */
+  version?: number;
+};
+
+export type PostApiV1TenantsTidWorkflowsWfidPublishBody = {
+  name?: string;
+};
+
+export type PostApiV1TenantsTidWorkflowsWfidPublish200 = {
+  resource: WorkflowSnapshot;
+};
+
+export type GetApiV1TenantsTidWorkflowsWfidRunsParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * Exclusive UUID cursor, ascending stable ordering.
+ */
+after?: string;
+};
+
+export type GetApiV1TenantsTidWorkflowsWfidRuns200 = {
+  items: WorkflowRun[];
+  nextCursor: string;
+};
+
+export type PostApiV1TenantsTidWorkflowsWfidRunsBodyInput = { [key: string]: unknown };
+
+export type PostApiV1TenantsTidWorkflowsWfidRunsBody = {
+  input?: PostApiV1TenantsTidWorkflowsWfidRunsBodyInput;
+  name?: string;
+  snapshotId?: string;
+};
+
+export type PostApiV1TenantsTidWorkflowsWfidRuns200 = {
+  resource: WorkflowRun;
+};
+
+export type GetApiV1TenantsTidWorkflowsWfidSnapshotsParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * Exclusive UUID cursor, ascending stable ordering.
+ */
+after?: string;
+};
+
+export type GetApiV1TenantsTidWorkflowsWfidSnapshots200 = {
+  items: WorkflowSnapshot[];
+  nextCursor: string;
+};
+
+export type PutApiV1TenantsTidWorkflowsWfidSnapshotsSnapshotIdRestoreBody = {
+  /** @minimum 0 */
+  version?: number;
 };
 
 export type DeleteApiV1TenantsTidWorkspacesWidBody = {

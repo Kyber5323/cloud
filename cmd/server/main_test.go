@@ -25,14 +25,14 @@ func TestConfigureCollaborationDefaultOff(t *testing.T) {
 }
 
 // TestConfigureCollaborationDevelopmentOn asserts that the explicit development flag installs the
-// full fixture set: all five collaboration ports become available, and the target discovery API
-// (through the installed directory) returns agent + team + workflow — never users, which always come
-// from real tenant memberships.
+// fixture set: the four fixture collaboration ports become available, and the target discovery API
+// (through the installed directory) returns agent + team — never users, which always come from real
+// tenant memberships, and never workflows, which are real in every deployment.
 func TestConfigureCollaborationDevelopmentOn(t *testing.T) {
 	store := &core.Store{}
 	configureCollaboration(store, true, zap.NewNop())
-	if store.Directory == nil || store.Context == nil || store.Dispatcher == nil || store.Forms == nil || store.Assist == nil {
-		t.Fatalf("development fixtures must install all five collaboration ports (Directory/Context/Dispatcher/Forms/Assist)")
+	if store.Directory == nil || store.Context == nil || store.Dispatcher == nil || store.Assist == nil {
+		t.Fatalf("development fixtures must install all four fixture collaboration ports (Directory/Context/Dispatcher/Assist)")
 	}
 	targets, err := store.Directory.ListTargets(context.Background(), "", "")
 	if err != nil {
@@ -42,14 +42,14 @@ func TestConfigureCollaborationDevelopmentOn(t *testing.T) {
 	for _, s := range targets {
 		byType[s.Type]++
 	}
-	if byType["agent"] != 2 || byType["team"] != 1 || byType["workflow"] != 2 {
-		t.Fatalf("unexpected fixture target mix (want 2 agent/1 team/2 workflow): %v", byType)
+	if byType["agent"] != 2 || byType["team"] != 1 {
+		t.Fatalf("unexpected fixture target mix (want 2 agent/1 team): %v", byType)
 	}
-	if byType["user"] != 0 {
-		t.Fatalf("humans must never come from the directory: %v", byType)
+	if byType["user"] != 0 || byType["workflow"] != 0 {
+		t.Fatalf("the fixtures own agent/team only: %v", byType)
 	}
 	// Stable fixture IDs so demo/dev data is reproducible across restarts.
-	stable := []string{collab.BackendAgentID, collab.ReviewAgentID, collab.PlatformTeamID, collab.SecurityReviewWorkflowID, collab.ReleaseWorkflowID}
+	stable := []string{collab.BackendAgentID, collab.ReviewAgentID, collab.PlatformTeamID}
 	seen := map[string]bool{}
 	for _, s := range targets {
 		seen[s.ID] = true

@@ -74,7 +74,21 @@
         "max-lines-per-function": "off",
         "vitest/no-focused-tests": "error",
         "vitest/no-disabled-tests": "error",
-        "vitest/expect-expect": "error",
+        "vitest/expect-expect": [
+          "error",
+          {
+            "assertFunctionNames": [
+              "expect",
+              "expectTypeOf",
+              "assert",
+              "assertType",
+              "expectRejectedImport",
+              "expectEmptyHistory",
+              "undoDescription",
+              "redoDescription"
+            ]
+          }
+        ],
         "vitest/no-identical-title": "error",
         "vitest/valid-expect": "error"
       }

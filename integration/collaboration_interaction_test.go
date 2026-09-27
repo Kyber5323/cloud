@@ -11,9 +11,12 @@ import (
 )
 
 // TestCollaborationTargetList covers the read-only Issues-facing target projection: humans reused
-// from members, fixture agent/team/workflow from the directory, descriptor-driven modes, and ?q=.
+// from members, fixture agent/team and database-backed workflow from the directory,
+// descriptor-driven modes, and ?q=.
 func TestCollaborationTargetList(t *testing.T) {
 	f := setup(t)
+	// The workflow target is a real row now, so it has to exist before the catalog is read.
+	wid := reviewWorkflow(t, f)
 	items := issueItems(f.call("GET", f.path("/collaboration/targets"), nil, "", 200))
 
 	byName := map[string]core.Object{}
@@ -28,7 +31,7 @@ func TestCollaborationTargetList(t *testing.T) {
 	if alice.O("interactionDescriptor").S("mode") != "mention" || alice.O("interactionDescriptor").B("requiresTask") {
 		t.Fatalf("human descriptor wrong: %v", alice)
 	}
-	// Fixture agent/team/workflow with the frozen modes.
+	// Fixture agent/team and the database-backed workflow, with the frozen modes.
 	agent, ok := byName["Backend Agent"]
 	if !ok || agent.S("type") != "agent" || agent.S("id") != collab.BackendAgentID {
 		t.Fatalf("agent fixture missing/wrong: %v", agent)
@@ -39,8 +42,10 @@ func TestCollaborationTargetList(t *testing.T) {
 	if team, ok := byName["Platform Team"]; !ok || team.S("type") != "team" || team.O("interactionDescriptor").S("mode") != "task" {
 		t.Fatalf("team fixture wrong: %v", team)
 	}
-	if wf, ok := byName["Security Review Workflow"]; !ok || wf.S("type") != "workflow" || wf.O("interactionDescriptor").S("mode") != "form" {
-		t.Fatalf("workflow fixture wrong: %v", wf)
+	// The retired fixture is replaced by the workflow this test created: the same display name, but
+	// the id is the row's own and the descriptor is projected from its Start variables.
+	if wf, ok := byName["Security Review Workflow"]; !ok || wf.S("type") != "workflow" || wf.S("id") != wid || wf.O("interactionDescriptor").S("mode") != "form" {
+		t.Fatalf("workflow target wrong: %v", wf)
 	}
 
 	// q narrows the catalog (fixture) and the human members.
@@ -177,6 +182,7 @@ func TestTeamTaskRunsThroughMockExecution(t *testing.T) {
 // superseded: the interaction is now recorded with no run.
 func TestCollaborationTargetValidation(t *testing.T) {
 	f := setup(t)
+	wid := reviewWorkflow(t, f)
 	iss := f.call("POST", f.path("/issues"), core.Object{"title": "Validate"}, "v-issue", 200).O("resource")
 
 	// Unknown agent id (directory resolves nothing) -> 404 target_not_found.
@@ -194,7 +200,7 @@ func TestCollaborationTargetValidation(t *testing.T) {
 	// Workflow is Form Mode: the interaction is recorded but NOT executed (supersedes the 3B-1
 	// `409 workflow_not_available`). See workflow_interaction_test.go for the full Form Mode contract.
 	f.call("POST", f.path("/issues/"+iss.S("id")+"/comments"), core.Object{
-		"body": "x", "targets": []any{core.Object{"type": "workflow", "id": collab.SecurityReviewWorkflowID}},
+		"body": "x", "targets": []any{core.Object{"type": "workflow", "id": wid}},
 	}, "v-4", 200)
 	if n := f.scalar("SELECT count(*) FROM issue_runs WHERE issue_id=$1", iss.S("id")); n != 0 {
 		t.Fatalf("workflow target must not execute on @")

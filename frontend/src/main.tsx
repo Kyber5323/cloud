@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
 import './index.css'
 import { SessionProvider } from '@/features/auth/session'
+import { initI18n } from '@/i18n/i18n-instance'
 import { router } from './routes'
 
 const rootElement = document.getElementById('root')
@@ -14,6 +15,9 @@ if (rootElement === null) {
 const mountNode = rootElement
 
 const queryClient = new QueryClient()
+
+// Before the first render, so no component paints an unresolved key.
+initI18n()
 
 async function bootstrap() {
   // MSW serves only the `/mock-api/*` domain of pages without a backend yet;

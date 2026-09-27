@@ -22,6 +22,9 @@ import { SkillsPage } from '@/features/skills/skills-page'
 import { SquadDetailPage } from '@/features/squads/squad-detail-page'
 import { SquadsPage } from '@/features/squads/squads-page'
 import { useCurrentSpace } from '@/features/spaces/current-space'
+import { WorkflowRunDetailPage } from '@/features/workflows/run/run-detail-page'
+import { WorkflowEditorPage } from '@/features/workflows/workflow-editor-page'
+import { WorkflowsPage } from '@/features/workflows/workflows-page'
 import { db } from '@/mocks/data/store'
 import { WORKSPACE_ROUTE_PATTERN } from '@/lib/paths'
 
@@ -81,6 +84,15 @@ export const router = createBrowserRouter([
       { path: 'my-issues', element: <CloudScope component={MyIssuesPage} /> },
       { path: 'projects', element: <WithSlug component={ProjectsPage} /> },
       { path: 'projects/:projectId', element: <WithSlug component={ProjectDetailPage} /> },
+      { path: 'workflows', element: <CloudScope component={WorkflowsPage} /> },
+      {
+        path: 'workflows/:workflowId',
+        element: <CloudScope component={WorkflowEditorPage} />,
+      },
+      {
+        path: 'workflows/:workflowId/runs/:runId',
+        element: <CloudScope component={WorkflowRunDetailPage} />,
+      },
       { path: 'squads', element: <WithSlug component={SquadsPage} /> },
       { path: 'squads/:squadId', element: <WithSlug component={SquadDetailPage} /> },
       { path: 'agents', element: <WithSlug component={AgentsPage} /> },

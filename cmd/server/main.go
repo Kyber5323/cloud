@@ -40,7 +40,7 @@ func configureCollaboration(store *core.Store, developmentFixtures bool, log *za
 		return
 	}
 	collab.WireDevelopmentFixtures(store)
-	log.Warn("development collaboration fixtures enabled: Agent/Team/Workflow targets served from in-memory fixtures (development-only; production must leave collaboration.development_fixtures false)")
+	log.Warn("development collaboration fixtures enabled: Agent/Team targets served from in-memory fixtures (workflow targets stay database-backed; development-only — production must leave collaboration.development_fixtures false)")
 }
 
 func run() (runErr error) {

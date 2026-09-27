@@ -13,8 +13,10 @@ import {
   Server,
   Sparkles,
   Users,
+  Workflow,
 } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   DropdownMenu,
@@ -43,11 +45,14 @@ import { useSession } from '@/features/auth/session'
 import { useInboxItems } from '@/features/inbox/api'
 import { CreateSpaceDialog } from '@/features/spaces/create-space-dialog'
 import { useCurrentSpace } from '@/features/spaces/current-space'
+import { activeLocale, setLocale } from '@/i18n/i18n-instance'
+import { LOCALES, type Locale } from '@/i18n/locale'
 import { workspacePaths } from '@/lib/paths'
 
 const workNav = [
   { to: (p: ReturnType<typeof workspacePaths>) => p.issues, label: '任务', icon: Layers },
   { to: (p: ReturnType<typeof workspacePaths>) => p.projects, label: '项目', icon: CircuitBoard },
+  { to: (p: ReturnType<typeof workspacePaths>) => p.workflows, label: '工作流', icon: Workflow },
 ]
 
 const aiTeamNav = [
@@ -60,6 +65,44 @@ const aiTeamNav = [
 const utilityNav = [
   { to: (p: ReturnType<typeof workspacePaths>) => p.settings, label: '设置', icon: Cog },
 ]
+
+/**
+ * Each language named in itself, so a member who cannot read the current
+ * interface language can still find their own — which is also why these labels
+ * are literals rather than translation keys.
+ */
+const LOCALE_LABELS: Record<Locale, string> = { 'zh-CN': '中文', 'en-US': 'English' }
+
+/**
+ * Switches the interface language. Reads the applied locale from the shared
+ * i18n instance and subscribes through `useTranslation()` so the highlight
+ * follows a switch made anywhere else.
+ */
+function LanguageToggle() {
+  // The subscription: react-i18next re-renders this component on a language
+  // change, which is what keeps the selected state in step.
+  useTranslation()
+  const current = activeLocale()
+  return (
+    <div className="mt-1 flex items-center gap-1 px-2 pb-1">
+      {LOCALES.map((locale) => (
+        <button
+          key={locale}
+          type="button"
+          onClick={() => setLocale(locale)}
+          aria-pressed={current === locale}
+          className={
+            current === locale
+              ? 'rounded px-1.5 py-0.5 text-[11px] font-medium text-foreground'
+              : 'rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground'
+          }
+        >
+          {LOCALE_LABELS[locale]}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 // oxlint-disable-next-line max-lines-per-function -- this composition root owns the complete sidebar navigation tree.
 export function AppSidebar({ slug }: { slug: string }) {
@@ -257,6 +300,7 @@ export function AppSidebar({ slug }: { slug: string }) {
             )
           })}
         </SidebarMenu>
+        <LanguageToggle />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

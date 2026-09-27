@@ -1,0 +1,290 @@
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Save } from 'lucide-react'
+import type { Workflow as CloudWorkflow } from '@/api/generated.schemas'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+  type ResizablePanelHandle,
+} from '@/components/ui/resizable'
+import type { WorkflowDraftSaveStatus } from '@/features/workflows/editor/use-workflow-draft-autosave'
+import { useWorkflowEditorState } from '@/features/workflows/editor/use-workflow-editor-state'
+import { WorkflowCanvas } from '@/features/workflows/editor/workflow-canvas'
+import { WorkflowDraftSaveStatusLabel } from '@/features/workflows/editor/workflow-draft-save-status'
+import { WorkflowHistoryTools } from '@/features/workflows/editor/workflow-history-controls'
+import { WorkflowInspector } from '@/features/workflows/editor/workflow-inspector'
+import { WorkflowRunTools } from '@/features/workflows/editor/workflow-run-tools'
+import { WorkflowTransferTools } from '@/features/workflows/editor/workflow-transfer-tools'
+import { WorkflowVariablesTools } from '@/features/workflows/editor/workflow-variables-tools'
+import { WorkflowVersionTools } from '@/features/workflows/editor/workflow-version-tools'
+
+/** Width the configuration rail opens at, and the range it may be dragged within. */
+const INSPECTOR_DEFAULT_WIDTH = '320px'
+const INSPECTOR_MIN_WIDTH = '260px'
+const INSPECTOR_MAX_WIDTH = '560px'
+
+/** A region deletion waiting on the author's confirmation. */
+interface PendingIterationDeletion {
+  /** Members that would vanish with the container. */
+  memberCount: number
+  /** Settles React Flow's pending before-delete hook with the author's choice. */
+  resolve: (confirmed: boolean) => void
+}
+
+/** Props for {@link WorkflowEditor}. */
+export interface WorkflowEditorProps {
+  /** Tenant the workflow belongs to; scopes every write. */
+  tenantId: string
+  /** The workflow being edited. Remount on a different id to switch drafts. */
+  workflow: CloudWorkflow
+  /** Receives the created workflow after an import; the page navigates to it. */
+  onImported?: (workflowId: string) => void
+}
+
+/**
+ * The workflow canvas and its configuration rail, wired to the API by autosave.
+ *
+ * The graph state lives in {@link useWorkflowEditorState}; this component owns
+ * only the layout and the rail's collapsed state, which is a property of the
+ * viewport rather than of the document.
+ *
+ * @param props - The tenant to write to and the workflow to open.
+ */
+export function WorkflowEditor({ tenantId, workflow, onImported }: WorkflowEditorProps) {
+  const state = useWorkflowEditorState(tenantId, workflow)
+  const inspectorRef = useRef<ResizablePanelHandle | null>(null)
+  const [pendingIterationDeletion, setPendingIterationDeletion] =
+    useState<PendingIterationDeletion | null>(null)
+
+  useInspectorAutoExpand(inspectorRef, state.selectedNode?.id ?? null)
+
+  /** Asks the author before a region with members is deleted; resolves the dialog. */
+  const confirmIterationDeletion = useCallback(
+    (memberCount: number) =>
+      new Promise<boolean>((resolve) => setPendingIterationDeletion({ memberCount, resolve })),
+    [],
+  )
+
+  function settleIterationDeletion(confirmed: boolean): void {
+    pendingIterationDeletion?.resolve(confirmed)
+    setPendingIterationDeletion(null)
+  }
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <EditorToolbar
+        nodeCount={state.nodes.length}
+        edgeCount={state.edges.length}
+        version={state.committedVersion}
+        status={state.status}
+        onSave={state.saveNow}
+        historyTools={<WorkflowHistoryTools history={state.history} />}
+        variablesTools={
+          <WorkflowVariablesTools
+            variables={state.globalVariables}
+            onSave={state.onGlobalVariablesSave}
+          />
+        }
+        versionTools={
+          <WorkflowVersionTools
+            tenantId={tenantId}
+            workflowId={workflow.id}
+            committedVersion={state.committedVersion}
+            flushDraft={state.flushDraft}
+            onRestored={state.resetDraft}
+          />
+        }
+        transferTools={
+          <WorkflowTransferTools
+            tenantId={tenantId}
+            workflow={workflow}
+            draftGraph={state.draftGraph}
+            onImported={(workflowId) => onImported?.(workflowId)}
+          />
+        }
+        runTools={<WorkflowRunTools tenantId={tenantId} workflowId={workflow.id} />}
+      />
+      <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
+        <ResizablePanel>
+          <WorkflowCanvas
+            nodes={state.nodes}
+            edges={state.edges}
+            viewport={state.viewport}
+            onNodesChange={state.onNodesChange}
+            onEdgesChange={state.onEdgesChange}
+            onConnect={state.onConnect}
+            onAddNode={state.onAddNode}
+            onOrganize={state.onOrganize}
+            onViewportChange={state.onViewportChange}
+            onIterationInsert={state.onIterationInsert}
+            onToggleIterationCollapsed={state.onToggleIterationCollapsed}
+            onIterationCorrection={state.onIterationCorrection}
+            onConfirmIterationDeletion={confirmIterationDeletion}
+            onHistoryNodeDragStart={state.onHistoryNodeDragStart}
+            onHistoryNodeDragStop={state.onHistoryNodeDragStop}
+          />
+        </ResizablePanel>
+        <ResizableHandle withHandle />
+        <ResizablePanel
+          panelRef={inspectorRef}
+          collapsible
+          collapsedSize="0px"
+          defaultSize={INSPECTOR_DEFAULT_WIDTH}
+          minSize={INSPECTOR_MIN_WIDTH}
+          maxSize={INSPECTOR_MAX_WIDTH}
+        >
+          <WorkflowInspector
+            node={state.selectedNode}
+            nodes={state.nodes}
+            edges={state.edges}
+            globalVariables={state.globalVariables}
+            onUpdate={state.onNodeDataUpdate}
+            onClose={() => inspectorRef.current?.collapse()}
+          />
+        </ResizablePanel>
+      </ResizablePanelGroup>
+      {pendingIterationDeletion !== null && (
+        <IterationDeletionDialog
+          pending={pendingIterationDeletion}
+          onSettle={settleIterationDeletion}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Expands the configuration rail when a fresh node is selected, leaving it
+ * closed when the same node is re-selected.
+ *
+ * Collapsing the rail is a deliberate gesture, so only a change of selection
+ * brings it back; re-rendering with the same node must leave it closed.
+ */
+function useInspectorAutoExpand(
+  inspectorRef: RefObject<ResizablePanelHandle | null>,
+  selectedNodeId: string | null,
+): void {
+  useEffect(() => {
+    const panel = inspectorRef.current
+    if (selectedNodeId === null || panel === null || !panel.isCollapsed()) {
+      return
+    }
+    panel.expand()
+  }, [inspectorRef, selectedNodeId])
+}
+
+/**
+ * The confirmation asked before a region with members is deleted.
+ *
+ * The dialog is already open when it mounts, so it resolves the pending
+ * promise with whatever the author chooses next.
+ *
+ * @param props.pending - The member count and the promise to settle.
+ * @param props.onSettle - Receives the author's choice.
+ */
+function IterationDeletionDialog({
+  pending,
+  onSettle,
+}: {
+  pending: PendingIterationDeletion
+  onSettle: (confirmed: boolean) => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <Dialog open onOpenChange={(open) => !open && onSettle(false)}>
+      <DialogContent showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>{t('workflows.iteration.deleteRegionTitle')}</DialogTitle>
+          <DialogDescription>
+            {t('workflows.iteration.deleteRegionMessage', {
+              total: pending.memberCount,
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onSettle(false)}>
+            {t('workflows.iteration.cancelDelete')}
+          </Button>
+          <Button variant="destructive" onClick={() => onSettle(true)}>
+            {t('workflows.iteration.confirmDelete')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** The strip between the page header and the canvas: counts, version, save state. */
+function EditorToolbar({
+  nodeCount,
+  edgeCount,
+  version,
+  status,
+  onSave,
+  historyTools,
+  variablesTools,
+  runTools,
+  versionTools,
+  transferTools,
+}: {
+  /** Nodes currently on the canvas. */
+  nodeCount: number
+  /** Edges currently on the canvas. */
+  edgeCount: number
+  /** Version of the document as the server last confirmed it. */
+  version: number
+  /** Autosave state driving the indicator and the save button. */
+  status: WorkflowDraftSaveStatus
+  /** Writes the draft immediately instead of waiting out the debounce. */
+  onSave: () => void
+  /** Undo, redo and the change-history list for this editing session. */
+  historyTools: ReactNode
+  /** Workflow-wide variable editing for the current document. */
+  variablesTools: ReactNode
+  /** Publish and version-history controls for the current document. */
+  versionTools: ReactNode
+  /** Import and export controls for the current document. */
+  transferTools: ReactNode
+  /** Run-now and run-history controls for the current document. */
+  runTools: ReactNode
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-1.5">
+      <span className="text-xs text-muted-foreground">
+        {t('workflows.detail.nodeCount', { count: nodeCount })} ·{' '}
+        {t('workflows.detail.edgeCount', { count: edgeCount })}
+      </span>
+      <Badge variant="secondary">{t('workflows.detail.version', { version })}</Badge>
+      <div className="ml-auto flex items-center gap-2">
+        {historyTools}
+        {variablesTools}
+        {runTools}
+        {transferTools}
+        {versionTools}
+        <WorkflowDraftSaveStatusLabel status={status} />
+        <Button
+          variant="outline"
+          size="sm"
+          title={t('workflows.editor.saveHint')}
+          disabled={status === 'clean' || status === 'saving'}
+          onClick={onSave}
+        >
+          <Save className="size-3.5" />
+          {t('workflows.editor.save')}
+        </Button>
+      </div>
+    </div>
+  )
+}

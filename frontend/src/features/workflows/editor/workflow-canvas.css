@@ -1,0 +1,74 @@
+/*
+ * Connection ports.
+ *
+ * React Flow measures the Handle element and anchors edges to its centre, so the
+ * handle itself stays the exact size of the visible dot. A larger pseudo-element
+ * carries the forgiving pointer target around it, which keeps a near-miss on a
+ * 10px dot from starting a canvas pan instead of a connection.
+ */
+.workflow-flow .workflow-port {
+  opacity: 1;
+}
+
+.workflow-flow .workflow-port::before,
+.workflow-flow .workflow-port::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 9999px;
+  content: '';
+  pointer-events: none;
+}
+
+.workflow-flow .workflow-port::before {
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  box-shadow: 0 0 0 1px var(--background);
+  transform: translate(-50%, -50%);
+  transition:
+    width 160ms ease-out,
+    height 160ms ease-out,
+    box-shadow 160ms ease-out,
+    background-color 160ms ease-out;
+}
+
+.workflow-flow .workflow-port-input::before {
+  width: 8px;
+  height: 8px;
+  background: var(--muted-foreground);
+}
+
+.workflow-flow .workflow-port-output::before {
+  background: var(--foreground);
+}
+
+.workflow-flow .workflow-port::after {
+  width: 22px;
+  height: 22px;
+  border: 2px solid color-mix(in oklch, var(--ring) 60%, transparent);
+  background: color-mix(in oklch, var(--ring) 12%, var(--background));
+  opacity: 0;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+  transition: opacity 160ms ease-out;
+}
+
+.workflow-flow .workflow-port:hover::before,
+.workflow-flow .workflow-port:focus-visible::before {
+  width: 12px;
+  height: 12px;
+  box-shadow:
+    0 0 0 1px var(--background),
+    0 0 0 3px color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+.workflow-flow .workflow-port:hover::after,
+.workflow-flow .workflow-port:focus-visible::after {
+  opacity: 1;
+}
+
+/* The canvas paints its own dotted background; React Flow's default grid would double it. */
+.workflow-flow .react-flow__background {
+  background: transparent;
+}

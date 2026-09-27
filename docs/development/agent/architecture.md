@@ -112,6 +112,7 @@ Envelope `{code, params, requestId}`. Common codes by status:
 | Control (internal) dispatch | `internal/core/control.go` |
 | Issue board + collaboration foundation | `internal/core/issues.go`, `issue_{statuses,comments,labels,subscribers,views,runs,activities,context_refs}.go` |
 | Projects / workspaces / operations | `internal/core/{project,workspace,operation,node}.go` |
+| Workflows (editor document + its collaboration projection) | `internal/core/workflow.go`, `internal/core/workflow_collaboration.go` |
 | OpenAPI generator | `internal/contract/openapi.go` |
 | Migrations | `internal/core/migrations/NNNN_*.sql` |
 
@@ -152,18 +153,21 @@ execution have not.
   `trigger_evidence_kind`/`ref_id`; agent/team replies land as `author_type='agent'/'team'` comments.
 
 **Dev fixture provider — how to enable.** The fixture adapters are installed by the single composition
-point `collab.WireDevelopmentFixtures(store)` (in `internal/collab/collab.go`), which sets all five
-collaboration ports at once (Directory / Context / Dispatcher / Forms / Assist). `cmd/server` gates
-them behind the config key `collaboration.development_fixtures` (env override
-`CLOUD_COLLABORATION_DEVELOPMENT_FIXTURES=true`), **explicitly enabled, production default OFF** — the
-default `configs/config.yaml` ships `false`, and the config comment + the server startup log both warn
-that production must leave it off. `cmd/ora-web` wires the same helper unconditionally (it is a
-development/demo edge only). The gate is **independent of authentication**: enabling GitHub Auth never
-enables these fixtures, and an auth failure never falls back to a fixture identity. With the flag off,
-the `@` target discovery API serves only real tenant members (no dev Agent/Team/Workflow); with it on,
-the same API also serves the fixture targets with stable IDs
-(`internal/collab`: `BackendAgentID`/`ReviewAgentID`/`PlatformTeamID`/`SecurityReviewWorkflowID`/
-`ReleaseWorkflowID`).
+point `collab.WireDevelopmentFixtures(store)` (in `internal/collab/collab.go`), which sets the Context /
+Dispatcher / Assist ports and *layers* the Directory: `FallbackDirectory` answers `agent`/`team` from the
+in-memory fixtures and delegates every other target type to the store's primary directory, which is
+database-backed. It deliberately does not touch Forms — workflow form descriptors come from the
+`workflows` table, not a fixture. `cmd/server` gates the helper behind the config key
+`collaboration.development_fixtures` (env override `CLOUD_COLLABORATION_DEVELOPMENT_FIXTURES=true`),
+**explicitly enabled, production default OFF** — the default `configs/config.yaml` ships `false`, and
+the config comment + the server startup log both warn that production must leave it off. `cmd/ora-web`
+wires the same helper unconditionally (it is a development/demo edge only). The gate is **independent of
+authentication**: enabling GitHub Auth never enables these fixtures, and an auth failure never falls
+back to a fixture identity. With the flag off the `@` target discovery API serves real tenant members
+**and the tenant's real workflows** — `WorkflowDirectory` and `WorkflowFormDescriptors` are production
+adapters wired by `core.NewStore`, so a workflow is @-able in every deployment. With it on, the same API
+additionally serves the fixture Agent/Team targets with stable IDs (`internal/collab`:
+`BackendAgentID`/`ReviewAgentID`/`PlatformTeamID`).
 
 **Still schema-ready / not API-implemented:**
 
@@ -174,13 +178,15 @@ the same API also serves the fixture targets with stable IDs
 
 - Workflow Form Mode end-to-end: `@Workflow` → `GET /collaboration/forms/{formRef}` → dynamic form →
   optional AI Assist → **explicit Confirm** → `IssueRun` → mock execution → Timeline.
-- New ports `FormDescriptorProvider` + `InputAssistProvider` (both nil ⇒ 503); fixtures
-  `FixtureFormDescriptorProvider` + `MockInputAssistProvider` (deterministic, no LLM).
+- New ports `FormDescriptorProvider` + `InputAssistProvider` (both nil ⇒ 503). `FormDescriptorProvider`
+  is now the production adapter `core.WorkflowFormDescriptors` (a workflow's Start variables projected
+  onto renderable fields); only `MockInputAssistProvider` is still a fixture (deterministic, no LLM).
 - `issue_interactions.input jsonb` holds the confirmed form values; the run's effective snapshot stays
   in `issue_runs.input`. `ObserveProgress` → `run.progress`; a workflow's human-readable output is a
   `system` activity, never a `workflow`-authored comment.
 - `409 workflow_not_available` is **superseded** — a workflow target records a `mode='form'`,
-  `runId=NULL` interaction. Real Workflow / AI providers remain **blocked on external design**.
+  `runId=NULL` interaction. Workflow *discovery and form descriptors* are now real (see the Workflow
+  module); real workflow **execution** and real AI providers remain **blocked on external design**.
 - **Wave 3C Issue Detail** full projection + UI; Timeline pagination/truncation; execution logs; PR
   integration; Notification; Realtime/WebSocket; real runtime/LLM/agent/team/workflow execution — all
   **blocked on external design** (Agent/Team/Workflow internal design = UNKNOWN; Issues constrains only
@@ -225,5 +231,5 @@ Read the full section before implementing anything collaborative. The short vers
 | Interaction state | No status column: `run_id IS NULL` = unconfirmed, `run_id != NULL` = confirmed. |
 | Workflow output | An **`IssueActivity`** (`actor_type='system'` + run/executor in `details`). **`workflow` is not an `ActorRef`.** |
 | Execution ports | Reuse `ExecutionDispatcher` / `ExecutionObserver`; no `WorkflowDispatcher`, no second lifecycle. |
-| API surface | `/collaboration/forms/{formRef}`, `/issues/{iid}/interactions/{ixid}/assist`, `.../confirm`. **Never** `/workflows/*`. |
+| API surface | `/collaboration/forms/{formRef}`, `/issues/{iid}/interactions/{ixid}/assist`, `.../confirm`. The collaboration surface **never** grows workflow CRUD — the Workflow module owns `/workflows/*` as its own resource. |
 | Extra error | `409 interaction_not_confirmable` — confirm/assist called on a non-`form` interaction. |

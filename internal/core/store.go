@@ -73,13 +73,25 @@ type databaseFailure struct{ err error }
 type Store struct {
 	Pool *sql.DB
 
-	// Collaboration ports (consuming-side seams; see collaboration.go). Each is nil by default
-	// ("Unavailable"); dev/demo/integration wire the in-memory fixtures, production real adapters.
+	// Collaboration ports (consuming-side seams; see collaboration.go). NewStore wires the real
+	// workflow-backed Directory and Forms, because Cloud owns the workflow document and needs no
+	// external backend to serve those two. The remaining three stay nil ("Unavailable") until a
+	// deployment wires them: dev/demo/integration add the in-memory fixtures on top, which is why
+	// WireDevelopmentFixtures layers the Agent/Team targets in front of Directory instead of
+	// replacing it.
 	Directory  CollaborationDirectory
 	Context    ContextBuilder
 	Dispatcher ExecutionDispatcher
 	Forms      FormDescriptorProvider
 	Assist     InputAssistProvider
+
+	// Simulator is the workflow run executor under Cloud: a deterministic stand-in that
+	// walks a frozen snapshot graph and produces node_states/rounds, instead of an engine
+	// Cloud does not have. Wired by WireDevelopmentFixtures only; a production Store keeps
+	// it nil, leaving runs `pending` — the honest "no real work ran" convention issue_runs
+	// follows. A create that bumps a run straight to `succeeded` must not be possible
+	// without this port.
+	Simulator WorkflowRunSimulator
 
 	// Events broadcasts committed collaboration-space invalidation notices to live
 	// SSE subscribers. Space association is optional (projects.space_id is nullable):
@@ -87,6 +99,13 @@ type Store struct {
 	// resource-sharing boundary), while an unscoped project keeps owner-based
 	// authorization.
 	Events *SpaceHub
+}
+
+// WorkflowRunSimulator produces the execution trace for one workflow run. Cloud has no
+// engine, so only dev/demo deployments provide one; the result must never claim that real
+// work ran (see the mock's output wording).
+type WorkflowRunSimulator interface {
+	SimulateWorkflowRun(graph, input Object) (nodeStates Object, rounds []Object, status string)
 }
 
 // NewStore obtains the injected SQL pool without creating or migrating schema.
@@ -98,7 +117,12 @@ func NewStore(db *gorm.DB) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get database pool: %w", err)
 	}
-	return &Store{Pool: pool, Events: NewSpaceHub()}, nil
+	return &Store{
+		Pool:      pool,
+		Events:    NewSpaceHub(),
+		Directory: WorkflowDirectory{Pool: pool},
+		Forms:     WorkflowFormDescriptors{Pool: pool},
+	}, nil
 }
 
 type transaction struct {
@@ -109,6 +133,7 @@ type transaction struct {
 	contextBuilder ContextBuilder
 	forms          FormDescriptorProvider
 	assist         InputAssistProvider
+	simulator      WorkflowRunSimulator
 }
 
 func (t *transaction) exec(q string, args ...any) {
@@ -209,7 +234,7 @@ func (s *Store) transact(ctx context.Context, fn func(*transaction) Object) (out
 			}
 		}
 	}()
-	t := &transaction{tx: tx, ctx: ctx, directory: s.Directory, contextBuilder: s.Context, forms: s.Forms, assist: s.Assist}
+	t := &transaction{tx: tx, ctx: ctx, directory: s.Directory, contextBuilder: s.Context, forms: s.Forms, assist: s.Assist, simulator: s.Simulator}
 	t.exec("SELECT pg_advisory_xact_lock(67420911)")
 	out = fn(t)
 	err = tx.Commit()

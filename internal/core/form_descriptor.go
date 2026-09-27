@@ -52,6 +52,14 @@ const (
 // maxFieldValueLength bounds a single text/textarea form value.
 const maxFieldValueLength = 4000
 
+// maxFormFields / maxFormOptions bound one descriptor so no form is unbounded. A provider projecting
+// its own schema onto this shape reads the same limits, which is why they are named here rather than
+// written into the validator.
+const (
+	maxFormFields  = 100
+	maxFormOptions = 100
+)
+
 func supportedFieldType(t string) bool {
 	switch t {
 	case fieldText, fieldTextarea, fieldNumber, fieldBoolean, fieldSelect, fieldMultiSelect:
@@ -86,7 +94,7 @@ func validOpaqueToken(s string) bool {
 func validateFormDescriptor(d FormDescriptor) {
 	require(validOpaqueToken(d.FormRef), 500, "invalid_form_descriptor")
 	require(len(d.Title) <= 200 && len(d.Description) <= 2000, 500, "invalid_form_descriptor")
-	require(len(d.Fields) <= 100, 500, "invalid_form_descriptor")
+	require(len(d.Fields) <= maxFormFields, 500, "invalid_form_descriptor")
 	seen := map[string]bool{}
 	for i := range d.Fields {
 		f := &d.Fields[i]
@@ -96,7 +104,7 @@ func validateFormDescriptor(d FormDescriptor) {
 		require(f.Label != "" && len(f.Label) <= 200, 500, "invalid_form_descriptor")
 		require(len(f.Description) <= 1000 && len(f.Placeholder) <= 200, 500, "invalid_form_descriptor")
 		if fieldTakesOptions(f.Type) {
-			require(len(f.Options) > 0 && len(f.Options) <= 100, 500, "invalid_form_descriptor")
+			require(len(f.Options) > 0 && len(f.Options) <= maxFormOptions, 500, "invalid_form_descriptor")
 			values := map[string]bool{}
 			for _, o := range f.Options {
 				require(o.Value != "" && len(o.Value) <= 200 && len(o.Label) <= 200, 500, "invalid_form_descriptor")

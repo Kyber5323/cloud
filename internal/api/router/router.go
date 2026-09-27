@@ -47,6 +47,18 @@ func Routes() []Route {
 		{"POST", "/api/v1/tenants/:tid/labels", "", []string{"name", "color"}},
 		{"PUT", "/api/v1/tenants/:tid/labels/:lid", "", []string{"name", "color", "version"}},
 		{"DELETE", "/api/v1/tenants/:tid/labels/:lid", "", []string{"version"}},
+		{"GET", "/api/v1/tenants/:tid/workflows", "", nil},
+		{"POST", "/api/v1/tenants/:tid/workflows", "", []string{"name", "description", "graph"}},
+		{"GET", "/api/v1/tenants/:tid/workflows/:wfid", "", nil},
+		{"PUT", "/api/v1/tenants/:tid/workflows/:wfid", "", []string{"name", "description", "graph", "version"}},
+		{"DELETE", "/api/v1/tenants/:tid/workflows/:wfid", "", []string{"version"}},
+		{"POST", "/api/v1/tenants/:tid/workflows/:wfid/publish", "", []string{"name"}},
+		{"GET", "/api/v1/tenants/:tid/workflows/:wfid/snapshots", "", nil},
+		{"GET", "/api/v1/tenants/:tid/workflows/:wfid/snapshots/:snapshotId", "", nil},
+		{"PUT", "/api/v1/tenants/:tid/workflows/:wfid/snapshots/:snapshotId/restore", "", []string{"version"}},
+		{"GET", "/api/v1/tenants/:tid/workflows/:wfid/runs", "", nil},
+		{"POST", "/api/v1/tenants/:tid/workflows/:wfid/runs", "", []string{"name", "snapshotId", "input"}},
+		{"GET", "/api/v1/tenants/:tid/workflows/:wfid/runs/:rid", "", nil},
 		{"GET", "/api/v1/tenants/:tid/issue-views", "", nil},
 		{"POST", "/api/v1/tenants/:tid/issue-views", "", []string{"name", "filter"}},
 		{"PUT", "/api/v1/tenants/:tid/issue-views/:vid", "", []string{"name", "filter", "version"}},
@@ -214,7 +226,7 @@ func New(store *core.Store, auth *core.Authenticator, log *zap.Logger) *gin.Engi
 						return
 					}
 				}
-				out, status, e = store.Public(c.Request.Context(), &core.PublicRequest{Method: c.Request.Method, Path: c.Request.URL.Path, TenantID: c.Param("tid"), ProjectID: c.Param("pid"), WorkspaceID: c.Param("wid"), SpaceID: c.Param("spaceId"), OperationID: c.Param("oid"), UserID: c.Param("uid"), IssueID: c.Param("iid"), CommentID: c.Param("cid"), LabelID: c.Param("lid"), StatusID: c.Param("sid"), ViewID: c.Param("vid"), RunID: c.Param("rid"), ContextRefID: c.Param("crid"), InteractionID: c.Param("ixid"), FormRef: c.Param("formRef"), Key: c.GetHeader("Idempotency-Key"), Limit: limit, After: c.Query("after"), Query: c.Query("q"), GroupBy: c.Query("by"), Body: body, Identity: user})
+				out, status, e = store.Public(c.Request.Context(), &core.PublicRequest{Method: c.Request.Method, Path: c.Request.URL.Path, TenantID: c.Param("tid"), ProjectID: c.Param("pid"), WorkspaceID: c.Param("wid"), SpaceID: c.Param("spaceId"), OperationID: c.Param("oid"), UserID: c.Param("uid"), IssueID: c.Param("iid"), CommentID: c.Param("cid"), LabelID: c.Param("lid"), StatusID: c.Param("sid"), ViewID: c.Param("vid"), RunID: c.Param("rid"), ContextRefID: c.Param("crid"), InteractionID: c.Param("ixid"), WorkflowID: c.Param("wfid"), SnapshotID: c.Param("snapshotId"), FormRef: c.Param("formRef"), Key: c.GetHeader("Idempotency-Key"), Limit: limit, After: c.Query("after"), Query: c.Query("q"), GroupBy: c.Query("by"), Body: body, Identity: user})
 			} else {
 				out, e = store.Control(c.Request.Context(), &core.ControlRequest{Action: route.Action, OperationID: c.Param("oid"), EffectID: c.Param("eid"), TicketID: c.Param("ticket"), Body: body, Service: service, Identity: user})
 			}
@@ -350,7 +362,7 @@ func validField(name string, value any) bool {
 			}
 		}
 		return true
-	case "filter", "properties", "input", "values":
+	case "filter", "properties", "input", "values", "graph":
 		_, ok := value.(map[string]any)
 		return ok
 	case "targetId":

@@ -35,6 +35,7 @@ describe('workspacePaths', () => {
     const p = workspacePaths('acme')
     expect(p.root).toBe('/w/acme')
     expect(p.issueDetail('42')).toBe('/w/acme/issues/42')
+    expect(p.workflowDetail('42')).toBe('/w/acme/workflows/42')
     expect(p.spaces).toBe('/w/acme/spaces')
     expect(p.members).toBe('/w/acme/settings/members')
     expect(workspaceUrlPrefix()).toBe('localhost:3000/w/')

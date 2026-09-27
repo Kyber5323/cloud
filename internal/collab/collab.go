@@ -1,10 +1,12 @@
 // Package collab provides dev/demo implementations of the Issue collaboration ports: an in-memory
-// fixture directory (agent/team/workflow), a deterministic ContextBuilder (no AI), and a mock
-// ExecutionDispatcher that drives the observer lifecycle to completion synchronously.
+// fixture directory for the target types Cloud has no backend for (agent/team), a deterministic
+// ContextBuilder (no AI), a mock ExecutionDispatcher that drives the observer lifecycle to completion
+// synchronously, and a deterministic InputAssistProvider.
 //
 // These are fixtures only — no database tables, no sim_* tables, no mock domain tables, no real
-// Agent/Team/Workflow backend. They are wired off by default in production; cmd/ora-web and the
-// integration suite opt in.
+// Agent/Team backend. They are wired off by default in production; cmd/ora-web and the integration
+// suite opt in. Workflow targets and their form descriptors are NOT here: Cloud owns the workflow
+// document, so core serves both from the `workflows` table in every deployment.
 package collab
 
 import (
@@ -18,98 +20,38 @@ import (
 
 // Stable fixture identities (valid v4 UUIDs) so demo/dev data is reproducible across restarts.
 const (
-	BackendAgentID           = "11111111-1111-4111-8111-111111111111"
-	ReviewAgentID            = "22222222-2222-4222-8222-222222222222"
-	PlatformTeamID           = "33333333-3333-4333-8333-333333333333"
-	SecurityReviewWorkflowID = "44444444-4444-4444-8444-444444444444"
-	ReleaseWorkflowID        = "55555555-5555-4555-8555-555555555555"
-	// SecurityReviewFormRef / ReleaseFormRef are the opaque formRefs the workflow targets advertise.
-	// Issues never parses them.
-	SecurityReviewFormRef = "security-review"
-	ReleaseFormRef        = "release-readiness"
+	BackendAgentID = "11111111-1111-4111-8111-111111111111"
+	ReviewAgentID  = "22222222-2222-4222-8222-222222222222"
+	PlatformTeamID = "33333333-3333-4333-8333-333333333333"
 )
 
-// FixtureCollaborationDirectory resolves agent/team/workflow targets from a fixed in-memory catalog.
-// Human targets never come from here (they are derived from real tenant memberships).
-type FixtureCollaborationDirectory struct{}
+// FallbackDirectory composes the development fixtures with the real directory: every target the
+// primary can serve is served by it, and the fixtures answer only what it does not. Cloud has no
+// Agent/Team backend, so those two target types exist in development and nowhere else; workflow
+// targets always come from the real, database-backed directory, even in development.
+//
+// A nil primary is not a misconfiguration: a store assembled without a pool (unit tests) has nothing
+// to delegate to, and the fixtures then answer alone.
+type FallbackDirectory struct{ Workflows core.CollaborationDirectory }
+
+// FixtureAgentTeamDirectory resolves the demo agent and team targets from a fixed in-memory catalog.
+// Human targets never come from here (they are derived from real tenant memberships), and neither do
+// workflow targets (they come from the workflows table).
+type FixtureAgentTeamDirectory struct{}
 
 var fixtureTargets = []core.CollaborationTargetSummary{
 	{Type: "agent", ID: BackendAgentID, DisplayName: "Backend Agent", Description: "Demo backend execution agent", InteractionDescriptor: core.InteractionDescriptor{Mode: "task", RequiresTask: true}},
 	{Type: "agent", ID: ReviewAgentID, DisplayName: "Review Agent", Description: "Demo code-review agent", InteractionDescriptor: core.InteractionDescriptor{Mode: "task", RequiresTask: true}},
 	{Type: "team", ID: PlatformTeamID, DisplayName: "Platform Team", Description: "Demo platform team", InteractionDescriptor: core.InteractionDescriptor{Mode: "task", RequiresTask: true}},
-	{Type: "workflow", ID: SecurityReviewWorkflowID, DisplayName: "Security Review Workflow", Description: "Demo workflow (Form Mode)", InteractionDescriptor: core.InteractionDescriptor{Mode: "form", RequiresTask: false, FormRef: SecurityReviewFormRef}},
-	{Type: "workflow", ID: ReleaseWorkflowID, DisplayName: "Release Readiness Workflow", Description: "Demo workflow (Form Mode; exercises number + multi_select)", InteractionDescriptor: core.InteractionDescriptor{Mode: "form", RequiresTask: false, FormRef: ReleaseFormRef}},
 }
 
-// FixtureFormDescriptorProvider serves the demo FormDescriptor for the Security Review fixture. The
-// field set below exists ONLY here: the frontend renders whatever the descriptor declares and must
-// never branch on a workflow id (§38.27, §38.33). It is not a real Workflow schema.
-type FixtureFormDescriptorProvider struct{}
-
-func (FixtureFormDescriptorProvider) ResolveFormDescriptor(_ context.Context, _, formRef string) (core.FormDescriptor, bool, error) {
-	if formRef == ReleaseFormRef {
-		return releaseDescriptor(), true, nil
-	}
-	if formRef != SecurityReviewFormRef {
-		return core.FormDescriptor{}, false, nil
-	}
-	return core.FormDescriptor{
-		FormRef:     SecurityReviewFormRef,
-		Title:       "Security Review",
-		Description: "Demo configuration for the security review workflow (fixture only — not a real Workflow schema).",
-		Fields: []core.FormField{
-			{Key: "repository", Label: "Repository", Type: "text", Required: true, Placeholder: "owner/name", Description: "Repository to review."},
-			{Key: "branch", Label: "Branch", Type: "text", Required: false, DefaultValue: "main"},
-			{
-				Key: "scope", Label: "Review scope", Type: "select", Required: true,
-				Options: []core.FormOption{
-					{Value: "current-issue", Label: "Current issue changes"},
-					{Value: "changed-files", Label: "Changed files"},
-					{Value: "full-repo", Label: "Full repository"},
-				},
-			},
-			{
-				Key: "severity", Label: "Severity", Type: "select", Required: true,
-				Options: []core.FormOption{
-					{Value: "low", Label: "Low"},
-					{Value: "medium", Label: "Medium"},
-					{Value: "high", Label: "High"},
-				},
-			},
-			{Key: "includeDependencies", Label: "Include dependencies", Type: "boolean", Required: false, DefaultValue: false},
-			{Key: "additionalInstructions", Label: "Additional instructions", Type: "textarea", Required: false, Placeholder: "Anything else the reviewer should know…"},
-		},
-	}, true, nil
-}
-
-// releaseDescriptor is the second demo workflow. It exists to exercise the field types the security
-// fixture does not (`number`, `multi_select`) and to prove the frontend renders whatever a descriptor
-// declares rather than a hard-coded Security Review form (§38.27). Fixture only — not a real schema.
-func releaseDescriptor() core.FormDescriptor {
-	return core.FormDescriptor{
-		FormRef:     ReleaseFormRef,
-		Title:       "Release Readiness",
-		Description: "Demo configuration for the release readiness workflow (fixture only).",
-		Fields: []core.FormField{
-			{Key: "version", Label: "Release version", Type: "text", Required: true, Placeholder: "v1.2.3"},
-			{Key: "rolloutPercent", Label: "Rollout percent", Type: "number", Required: true, DefaultValue: 10},
-			{
-				Key: "environments", Label: "Target environments", Type: "multi_select", Required: true,
-				Options: []core.FormOption{
-					{Value: "staging", Label: "Staging"},
-					{Value: "canary", Label: "Canary"},
-					{Value: "production", Label: "Production"},
-				},
-			},
-			{Key: "notifyOnCall", Label: "Notify on-call", Type: "boolean", Required: false, DefaultValue: true},
-			{Key: "rollbackPlan", Label: "Rollback plan", Type: "textarea", Required: false, Placeholder: "How to roll back…"},
-		},
-	}
-}
-
-// MockInputAssistProvider produces deterministic AI Assist suggestions for the demo workflow: the same
-// issue text and the same current values always yield the same patch. It performs no LLM call, uses no
-// randomness, and only ever *suggests* — applying and confirming stay user actions (§38.12).
+// MockInputAssistProvider produces deterministic AI Assist suggestions: the same issue text and the
+// same current values always yield the same patch. It performs no LLM call, uses no randomness, and
+// only ever *suggests* — applying and confirming stay user actions (§38.12).
+//
+// It recognizes a small set of well-known demo field names and emits a suggestion only for a key the
+// *current* descriptor declares, so it is a no-op for a workflow that names its inputs differently
+// and can never widen a form (§38.13).
 type MockInputAssistProvider struct{}
 
 //nolint:gocritic // value-typed assist input mirrors the provider interface signature this mock satisfies
@@ -147,7 +89,7 @@ func (MockInputAssistProvider) Suggest(_ context.Context, in core.AssistInput) (
 	return core.AssistSuggestion{Values: values, Explanations: explanations}, nil
 }
 
-func (FixtureCollaborationDirectory) ListTargets(_ context.Context, _, query string) ([]core.CollaborationTargetSummary, error) {
+func (FixtureAgentTeamDirectory) ListTargets(_ context.Context, _, query string) ([]core.CollaborationTargetSummary, error) {
 	if query == "" {
 		out := make([]core.CollaborationTargetSummary, len(fixtureTargets))
 		copy(out, fixtureTargets)
@@ -163,13 +105,43 @@ func (FixtureCollaborationDirectory) ListTargets(_ context.Context, _, query str
 	return out, nil
 }
 
-func (FixtureCollaborationDirectory) ResolveTarget(_ context.Context, _, targetType, targetID string) (core.CollaborationTargetSummary, bool, error) {
+func (FixtureAgentTeamDirectory) ResolveTarget(_ context.Context, _, targetType, targetID string) (core.CollaborationTargetSummary, bool, error) {
 	for _, t := range fixtureTargets {
 		if t.Type == targetType && t.ID == targetID {
 			return t, true, nil
 		}
 	}
 	return core.CollaborationTargetSummary{}, false, nil
+}
+
+// ListTargets is the fixtures' matches followed by the primary's. The order is the composition's own
+// (humans are prepended by the caller anyway), so neither source has to know about the other.
+func (d FallbackDirectory) ListTargets(ctx context.Context, tenantID, query string) ([]core.CollaborationTargetSummary, error) {
+	fixtures, err := FixtureAgentTeamDirectory{}.ListTargets(ctx, tenantID, query)
+	if err != nil {
+		return nil, err
+	}
+	if d.Workflows == nil {
+		return fixtures, nil
+	}
+	primary, err := d.Workflows.ListTargets(ctx, tenantID, query)
+	if err != nil {
+		return nil, err
+	}
+	return append(fixtures, primary...), nil
+}
+
+// ResolveTarget asks the primary first. A target type the fixtures own (agent/team) is never a
+// workflow, so the primary declines it and the fixtures answer; a workflow id the primary does not
+// know is not-found rather than a fixture fallback, which is what keeps an archived workflow from
+// staying reachable through a stale fixture.
+func (d FallbackDirectory) ResolveTarget(ctx context.Context, tenantID, targetType, targetID string) (core.CollaborationTargetSummary, bool, error) {
+	if d.Workflows != nil {
+		if summary, ok, err := d.Workflows.ResolveTarget(ctx, tenantID, targetType, targetID); ok || err != nil {
+			return summary, ok, err
+		}
+	}
+	return FixtureAgentTeamDirectory{}.ResolveTarget(ctx, tenantID, targetType, targetID)
 }
 
 // DeterministicContextBuilder assembles a fixed, reproducible execution context snapshot. The
@@ -270,13 +242,17 @@ func renderValue(value any) string {
 // the single composition point for the fixture set; callers must gate it behind an explicit,
 // development-only configuration (cmd/server via `collaboration.development_fixtures` /
 // CLOUD_COLLABORATION_DEVELOPMENT_FIXTURES; cmd/ora-web and the integration suite are dev edges and
-// opt in unconditionally). Production default is OFF — with the ports left nil, only human targets
-// are served and no fake Agent/Team/Workflow is exposed. It must never be enabled as a side effect
-// of any external login provider being configured.
+// opt in unconditionally). Production default is OFF — the fixtures are then absent, so no fake
+// Agent/Team is exposed and the target catalog is the real one (tenant members plus workflows). It
+// must never be enabled as a side effect of any external login provider being configured.
+//
+// It layers the fixtures in front of the directory the store already has rather than replacing it:
+// workflow targets are real in every deployment, so development adds agent/team on top of them. Forms
+// is deliberately untouched — workflow form descriptors come from the workflows table, not a fixture.
 func WireDevelopmentFixtures(store *core.Store) {
-	store.Directory = FixtureCollaborationDirectory{}
+	store.Directory = FallbackDirectory{Workflows: store.Directory}
 	store.Context = DeterministicContextBuilder{}
 	store.Dispatcher = MockExecutionDispatcher{}
-	store.Forms = FixtureFormDescriptorProvider{}
 	store.Assist = MockInputAssistProvider{}
+	store.Simulator = MockWorkflowRunSimulator{}
 }

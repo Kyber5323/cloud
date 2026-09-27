@@ -6,4 +6,5 @@ export * from './operations/operations';
 export * from './projects/projects';
 export * from './spaces/spaces';
 export * from './tenants/tenants';
+export * from './workflows/workflows';
 export * from './workspaces/workspaces';

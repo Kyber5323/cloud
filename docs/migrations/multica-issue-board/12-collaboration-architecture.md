@@ -2137,6 +2137,19 @@ not touched.
 | Fixtures | `FixtureFormDescriptorProvider` (Security Review, 6 fields) + `MockInputAssistProvider` (deterministic, no LLM, no randomness); `MockExecutionDispatcher` gained the workflow branch (progress + simulated result that states no real scan ran). Wired only in `cmd/ora-web` + the integration harness. |
 | Frontend | `WorkflowInteractionComposer`, `DynamicFormRenderer`, `FormFieldRenderer`, `AssistSuggestions`, `ConfirmReview`; the `@` picker now offers workflow targets (the 3B-1 "本阶段不可用" state is gone); the Activity panel opens the composer for the newest unconfirmed form interaction and shows confirmed ones as `已确认 · 运行 <status>`. |
 
+**Revision — the workflow fixtures retired (migration `0014`).** The `workflow` half of the fixture set
+was always a placeholder for a module that did not exist yet. Once the Workflow module landed,
+`SecurityReviewWorkflowID`, `ReleaseWorkflowID` and `FixtureFormDescriptorProvider` were **deleted**:
+`core.WorkflowDirectory` + `core.WorkflowFormDescriptors` (`internal/core/workflow_collaboration.go`) are
+production adapters wired by `core.NewStore` in **every** deployment, and
+`collab.WireDevelopmentFixtures` now *layers* the agent/team fixtures in front of that directory
+(`FallbackDirectory`) rather than replacing it. A workflow's descriptor is projected from its own Start
+node's input variables, and `formRef` **is** the workflow id, so the advertised ref and the resolvable
+row cannot drift. Consequence: `@`-ing a workflow now means a real user-authored workflow, and the
+`Security Review Workflow` the design text above describes exists only as a test fixture created through
+the public API (`integration/workflow_interaction_test.go`). `MockInputAssistProvider` and
+`MockExecutionDispatcher` remain fixtures.
+
 **Revision — the form is a draft (§38.37a).** The first shipped build created the comment + interaction
 the moment a workflow target was selected, and hung Assist/Confirm off that interaction. Product review
 rejected that: selecting a workflow must leave **no trace** in the Timeline, and each target needs its

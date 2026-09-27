@@ -1,0 +1,415 @@
+import { fireEvent, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { createDefaultWorkflowCapabilities } from '@/features/workflows/runtime/capabilities'
+import type {
+  WorkflowConditionCase,
+  WorkflowGlobalVariable,
+  WorkflowIterationConfig,
+  WorkflowLoopConfig,
+  WorkflowNodeData,
+} from '@/features/workflows/runtime/types'
+import type { WorkflowDecoratedVariable } from '@/features/workflows/runtime/variable-catalog'
+import { ConditionNodeFields } from '@/features/workflows/editor/workflow-condition-fields'
+import {
+  HumanNodeFields,
+  JunctionNodeFields,
+  LoopNodeFields,
+  SubflowNodeFields,
+  ToolNodeFields,
+} from '@/features/workflows/editor/workflow-kind-fields'
+import { IterationNodeFields } from '@/features/workflows/editor/workflow-iteration-fields'
+import type { WorkflowCanvasNode } from '@/features/workflows/editor/canvas-types'
+import { renderWithProviders } from '@/test/render'
+
+/**
+ * The variable pool a downstream node may select from, globals first.
+ *
+ * A catalog entry names its producer so the pickers can render `node / {x} name`
+ * the way Dify does; those titles are what the assertions below lean on.
+ */
+const CATALOG: readonly WorkflowDecoratedVariable[] = [
+  {
+    selector: ['sys', 'workflow_id'],
+    sourceNodeId: 'sys',
+    variableName: 'workflow_id',
+    valueType: 'string',
+    scope: 'global',
+  },
+  {
+    selector: ['start-1', 'input'],
+    sourceNodeId: 'start-1',
+    variableName: 'input',
+    valueType: 'string',
+    scope: 'node',
+    sourceNodeTitle: '开始 1',
+    sourceNodeKind: 'start',
+  },
+  {
+    selector: ['agent-1', 'output'],
+    sourceNodeId: 'agent-1',
+    variableName: 'output',
+    valueType: 'string',
+    scope: 'node',
+    sourceNodeTitle: 'Agent 1',
+    sourceNodeKind: 'agent',
+  },
+  {
+    selector: ['iteration-1', 'output'],
+    sourceNodeId: 'iteration-1',
+    variableName: 'output',
+    valueType: 'array[string]',
+    scope: 'node',
+    sourceNodeTitle: '迭代 1',
+    sourceNodeKind: 'iteration',
+  },
+  {
+    selector: ['agent-2', 'output'],
+    sourceNodeId: 'agent-2',
+    variableName: 'output',
+    valueType: 'string',
+    scope: 'node',
+    sourceNodeTitle: '区域内 Agent',
+    sourceNodeKind: 'agent',
+  },
+]
+
+/** A whole-graph around one Iteration frame with a single region member. */
+const GRAPH_NODES: WorkflowCanvasNode[] = [
+  {
+    id: 'iteration-1',
+    type: 'workflow',
+    position: { x: 0, y: 0 },
+    data: { kind: 'iteration', title: '迭代 1', description: '' },
+  },
+  {
+    id: 'agent-2',
+    parentId: 'iteration-1',
+    type: 'workflow',
+    position: { x: 0, y: 160 },
+    data: {
+      kind: 'agent',
+      title: '区域内 Agent',
+      description: '',
+      agentConfig: createDefaultWorkflowCapabilities().defaultAgentConfig,
+    },
+  },
+]
+
+/** The system globals, declared in the graph and normalized before they seed a catalog. */
+const GLOBAL_VARIABLES: readonly WorkflowGlobalVariable[] = [
+  { name: 'sys.workflow_id', valueType: 'string' },
+  { name: 'sys.timestamp', valueType: 'number' },
+]
+
+/** One authored condition case with a single comparison, shared by several tests. */
+const AUTHORED_CASE: WorkflowConditionCase = {
+  id: 'case-1',
+  logic: 'and',
+  conditions: [{ variableSelector: ['agent-1', 'output'], operator: 'equals', value: 'ok' }],
+}
+
+/** Builds a node panel payload for exercised kinds. */
+function nodeData(patch: Partial<WorkflowNodeData>): WorkflowNodeData {
+  return { kind: 'condition', title: '节点', description: '', ...patch }
+}
+
+/** A mock `onChange` that accumulates every published edit under `.data`. */
+function captureOnChange(): { data: WorkflowNodeData; onChange: (next: WorkflowNodeData) => void } {
+  // Each panel publishes the whole next node, so a complete seed keeps the
+  // accumulator a real WorkflowNodeData without an unsafe cast.
+  const captured: WorkflowNodeData = { kind: 'condition', title: '', description: '' }
+  const onChange = vi.fn<(data: WorkflowNodeData) => void>((next: WorkflowNodeData) => {
+    Object.assign(captured, next)
+  })
+  return { data: captured, onChange }
+}
+
+describe('ConditionNodeFields', () => {
+  it('renders an authored case, its localized operator and its comparison value', () => {
+    const onChange = vi.fn<(data: WorkflowNodeData) => void>()
+    renderWithProviders(
+      <ConditionNodeFields
+        data={nodeData({ cases: [AUTHORED_CASE] })}
+        onChange={onChange}
+        catalog={CATALOG}
+      />,
+    )
+
+    expect(screen.getByText('IF')).toBeInTheDocument()
+    expect(screen.getByText('Agent 1')).toBeInTheDocument()
+    expect(screen.getByText('等于')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '值 1' })).toHaveValue('ok')
+    expect(screen.getByText('添加条件')).toBeInTheDocument()
+  })
+
+  it('adds a comparison row to an empty IF card', () => {
+    const { data, onChange } = captureOnChange()
+    const view = renderWithProviders(
+      <ConditionNodeFields data={nodeData({})} onChange={onChange} catalog={CATALOG} />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '添加条件' }))
+
+    expect(data.cases).toHaveLength(1)
+    expect(data.cases?.[0]?.conditions).toHaveLength(1)
+    view.rerender(<ConditionNodeFields data={data} onChange={onChange} catalog={CATALOG} />)
+    expect(screen.getByRole('textbox', { name: '值 1' })).toBeInTheDocument()
+  })
+
+  it('appends an ELIF branch and keeps a fresh sequence id', () => {
+    const { data, onChange } = captureOnChange()
+    renderWithProviders(
+      <ConditionNodeFields
+        data={nodeData({ cases: [AUTHORED_CASE] })}
+        onChange={onChange}
+        catalog={CATALOG}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'ELIF' }))
+
+    expect(data.cases).toHaveLength(2)
+    expect(data.cases?.[1]).toEqual({ id: 'case-2', logic: 'and', conditions: [] })
+  })
+
+  it('removes an ELIF branch together with its rows', () => {
+    const { data, onChange } = captureOnChange()
+    renderWithProviders(
+      <ConditionNodeFields
+        data={nodeData({ cases: [AUTHORED_CASE, { id: 'case-2', logic: 'or', conditions: [] }] })}
+        onChange={onChange}
+        catalog={CATALOG}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '移除分支' }))
+
+    expect(data.cases).toHaveLength(1)
+    expect(data.cases?.[0]?.id).toBe('case-1')
+  })
+
+  it('removes a single comparison row', () => {
+    const { data, onChange } = captureOnChange()
+    renderWithProviders(
+      <ConditionNodeFields
+        data={nodeData({
+          cases: [
+            {
+              id: 'case-1',
+              logic: 'and',
+              conditions: [
+                { variableSelector: ['agent-1', 'output'], operator: 'equals', value: 'ok' },
+                { variableSelector: ['start-1', 'input'], operator: 'empty' },
+              ],
+            },
+          ],
+        })}
+        onChange={onChange}
+        catalog={CATALOG}
+      />,
+    )
+
+    // Every comparison row shares the same remove label, so the second button is
+    // the row this test removes.
+    const removeButtons = screen.getAllByRole('button', { name: '移除条件' })
+    const secondRemove = removeButtons[1]
+    if (secondRemove !== undefined) {
+      fireEvent.click(secondRemove)
+    }
+
+    expect(data.cases?.[0]?.conditions).toHaveLength(1)
+    expect(data.cases?.[0]?.conditions?.[0]?.operator).toBe('equals')
+  })
+
+  it('coerces a comparison value as it is typed', () => {
+    const { data, onChange } = captureOnChange()
+    renderWithProviders(
+      <ConditionNodeFields
+        data={nodeData({ cases: [AUTHORED_CASE] })}
+        onChange={onChange}
+        catalog={CATALOG}
+      />,
+    )
+
+    fireEvent.change(screen.getByRole('textbox', { name: '值 1' }), {
+      target: { value: '42' },
+    })
+
+    expect(data.cases?.[0]?.conditions?.[0]?.value).toBe(42)
+  })
+})
+
+describe('ToolNodeFields', () => {
+  it('renders the selected tool and operation, then edits a parameter', () => {
+    const { data, onChange } = captureOnChange()
+    const view = renderWithProviders(
+      <ToolNodeFields
+        data={nodeData({ kind: 'tool', tool: 'Terminal', operation: 'run_command' })}
+        onChange={onChange}
+      />,
+    )
+
+    expect(screen.getByText('Terminal')).toBeInTheDocument()
+    expect(screen.getByText('执行命令')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '添加参数' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '添加参数' }))
+    expect(data.toolParameters).toEqual([{ key: '', value: '' }])
+
+    view.rerender(<ToolNodeFields data={data} onChange={onChange} />)
+    fireEvent.change(screen.getByRole('textbox', { name: '参数名 1' }), {
+      target: { value: 'repo' },
+    })
+    expect(data.toolParameters?.[0]?.key).toBe('repo')
+
+    view.rerender(<ToolNodeFields data={data} onChange={onChange} />)
+    fireEvent.change(screen.getByRole('textbox', { name: '参数值 1' }), {
+      target: { value: 'mor' },
+    })
+    expect(data.toolParameters?.[0]?.value).toBe('mor')
+
+    view.rerender(<ToolNodeFields data={data} onChange={onChange} />)
+    fireEvent.click(screen.getByRole('button', { name: '移除参数 1' }))
+    view.rerender(<ToolNodeFields data={data} onChange={onChange} />)
+    expect(screen.getByRole('button', { name: '添加参数' })).toBeInTheDocument()
+  })
+})
+
+describe('JunctionNodeFields', () => {
+  it('shows the wait-count field only for a count wait strategy', () => {
+    const onChange = vi.fn<(data: WorkflowNodeData) => void>()
+    const view = renderWithProviders(
+      <JunctionNodeFields data={nodeData({ kind: 'junction' })} onChange={onChange} />,
+    )
+
+    expect(screen.getByText('全部分支完成')).toBeInTheDocument()
+    expect(screen.getByText('任一失败即失败')).toBeInTheDocument()
+    expect(screen.queryByLabelText('完成数量')).not.toBeInTheDocument()
+
+    view.rerender(
+      <JunctionNodeFields
+        data={nodeData({ kind: 'junction', waitStrategy: 'count', waitCount: 2 })}
+        onChange={onChange}
+      />,
+    )
+    expect(screen.getByLabelText('完成数量')).toHaveValue(2)
+  })
+})
+
+describe('HumanNodeFields', () => {
+  it('records the approval prompt as it is typed', () => {
+    const { data, onChange } = captureOnChange()
+    renderWithProviders(<HumanNodeFields data={nodeData({ kind: 'human' })} onChange={onChange} />)
+
+    fireEvent.change(screen.getByRole('textbox', { name: '审批说明' }), {
+      target: { value: '请确认发布到生产。' },
+    })
+
+    expect(data.instruction).toBe('请确认发布到生产。')
+  })
+})
+
+describe('LoopNodeFields', () => {
+  const LOOP_CONFIG: WorkflowLoopConfig = {
+    maxIterations: 3,
+    variables: [
+      {
+        name: 'value',
+        valueType: 'string',
+        initial: { kind: 'constant', value: '0' },
+        feedback: [],
+      },
+    ],
+    until: { logic: 'and', conditions: [] },
+    outputs: [],
+  }
+
+  it('clamps the iteration ceiling and writes the carried initial value', () => {
+    const { data, onChange } = captureOnChange()
+    const view = renderWithProviders(
+      <LoopNodeFields
+        data={nodeData({ kind: 'loop', loopConfig: LOOP_CONFIG })}
+        onChange={onChange}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('最大轮次'), { target: { value: '55' } })
+    expect(data.loopConfig?.maxIterations).toBe(55)
+
+    view.rerender(<LoopNodeFields data={data} onChange={onChange} />)
+    fireEvent.change(screen.getByLabelText('初始值'), { target: { value: 'ready' } })
+    expect(data.loopConfig?.variables[0]?.initial).toEqual({
+      kind: 'constant',
+      value: 'ready',
+    })
+  })
+
+  it('hides the config inputs for a legacy loop without executable config', () => {
+    const onChange = vi.fn<(data: WorkflowNodeData) => void>()
+    renderWithProviders(<LoopNodeFields data={nodeData({ kind: 'loop' })} onChange={onChange} />)
+
+    expect(screen.getByLabelText('最大轮次')).toBeDisabled()
+    expect(screen.getByLabelText('初始值')).toBeDisabled()
+    expect(screen.getByText('此旧循环节点缺少可执行配置，请删除后重新添加。')).toBeInTheDocument()
+  })
+})
+
+describe('IterationNodeFields', () => {
+  const ITERATION_CONFIG: WorkflowIterationConfig = {
+    iteratorSelector: ['iteration-1', 'output'],
+    collectSelector: ['agent-2', 'output'],
+    errorStrategy: 'fail',
+    maxIterations: 50,
+  }
+
+  it('renders the config, region member choices and empty-state warnings', () => {
+    const onChange = vi.fn<(data: WorkflowNodeData) => void>()
+    renderWithProviders(
+      <IterationNodeFields
+        nodeId="iteration-1"
+        data={nodeData({
+          kind: 'iteration',
+          iterationConfig: ITERATION_CONFIG,
+        })}
+        onChange={onChange}
+        catalog={CATALOG}
+        graphNodes={GRAPH_NODES}
+        globalVariables={GLOBAL_VARIABLES}
+      />,
+    )
+
+    const hint = screen.getByText(/对迭代源数组的每个元素/).closest('p')
+    expect(hint).toBeInTheDocument()
+    // The collect trigger resolves the selected region member with its node title.
+    expect(screen.getByText('区域内 Agent')).toBeInTheDocument()
+    expect(screen.getByText('任一轮失败即失败')).toBeInTheDocument()
+    expect(screen.getByLabelText('最大轮次')).toHaveValue(50)
+    // Configured selectors clear the empty-state warnings.
+    expect(screen.queryByText('迭代源未设置')).not.toBeInTheDocument()
+    expect(screen.queryByText('收集目标未设置')).not.toBeInTheDocument()
+  })
+
+  it('warns while the iterator or the collect target is still unset', () => {
+    const onChange = vi.fn<(data: WorkflowNodeData) => void>()
+    renderWithProviders(
+      <IterationNodeFields
+        nodeId="iteration-1"
+        data={nodeData({ kind: 'iteration' })}
+        onChange={onChange}
+        catalog={CATALOG}
+        graphNodes={GRAPH_NODES}
+        globalVariables={GLOBAL_VARIABLES}
+      />,
+    )
+
+    expect(screen.getByText('迭代源未设置')).toBeInTheDocument()
+    expect(screen.getByText('收集目标未设置')).toBeInTheDocument()
+  })
+})
+
+describe('SubflowNodeFields', () => {
+  it('shows the placeholder explanation', () => {
+    renderWithProviders(<SubflowNodeFields />)
+    expect(screen.getByText(/子流程用于封装可复用的复杂业务步骤/)).toBeInTheDocument()
+  })
+})

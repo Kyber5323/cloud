@@ -92,6 +92,19 @@ func Document() map[string]any {
 	commentProps := properties(s, "Comment")
 	commentProps["seq"] = number()
 	s["Label"] = resource("id tenantId name color version createdAt updatedAt deletedAt", "deletedAt")
+	s["Workflow"] = resource("id tenantId name description graph version createdAt updatedAt deletedAt", "deletedAt")
+	properties(s, "Workflow")["graph"] = obj{"type": "object", "additionalProperties": true, "description": "The authored graph document: nodes, edges, viewport, editor annotations and global variables. Stored and returned whole; the editor is its only reader."}
+	s["WorkflowSnapshot"] = resource("id tenantId workflowId version name graph createdAt", "")
+	properties(s, "WorkflowSnapshot")["graph"] = obj{"type": "object", "additionalProperties": true, "description": "The graph document frozen at publish time; restoring this snapshot writes it back to the workflow's live graph."}
+	s["WorkflowRun"] = resource("id tenantId workflowId snapshotId name status input nodeStates rounds error startedAt finishedAt createdAt updatedAt workflowName", "startedAt finishedAt")
+	workflowRunProps := properties(s, "WorkflowRun")
+	workflowRunProps["status"] = enumeration("pending", "running", "awaiting_input", "succeeded", "failed", "cancelled")
+	workflowRunProps["input"] = obj{"type": "object", "additionalProperties": true, "description": "The kickoff input passed to the run's start node."}
+	workflowRunProps["nodeStates"] = obj{"type": "object", "additionalProperties": true, "description": "Per-node execution state keyed by node id: status, output, error, timestamps."}
+	workflowRunProps["rounds"] = array(obj{"type": "object", "additionalProperties": true})
+	// definitionSnapshot lives only on a detail read (the history list trips without it);
+	// it is optional so one schema serves both list rows and the composed run page.
+	workflowRunProps["definitionSnapshot"] = optional(obj{"type": "object", "additionalProperties": true, "description": "The frozen graph document this run executed against, from the snapshot it captured."})
 	s["IssueStatus"] = resource("id tenantId key name description category color icon isSystem position version createdAt updatedAt deletedAt", "deletedAt")
 	statusProps := properties(s, "IssueStatus")
 	statusProps["isSystem"] = boolean()
@@ -275,6 +288,8 @@ func tag(r router.Route) string {
 		return "me"
 	case strings.Contains(r.Path, "/spaces"):
 		return "spaces"
+	case strings.Contains(r.Path, "/workflows"):
+		return "workflows"
 	case strings.Contains(r.Path, "/workspaces"):
 		return "workspaces"
 	case strings.Contains(r.Path, "/projects"):
@@ -288,7 +303,7 @@ func tag(r router.Route) string {
 }
 
 func isList(r router.Route) bool {
-	return r.Method == "GET" && (strings.HasSuffix(r.Path, "/tenants") || strings.HasSuffix(r.Path, "/members") || strings.HasSuffix(r.Path, "/projects") || strings.HasSuffix(r.Path, "/workspaces") || strings.HasSuffix(r.Path, "/spaces") || strings.HasSuffix(r.Path, "/resource-status") || strings.HasSuffix(r.Path, "/issue-statuses") || strings.HasSuffix(r.Path, "/labels") || strings.HasSuffix(r.Path, "/issue-views") || strings.HasSuffix(r.Path, "/comments") || strings.HasSuffix(r.Path, "/subscribers"))
+	return r.Method == "GET" && (strings.HasSuffix(r.Path, "/tenants") || strings.HasSuffix(r.Path, "/members") || strings.HasSuffix(r.Path, "/projects") || strings.HasSuffix(r.Path, "/workspaces") || strings.HasSuffix(r.Path, "/spaces") || strings.HasSuffix(r.Path, "/resource-status") || strings.HasSuffix(r.Path, "/issue-statuses") || strings.HasSuffix(r.Path, "/labels") || strings.HasSuffix(r.Path, "/issue-views") || strings.HasSuffix(r.Path, "/workflows") || strings.HasSuffix(r.Path, "/snapshots") || strings.HasSuffix(r.Path, "/runs") || strings.HasSuffix(r.Path, "/comments") || strings.HasSuffix(r.Path, "/subscribers"))
 }
 
 func responseSchema(r router.Route) (schema obj, status string) {
@@ -387,6 +402,37 @@ func responseSchema(r router.Route) (schema obj, status string) {
 		return ref("IssueView"), "200"
 	case strings.Contains(r.Path, "/issue-groups"):
 		return object(obj{"groups": array(object(obj{"key": str(), "items": array(ref("Issue"))}, "key", "items"))}, "groups"), "200"
+	case strings.Contains(r.Path, "/workflows"):
+		if strings.HasSuffix(r.Path, "/publish") {
+			return object(obj{"resource": ref("WorkflowSnapshot")}, "resource"), "200"
+		}
+		if strings.HasSuffix(r.Path, "/restore") {
+			return ref("Workflow"), "200"
+		}
+		if strings.Contains(r.Path, "/runs") {
+			// Workflow runs branch before snapshots/detail: the run paths carry no `:snapshotId`
+			// and must not be read as Workflow resources.
+			if r.Method == "GET" && strings.HasSuffix(r.Path, "/runs") {
+				return object(obj{"items": array(ref("WorkflowRun")), "nextCursor": str()}, "items", "nextCursor"), "200"
+			}
+			if r.Method == "POST" {
+				return object(obj{"resource": ref("WorkflowRun")}, "resource"), "200"
+			}
+			return ref("WorkflowRun"), "200"
+		}
+		if strings.Contains(r.Path, "/snapshots") {
+			if r.Method == "GET" && strings.HasSuffix(r.Path, "/snapshots") {
+				return object(obj{"items": array(ref("WorkflowSnapshot")), "nextCursor": str()}, "items", "nextCursor"), "200"
+			}
+			return ref("WorkflowSnapshot"), "200"
+		}
+		if r.Method == "GET" && strings.HasSuffix(r.Path, "/workflows") {
+			return object(obj{"items": array(ref("Workflow")), "nextCursor": str()}, "items", "nextCursor"), "200"
+		}
+		if r.Method == "POST" {
+			return object(obj{"resource": ref("Workflow")}, "resource"), "200"
+		}
+		return ref("Workflow"), "200"
 	case strings.Contains(r.Path, "/labels"):
 		if r.Method == "GET" {
 			return object(obj{"items": array(ref("Label")), "nextCursor": str()}, "items", "nextCursor"), "200"
@@ -480,8 +526,15 @@ func optionalField(name string, r router.Route) bool {
 		}
 	}
 	switch name {
-	case "description", "category", "color", "icon", "filter", "position", "parentId", "input", "targets", "contextRefs":
+	case "description", "category", "color", "icon", "filter", "position", "parentId", "input", "targets", "contextRefs", "graph":
 		return true
+	case "name":
+		// Both publish and run creation default the name to the workflow's, so the
+		// request may carry none.
+		return strings.HasSuffix(r.Path, "/publish") || strings.HasSuffix(r.Path, "/runs")
+	case "snapshotId":
+		// A run may omit the snapshot to pin the latest published one.
+		return strings.HasSuffix(r.Path, "/runs")
 	case "values":
 		// Confirm must state what it is confirming; assist may be asked with a still-empty form.
 		return strings.HasSuffix(r.Path, "/assist")
@@ -543,7 +596,7 @@ func inputSchema(name string, r router.Route) obj {
 		return uuid()
 	case "ids":
 		return array(uuid())
-	case "filter", "properties", "input", "values":
+	case "filter", "properties", "input", "values", "graph":
 		return obj{"type": "object", "additionalProperties": true}
 	case "contextRefs":
 		return array(ref("ContextRefRef"))
@@ -615,6 +668,9 @@ func description(r router.Route) string {
 		default:
 			base += "Only joined members can read a space. "
 		}
+	}
+	if strings.Contains(r.Path, "/workflows") {
+		base += "Workflows are tenant-owned graph documents. `graph` is the authored document (nodes, edges, viewport, editor annotations, global variables), stored and returned whole — the editor is its only reader, so no field inside it is validated or indexed here. A live workflow name is unique per tenant; archiving one frees its name. "
 	}
 	if r.Path == "/api/v1/tenants" && r.Method == "POST" {
 		base = "Public requests require a gateway service credential plus a caller-bound user credential. No tenant membership is required: the verified identity alone authorizes provisioning. Atomically creates a tenant named after the space, makes the caller its first administrator, creates the space with the given slug and makes the caller its owner. The tenant is an implicit container the product never shows. The idempotency key is matched per user across tenants and recorded under the created tenant. "
