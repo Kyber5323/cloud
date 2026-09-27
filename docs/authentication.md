@@ -2,7 +2,7 @@
 
 Gateway 独占外部登录集成。Cloud 核心不接入密码、SAML、OAuth 客户端或华为 SDK，也不根据姓名/email 合并账号。Gateway 通过华为 IDaaS 2.0 Authorization Code（`client_secret_post` 机密客户端）或 GitHub OAuth（Authorization Code + PKCE S256）规范化出 `{source, subject, displayName?, globalUserId?}`；`source` 是长期稳定的账号命名空间，`(source,subject)` 联合唯一。华为员工身份固定为 `source=huawei-corp`、`subject=<IDaaS uuid>`，同次验证的 `globalUserId` 是与天舟目录相连的第二身份键。Cloud 原子绑定两个标识，若各自已指向不同用户则拒绝自动合并。姓名只在首次 JIT 创建 Cloud 用户时形成快照，工号和邮箱不参与身份或授权。生产入口是 `cmd/gateway`（PostgreSQL 浏览器会话、`/api/v1` 代理），见 `docs/gateway.md`。
 
-HTTP 使用两种独立签名凭据：`Authorization: Bearer <service JWT>` 证明调用服务，`X-Ora-User-Token: <user JWT>` 证明最终用户。公开 API 要求 gateway 服务；访问检查/执行准入要求 controller 服务及用户凭据；后台控制 API 只要求 controller 服务；Node 接口只要求带资源范围的 node 服务凭据。普通 header 不能替代任何一类签名。
+HTTP 使用两种独立签名凭据：`Authorization: Bearer <service JWT>` 证明调用服务，`X-Ora-User-Token: <user JWT>` 证明最终用户。公开 API 要求 gateway 服务；访问检查/执行准入要求 controller 服务及用户凭据；后台控制 API 只要求 controller 服务；Node 接口只要求带资源范围的 node 服务凭据。普通 header 不能替代任何一类签名。Controller 的 gRPC 控制接口（`control.grpc_addr`）当前阶段不做认证：Controller 以 `x-ora-controller-id` metadata 声明自己的 ControllerId，Cloud 只把它记为租约与提交记录的持有者，因此该地址只应监听回环或私网。
 
 验证器仅允许 `EdDSA` / Ed25519，校验 `kid`、配置中的 issuer、key purpose（user/service）、固定服务角色、`aud`、签名、必须存在的 `iat/exp`、未来签发时间及不超过 5 分钟的生命期。`nbf` 存在时也由 JWT 验证器校验。用户凭据 `caller` 必须精确匹配 service `sub`。每个用户请求在 PG 检查用户状态与有效成员；停用记录保留，不自动改写资源拥有者。
 

@@ -15,7 +15,7 @@
 | `navigation.ts` | 与其它 origin 接触的唯一出口：`navigateExternal`（登录跳转到 provider）与 `openExternalTab`（在新的 `noopener` 标签页打开 provider 页面，当前页保留）；`replaceExternalNavigation` / `replaceExternalTabOpener` 供测试脚手架替换，因为 jsdom 不允许 spy `location.assign` 也没有 `window.open`。 |
 | `navigation.test.ts` | 验证替换与还原语义。 |
 | `paths.test.ts` | 验证 `safeReturnTo`、私有加入链接收窄、登录编码与 `/w/` 前缀。 |
-| `paths.ts` | 工作区路由、登录返回路径、空间地址预览，以及同源邀请/申请链接的构造与校验。 |
+| `paths.ts` | 工作区路由（包括插件和仓库）、登录返回路径、空间地址预览，以及同源邀请/申请链接的构造与校验。 |
 | `pagination.ts` / `pagination.test.ts` | 顺序读取所有游标页，确保空间、成员和申请列表不会只显示首页；测试跨页顺序。 |
 | `mock-api-client.ts` | MSW mock 域（`/mock-api/*`）的 axios 客户端，与真实后端生成客户端分离。把真实 space slug 重写为 demo 种子 workspace，使尚无后端的页面在任意 Space 下继续显示演示数据，直到它们接入真实 API。mock 域没有认证。 |
 | `utils.ts` | 重新导出 `cn`（Tailwind 感知的类名合并），shadcn 组件通过 `@/lib/utils` 引用。 |

@@ -8,6 +8,8 @@
 
 ## 本地验证
 
+租户即协作空间的迁移为 `0017_tenant_membership_and_join.sql`，接在上游 0014 克隆协调、0015 插件市场、0016 独立运行时迁移之后；已发布迁移保持不变。活动租户成员共享项目和运行时访问权限，每个运行时按上游流程独立克隆仓库。同一项目的生命周期操作仍串行执行，成员共享不提供同时编辑同一目录的冲突合并。旧 PR 使用过 0014 租户迁移的测试库需要重建；其他不兼容测试数据也不会被静默改写。
+
 Windows 可在项目 `.local/` 隔离安装并启动 PostgreSQL 17.11，不创建系统服务：
 
 ```powershell
@@ -77,7 +79,7 @@ go run ./cmd/cloudctl -command migrate
 go run ./cmd/simulator
 ```
 
-演示启动独立 loopback HTTP cloud/Substrate，创建测试租户、bare repo、main linked worktree、模拟 sandbox 和 Node，再输出 Ready Workspace。磁盘在 `.local/demo/`，PG 记录保留；再次运行创建新的演示租户。模拟器没有生产基础设施凭据，不部署 Kubernetes，不启动真实 Agent/Deno。
+演示启动独立 loopback HTTP cloud/Substrate，创建测试租户、模拟 sandbox 和 Node，并把仓库真实 clone 到 main Workspace 自己的数据中，再输出 Ready Workspace。磁盘在 `.local/demo/`，PG 记录保留；再次运行创建新的演示租户。模拟器没有生产基础设施凭据，不部署 Kubernetes，不启动真实 Agent/Deno。
 
 ## 前端
 
@@ -104,7 +106,7 @@ npm run build          # tsc -b && vite build
 - [OpenAPI 3.0](api/openapi.json)：所有 19 个公开接口、15 个内部接口和 health。`task openapi` 重新生成，测试校验文档合法性、生成结果和实际 HTTP 响应结构。
 - [Web 前端](frontend/README.md)：`frontend/src/api` 由 orval 从同一份 `api/openapi.json` 生成带类型的 TanStack Query hooks，`task frontend:generate` 一次完成 Go 契约 → JSON → TypeScript；CI 检测生成物漂移。
 - [核心不变量与状态机](docs/core-contract.md)：身份、归属、幂等、准入、租约、恢复和清理。
-- [Substrate/Node 与阶段二边界](docs/execution-contract.md)：共享卷布局、维护 Job、容器挂载、Git 语义与迁移责任。
+- [Substrate/Node 与阶段二边界](docs/execution-contract.md)：Workspace 数据、Node clone、Substrate 接口与迁移责任。
 - [需求—实现—验证清单](docs/acceptance.md)：本次实际证据与未完成的阶段二验证。
 
 ## 模块架构与分层文档
@@ -134,4 +136,4 @@ npm run build          # tsc -b && vite build
 
 阶段一采用数据库事务级全局 advisory lock 串行核心事务，并限制每 Project 一个未完成 operation。HTTP/Git/Substrate 调用从不持有数据库事务。此选择适用于首版单集群单活，牺牲写吞吐以降低并发不变量复杂度；后续可按租户/Project 细分锁，但必须保持现有并发测试。
 
-容器打包 server/gateway/cloudctl，运行身份为非 root。构建用 `docker build -f scripts/Dockerfile -t ora-cloud:phase-one .`，挂载自有配置和公钥；迁移使用同镜像 `--entrypoint /app/cloudctl` 独立执行，认证 Gateway 使用 `--entrypoint /app/gateway`（见 `docs/gateway.md`）。仓库 CI 分为两个 workflow：`Backend` 使用 PG service 跑格式/静态检查和 race 集成测试；`Frontend` 只在 `frontend/`、`api/` 或 `internal/contract/` 变化时触发，校验生成客户端与契约一致，并执行格式、lint、类型、测试覆盖率、模块文档/测试、死代码、重复代码与构建门禁（见 `frontend/AGENTS.md`）。Docker 镜像和真实部署不属于本地已验证结果。
+容器打包 server/gateway/cloudctl，运行身份为非 root。构建用 `docker build -f scripts/Dockerfile -t ora-cloud:phase-one .`，挂载自有配置和公钥；镜像还带有前端构建产物 `/app/web`，设置 `GATEWAY_WEB_DIST_DIR=/app/web` 后由 Gateway 与 `/auth`、`/api` 同源提供（见 `docs/gateway.md`）；另有 `devsetup` target（`cmd/devsetup`，只用于本地生成密钥与执行迁移，不进入服务镜像），供 `ora-space/cluster` 的 Compose 整套环境使用；迁移使用同镜像 `--entrypoint /app/cloudctl` 独立执行，认证 Gateway 使用 `--entrypoint /app/gateway`（见 `docs/gateway.md`）。仓库 CI 分为两个 workflow：`Backend` 使用 PG service 跑格式/静态检查和 race 集成测试；`Frontend` 只在 `frontend/`、`api/` 或 `internal/contract/` 变化时触发，校验生成客户端与契约一致，并执行格式、lint、类型、测试覆盖率、模块文档/测试、死代码、重复代码与构建门禁（见 `frontend/AGENTS.md`）。Docker 镜像和真实部署不属于本地已验证结果。

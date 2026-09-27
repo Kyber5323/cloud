@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { DialogFormField } from '@/components/common/dialog-form-field'
-import { Button } from '@/components/ui/button'
+import { CreateFormSubmit } from '@/components/common/create-form-submit'
 import {
   Dialog,
   DialogContent,
@@ -55,10 +55,7 @@ function CreateSpaceFields({
         hint={slugValid ? undefined : '小写字母、数字与连字符，以字母或数字开头'}
         required
       />
-      {errorCode && <p className="text-xs text-destructive">创建失败：{errorCode}</p>}
-      <Button type="submit" className="w-full" disabled={!submittable}>
-        {pending ? '创建中…' : '创建'}
-      </Button>
+      <CreateFormSubmit pending={pending} submittable={submittable} errorCode={errorCode} />
     </form>
   )
 }

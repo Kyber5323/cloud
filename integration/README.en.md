@@ -7,11 +7,12 @@
 ## Test categories and coverage
 
 - **`cloud_test.go`**: End-to-end lifecycle verification:
-  - Project creation, storage allocation, and Git bare repository cloning.
-  - Linked worktree creation and `one_main` constraint enforcement.
+  - Project and Workspace creation through sandbox → node → clone, with a real Git clone into each Workspace's own data, and `one_main` constraint enforcement.
   - Workspace state progression (`provisioning` $\rightarrow$ `ready` $\rightarrow$ `stopped` $\rightarrow$ `deleted`).
   - Controller leasing, epoch fencing, and operation claiming/advancing.
   - Idempotency replay and conflict detection.
+- **`workspace_lifecycle_test.go`**: retained effect kinds per step, clone failure/retry and unknown-outcome blocking, and Workspace data deletion waiting for termination.
+- **`workspace_operations_grpc_test.go`**: the Controller driving a Workspace through `WorkspaceOperationService` / `NodeReportService`, Node incarnation replacement, and `OperationAvailable` delivery.
 - **`endpoints_test.go`**: Comprehensive route and parameter matrix testing for all public and internal control endpoints.
 - **`contract_test.go`**: End-to-end OpenAPI contract validation against live HTTP responses.
 - **`security_test.go`**: Authentication, authorization, and isolation tests:
@@ -37,3 +38,5 @@ task test:race
 ```
 
 See [Local setup](../README.en.md#local-validation), [Core contract](../docs/core-contract.md), and [Taskfile.yml](../Taskfile.yml).
+
+Upstream reconciliation coverage: `tenant_upstream_migration_test.go` verifies 0016-to-0017 row preservation for runtimes, clones and plugins. `project_space_test.go` checks a different member can create and list ready Node-cloned runtimes. Plugin tests use separate tenants for isolation and reject reads immediately after membership revocation.

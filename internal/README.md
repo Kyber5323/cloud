@@ -20,13 +20,14 @@
 - [logger](logger/README.md)：基于 Zap 和 Lumberjack 提供结构化、非阻塞的 JSON 日志记录。
 - [simulator](simulator/README.md)：实现 Substrate 执行引擎、Controller 与 Workspace Node 的进程内替身。
 - [controlpb](controlpb/README.md)：由 [`proto/`](../proto/README.md) 生成的 Controller 内部控制契约 gRPC Go 代码（服务端桩与消息），只读。
+- [controlgrpc](controlgrpc/README.md)：该契约的 gRPC 服务端：调用方身份拦截器、`Fault` → 状态码映射、租约服务；只翻译，不含业务。
 
 ## 分层与架构规则
 
 1. **严格单向依赖**：
    - `cmd/*` $\rightarrow$ `internal/api/router`, `internal/gateway`, `internal/core`, `internal/config`, `internal/logger`, `internal/repository`。
    - `internal/gateway` $\rightarrow$ `internal/core`（仅 `Claims` 类型）、`internal/config`、`internal/logger`；`internal/gateway/idaas`、`internal/gateway/github` 与 `internal/gateway/devlogin` $\rightarrow$ `internal/gateway`。Gateway 不查询 Cloud 业务表。
-   - `internal/api/router` $\rightarrow$ `internal/core`, `internal/contract`。
+   - `internal/api/router` $\rightarrow$ `internal/core`, `internal/contract`；`internal/controlgrpc` $\rightarrow$ `internal/core`, `internal/controlpb`。
    - `internal/core` $\rightarrow$ 标准库、`gorm.io/gorm`、`internal/core/migrations`。
    - `internal/repository` $\rightarrow$ `internal/config`, `gorm.io/gorm`。
    - 底层包（`core`、`repository`）严禁反向导入上层表现层包（`api`、`router`）。

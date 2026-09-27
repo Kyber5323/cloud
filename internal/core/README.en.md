@@ -7,15 +7,17 @@
 ## Module map
 
 - [migrations](migrations/README.en.md) defines the forward-only, linear PostgreSQL schema migration scripts and checksum verification.
+- [plugins.go](plugins.go) persists and reads the plugin catalog snapshot (the `pluginmarket.CatalogSink` implementation) and owns the space plugin selection state machine (install/remove fan-out, the aggregation rule, SSE invalidation broadcasts).
 
 ## Architecture and runtime model
 
 ### Aggregates and relationships
 - **Users & Identities**: Users are identified by stable IdP claims (`source`, `subject`). Huawei login keeps the IDaaS `uuid` as its subject and associates a directory-selected person through the verified `globalUserId`; employee numbers grant no access. Conflicting identity mappings are never merged automatically.
 - **Tenants, Spaces & Memberships**: Each tenant has exactly one visible collaboration space, and a user may join and switch among many tenants. `tenant_memberships` is the sole authority for the peer `admin` and `member` roles and membership status. Public deployments use invitation or application links; corporate deployments verify active employees through Tianzhou.
-- **Projects**: Each project belongs to a tenant and its sole collaboration space. `(tenant_id, owner_user_id)` remains the durable resource and credential ownership boundary, while any active tenant member can access tenant projects. A project links its repository URL, default branch, and `project_storage`.
+- **Projects**: Each project belongs to a tenant and its sole collaboration space. `(tenant_id, owner_user_id)` remains the durable resource and credential ownership boundary, while any active tenant member can access tenant projects. Each Workspace clones the project repository into its own data at its `requested_ref`; `project_storage` rows are retained history only.
 - **Workspaces & Tasks**: Each project has at most one active `main` workspace (enforced by the `one_main` partial unique index). Additional workspaces are `isolated` and map 1:1 with `tasks`.
 - **Operations & Effects**: Mutations (such as project creation, workspace start/stop, or deletion) execute as durable `operations` (`queued`, `running`, `retry_wait`, `blocked`, `done`, `failed`). Operations decompose into durable `effects` representing external tasks executed by Substrate and Controller.
+- **Clone Requests**: independent work items accepted idempotently by `(tenant_id, actor_user_id, request_id)`, outside the operation/effect model; a Controller claims them over the internal control contract, registers the dispatch (`clone_executions`) and takes over the Node result (`clone_event_receipts`). The public `/clones` routes are visible to the submitting user only; `state` is projected from the request state and the execution result.
 - **Nodes & Sessions**: `workspace_nodes` represent active execution containers bound to a workspace. `sessions` track user conversational threads.
 
 ### Concurrency and locking

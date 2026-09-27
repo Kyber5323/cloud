@@ -99,6 +99,9 @@ func Routes() []Route {
 		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/start", "", []string{"version"}},
 		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/stop", "", []string{"version"}},
 		{"DELETE", "/api/v1/tenants/:tid/workspaces/:wid", "", []string{"version"}},
+		{"GET", "/api/v1/tenants/:tid/clones", "", nil},
+		{"POST", "/api/v1/tenants/:tid/clones", "", []string{"requestId", "repository", "branch"}},
+		{"GET", "/api/v1/tenants/:tid/clones/:cloneId", "", nil},
 		{"GET", "/api/v1/tenants/:tid/operations/:oid", "", nil},
 		{"POST", "/api/v1/tenants/:tid/operations/:oid/retry", "", []string{"version"}},
 		{"GET", "/api/v1/tenants/:tid/resource-status", "", nil},
@@ -108,6 +111,10 @@ func Routes() []Route {
 		{"PATCH", "/api/v1/tenants/:tid/spaces/:spaceId", "", []string{"name", "description", "version"}},
 		{"GET", "/api/v1/tenants/:tid/spaces/:spaceId/projects", "", nil},
 		{"POST", "/api/v1/tenants/:tid/spaces/:spaceId/projects", "", []string{"name", "repositoryUrl", "defaultBranch", "credentialRefId"}},
+		{"GET", "/api/v1/tenants/:tid/spaces/:spaceId/plugins/catalog", "", nil},
+		{"GET", "/api/v1/tenants/:tid/spaces/:spaceId/plugins", "", nil},
+		{"POST", "/api/v1/tenants/:tid/spaces/:spaceId/plugins", "", []string{"identifier", "pluginVersion"}},
+		{"DELETE", "/api/v1/tenants/:tid/spaces/:spaceId/plugins", "", []string{"identifier", "version"}},
 		{"POST", "/internal/v1/access", "access", []string{"tenantId", "workspaceId", "action", "epoch"}},
 		{"POST", "/internal/v1/admissions", "admit", []string{"tenantId", "workspaceId", "action", "ticketId", "kind", "epoch"}},
 		{"POST", "/internal/v1/controller-lease/acquire", "lease_acquire", []string{}},
@@ -276,7 +283,7 @@ func New(store *core.Store, auth *core.Authenticator, log *zap.Logger, directori
 						return
 					}
 				}
-				out, status, e = store.Public(c.Request.Context(), &core.PublicRequest{Method: c.Request.Method, Path: c.Request.URL.Path, TenantID: c.Param("tid"), ProjectID: c.Param("pid"), WorkspaceID: c.Param("wid"), SpaceID: c.Param("spaceId"), OperationID: c.Param("oid"), UserID: c.Param("uid"), IssueID: c.Param("iid"), CommentID: c.Param("cid"), LabelID: c.Param("lid"), StatusID: c.Param("sid"), ViewID: c.Param("vid"), RunID: c.Param("rid"), ContextRefID: c.Param("crid"), InteractionID: c.Param("ixid"), FormRef: c.Param("formRef"), InvitationID: c.Param("iid"), JoinLinkID: c.Param("lid"), JoinRequestID: c.Param("rid"), Key: c.GetHeader("Idempotency-Key"), Limit: limit, After: c.Query("after"), Query: c.Query("q"), GroupBy: c.Query("by"), Body: body, Identity: user, Person: person})
+				out, status, e = store.Public(c.Request.Context(), &core.PublicRequest{Method: c.Request.Method, Path: c.Request.URL.Path, TenantID: c.Param("tid"), ProjectID: c.Param("pid"), WorkspaceID: c.Param("wid"), SpaceID: c.Param("spaceId"), OperationID: c.Param("oid"), CloneID: c.Param("cloneId"), UserID: c.Param("uid"), IssueID: c.Param("iid"), CommentID: c.Param("cid"), LabelID: c.Param("lid"), StatusID: c.Param("sid"), ViewID: c.Param("vid"), RunID: c.Param("rid"), ContextRefID: c.Param("crid"), InteractionID: c.Param("ixid"), FormRef: c.Param("formRef"), InvitationID: c.Param("iid"), JoinLinkID: c.Param("lid"), JoinRequestID: c.Param("rid"), Key: c.GetHeader("Idempotency-Key"), Limit: limit, After: c.Query("after"), Query: c.Query("q"), GroupBy: c.Query("by"), Body: body, Identity: user, Person: person})
 			} else {
 				out, e = store.Control(c.Request.Context(), &core.ControlRequest{Action: route.Action, OperationID: c.Param("oid"), EffectID: c.Param("eid"), TicketID: c.Param("ticket"), Body: body, Service: service, Identity: user})
 			}
@@ -461,7 +468,7 @@ func validField(name string, value any) bool {
 		}
 		for k, v := range o {
 			switch k {
-			case "jobTerminated", "removed", "terminated":
+			case "jobTerminated", "removed", "terminated", "installed":
 				if _, ok := v.(bool); !ok {
 					return false
 				}
@@ -469,7 +476,7 @@ func validField(name string, value any) bool {
 				if _, ok := v.(json.Number); !ok {
 					return false
 				}
-			case "commitId", "sandboxInstanceId", "nodeId":
+			case "commitId", "sandboxInstanceId", "nodeId", "version", "error", "diagnostic":
 				if _, ok := v.(string); !ok {
 					return false
 				}

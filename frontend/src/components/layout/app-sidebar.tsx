@@ -4,12 +4,14 @@ import {
   ChevronDown,
   CircuitBoard,
   Cog,
+  FolderGit2,
   Inbox,
   Layers,
   ListTodo,
   LogOut,
   MessageCircle,
   Plus,
+  Puzzle,
   Server,
   Sparkles,
   Users,
@@ -48,12 +50,14 @@ import { workspacePaths } from '@/lib/paths'
 const workNav = [
   { to: (p: ReturnType<typeof workspacePaths>) => p.issues, label: '任务', icon: Layers },
   { to: (p: ReturnType<typeof workspacePaths>) => p.projects, label: '项目', icon: CircuitBoard },
+  { to: (p: ReturnType<typeof workspacePaths>) => p.repositories, label: '仓库', icon: FolderGit2 },
 ]
 
 const aiTeamNav = [
   { to: (p: ReturnType<typeof workspacePaths>) => p.agents, label: '智能体', icon: Bot },
   { to: (p: ReturnType<typeof workspacePaths>) => p.squads, label: '小队', icon: Users },
   { to: (p: ReturnType<typeof workspacePaths>) => p.skills, label: '技能', icon: Sparkles },
+  { to: (p: ReturnType<typeof workspacePaths>) => p.plugins, label: '插件', icon: Puzzle },
   { to: (p: ReturnType<typeof workspacePaths>) => p.runtimes, label: '运行时', icon: Server },
 ]
 

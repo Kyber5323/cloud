@@ -21,6 +21,7 @@ Browser entry point and composition root. This layer only wires things together:
 | `api/` | **Generated** by orval; never hand-edited, see [`../README.en.md`](../README.en.md). |
 | `components/ui/` | Presentational primitives (shadcn/ui) with no business meaning. |
 | `features/auth/` | Session and login boundary: gateway login/logout, the `/api/v1/me` probe, the 401 policy, the route gate. |
+| `features/clones/` | The 仓库 (repositories) page: submits clones through the public clones API, follows the results Nodes report, and never resubmits an unconfirmed request as a new one. |
 | `features/onboarding/` | First-workspace creation screen. |
 | `features/spaces/` | Collaboration space adapter: tenant/space resolution, space APIs, SSE subscription. |
 | `lib/` | React-free infrastructure: HTTP client, external navigation, paths. |

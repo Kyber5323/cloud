@@ -25,16 +25,22 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  DeleteApiV1TenantsTidSpacesSpaceIdPlugins200,
+  DeleteApiV1TenantsTidSpacesSpaceIdPluginsBody,
   Error,
   GetApiV1TenantsTidSpaces200,
   GetApiV1TenantsTidSpacesParams,
   GetApiV1TenantsTidSpacesSpaceIdProjects200,
   GetApiV1TenantsTidSpacesSpaceIdProjectsParams,
   PatchApiV1TenantsTidSpacesSpaceIdBody,
+  PluginCatalog,
+  PostApiV1TenantsTidSpacesSpaceIdPlugins200,
+  PostApiV1TenantsTidSpacesSpaceIdPluginsBody,
   PostApiV1TenantsTidSpacesSpaceIdProjects202,
   PostApiV1TenantsTidSpacesSpaceIdProjectsBody,
   Space,
-  SpaceEvent
+  SpaceEvent,
+  SpacePluginList
 } from '../generated.schemas';
 
 import { customInstance } from '../../lib/api-client';
@@ -432,6 +438,346 @@ export function useGetSpaceEvents<TData = Awaited<ReturnType<typeof getSpaceEven
 
 
 /**
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * @summary DELETE /api/v1/tenants/:tid/spaces/:spaceId/plugins
+ */
+export const deleteApiV1TenantsTidSpacesSpaceIdPlugins = (
+    tid: string,
+    spaceId: string,
+    deleteApiV1TenantsTidSpacesSpaceIdPluginsBody: DeleteApiV1TenantsTidSpacesSpaceIdPluginsBody,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<DeleteApiV1TenantsTidSpacesSpaceIdPlugins200>(
+      {url: `/api/v1/tenants/${tid}/spaces/${spaceId}/plugins`, method: 'DELETE',
+      headers: {'Content-Type': 'application/json', },
+      data: deleteApiV1TenantsTidSpacesSpaceIdPluginsBody, signal
+    },
+      options);
+    }
+
+
+
+
+export const getDeleteApiV1TenantsTidSpacesSpaceIdPluginsMutationKey = () => ['deleteApiV1TenantsTidSpacesSpaceIdPlugins'] as const;
+
+export const getDeleteApiV1TenantsTidSpacesSpaceIdPluginsMutationOptions = <TError = ErrorType<Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApiV1TenantsTidSpacesSpaceIdPlugins>>, TError,DeleteApiV1TenantsTidSpacesSpaceIdPluginsMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteApiV1TenantsTidSpacesSpaceIdPlugins>>, TError,DeleteApiV1TenantsTidSpacesSpaceIdPluginsMutationVariables, TContext> => {
+
+const mutationKey = getDeleteApiV1TenantsTidSpacesSpaceIdPluginsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteApiV1TenantsTidSpacesSpaceIdPlugins>>, DeleteApiV1TenantsTidSpacesSpaceIdPluginsMutationVariables> = (props) => {
+          const {tid,spaceId,data} = props ?? {};
+
+          return  deleteApiV1TenantsTidSpacesSpaceIdPlugins(tid,spaceId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteApiV1TenantsTidSpacesSpaceIdPluginsMutationResult = NonNullable<Awaited<ReturnType<typeof deleteApiV1TenantsTidSpacesSpaceIdPlugins>>>
+    export type DeleteApiV1TenantsTidSpacesSpaceIdPluginsMutationBody = DeleteApiV1TenantsTidSpacesSpaceIdPluginsBody
+    export type DeleteApiV1TenantsTidSpacesSpaceIdPluginsMutationError = ErrorType<Error>
+    export type DeleteApiV1TenantsTidSpacesSpaceIdPluginsMutationVariables = {tid: string;spaceId: string;data: DeleteApiV1TenantsTidSpacesSpaceIdPluginsBody}
+
+    /**
+ * @summary DELETE /api/v1/tenants/:tid/spaces/:spaceId/plugins
+ */
+export const useDeleteApiV1TenantsTidSpacesSpaceIdPlugins = <TError = ErrorType<Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApiV1TenantsTidSpacesSpaceIdPlugins>>, TError,DeleteApiV1TenantsTidSpacesSpaceIdPluginsMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteApiV1TenantsTidSpacesSpaceIdPlugins>>,
+        TError,
+        DeleteApiV1TenantsTidSpacesSpaceIdPluginsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteApiV1TenantsTidSpacesSpaceIdPluginsMutationOptions(options), queryClient);
+    }
+    /**
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * @summary GET /api/v1/tenants/:tid/spaces/:spaceId/plugins
+ */
+export const getApiV1TenantsTidSpacesSpaceIdPlugins = (
+    tid: string,
+    spaceId: string,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<SpacePluginList>(
+      {url: `/api/v1/tenants/${tid}/spaces/${spaceId}/plugins`, method: 'GET', signal
+    },
+      options);
+    }
+
+
+
+
+export const getGetApiV1TenantsTidSpacesSpaceIdPluginsQueryKey = (tid: string,
+    spaceId: string,) => {
+    return [
+    `/api/v1/tenants/${tid}/spaces/${spaceId}/plugins`
+    ] as const;
+    }
+
+
+export const getGetApiV1TenantsTidSpacesSpaceIdPluginsQueryOptions = <TData = Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPlugins>>, TError = ErrorType<Error>>(tid: string,
+    spaceId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPlugins>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetApiV1TenantsTidSpacesSpaceIdPluginsQueryKey(tid,spaceId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPlugins>>> = ({ signal }) => getApiV1TenantsTidSpacesSpaceIdPlugins(tid,spaceId, requestOptions, signal);
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: tid !== null && tid !== undefined && spaceId !== null && spaceId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPlugins>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetApiV1TenantsTidSpacesSpaceIdPluginsQueryResult = NonNullable<Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPlugins>>>
+export type GetApiV1TenantsTidSpacesSpaceIdPluginsQueryError = ErrorType<Error>
+
+
+export function useGetApiV1TenantsTidSpacesSpaceIdPlugins<TData = Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPlugins>>, TError = ErrorType<Error>>(
+ tid: string,
+    spaceId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPlugins>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPlugins>>,
+          TError,
+          Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPlugins>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetApiV1TenantsTidSpacesSpaceIdPlugins<TData = Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPlugins>>, TError = ErrorType<Error>>(
+ tid: string,
+    spaceId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPlugins>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPlugins>>,
+          TError,
+          Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPlugins>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetApiV1TenantsTidSpacesSpaceIdPlugins<TData = Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPlugins>>, TError = ErrorType<Error>>(
+ tid: string,
+    spaceId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPlugins>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary GET /api/v1/tenants/:tid/spaces/:spaceId/plugins
+ */
+
+export function useGetApiV1TenantsTidSpacesSpaceIdPlugins<TData = Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPlugins>>, TError = ErrorType<Error>>(
+ tid: string,
+    spaceId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPlugins>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetApiV1TenantsTidSpacesSpaceIdPluginsQueryOptions(tid,spaceId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+/**
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * @summary POST /api/v1/tenants/:tid/spaces/:spaceId/plugins
+ */
+export const postApiV1TenantsTidSpacesSpaceIdPlugins = (
+    tid: string,
+    spaceId: string,
+    postApiV1TenantsTidSpacesSpaceIdPluginsBody: PostApiV1TenantsTidSpacesSpaceIdPluginsBody,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<PostApiV1TenantsTidSpacesSpaceIdPlugins200>(
+      {url: `/api/v1/tenants/${tid}/spaces/${spaceId}/plugins`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: postApiV1TenantsTidSpacesSpaceIdPluginsBody, signal
+    },
+      options);
+    }
+
+
+
+
+export const getPostApiV1TenantsTidSpacesSpaceIdPluginsMutationKey = () => ['postApiV1TenantsTidSpacesSpaceIdPlugins'] as const;
+
+export const getPostApiV1TenantsTidSpacesSpaceIdPluginsMutationOptions = <TError = ErrorType<Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidSpacesSpaceIdPlugins>>, TError,PostApiV1TenantsTidSpacesSpaceIdPluginsMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidSpacesSpaceIdPlugins>>, TError,PostApiV1TenantsTidSpacesSpaceIdPluginsMutationVariables, TContext> => {
+
+const mutationKey = getPostApiV1TenantsTidSpacesSpaceIdPluginsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postApiV1TenantsTidSpacesSpaceIdPlugins>>, PostApiV1TenantsTidSpacesSpaceIdPluginsMutationVariables> = (props) => {
+          const {tid,spaceId,data} = props ?? {};
+
+          return  postApiV1TenantsTidSpacesSpaceIdPlugins(tid,spaceId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PostApiV1TenantsTidSpacesSpaceIdPluginsMutationResult = NonNullable<Awaited<ReturnType<typeof postApiV1TenantsTidSpacesSpaceIdPlugins>>>
+    export type PostApiV1TenantsTidSpacesSpaceIdPluginsMutationBody = PostApiV1TenantsTidSpacesSpaceIdPluginsBody
+    export type PostApiV1TenantsTidSpacesSpaceIdPluginsMutationError = ErrorType<Error>
+    export type PostApiV1TenantsTidSpacesSpaceIdPluginsMutationVariables = {tid: string;spaceId: string;data: PostApiV1TenantsTidSpacesSpaceIdPluginsBody}
+
+    /**
+ * @summary POST /api/v1/tenants/:tid/spaces/:spaceId/plugins
+ */
+export const usePostApiV1TenantsTidSpacesSpaceIdPlugins = <TError = ErrorType<Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidSpacesSpaceIdPlugins>>, TError,PostApiV1TenantsTidSpacesSpaceIdPluginsMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof postApiV1TenantsTidSpacesSpaceIdPlugins>>,
+        TError,
+        PostApiV1TenantsTidSpacesSpaceIdPluginsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getPostApiV1TenantsTidSpacesSpaceIdPluginsMutationOptions(options), queryClient);
+    }
+    /**
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * @summary GET /api/v1/tenants/:tid/spaces/:spaceId/plugins/catalog
+ */
+export const getApiV1TenantsTidSpacesSpaceIdPluginsCatalog = (
+    tid: string,
+    spaceId: string,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<PluginCatalog>(
+      {url: `/api/v1/tenants/${tid}/spaces/${spaceId}/plugins/catalog`, method: 'GET', signal
+    },
+      options);
+    }
+
+
+
+
+export const getGetApiV1TenantsTidSpacesSpaceIdPluginsCatalogQueryKey = (tid: string,
+    spaceId: string,) => {
+    return [
+    `/api/v1/tenants/${tid}/spaces/${spaceId}/plugins/catalog`
+    ] as const;
+    }
+
+
+export const getGetApiV1TenantsTidSpacesSpaceIdPluginsCatalogQueryOptions = <TData = Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPluginsCatalog>>, TError = ErrorType<Error>>(tid: string,
+    spaceId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPluginsCatalog>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetApiV1TenantsTidSpacesSpaceIdPluginsCatalogQueryKey(tid,spaceId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPluginsCatalog>>> = ({ signal }) => getApiV1TenantsTidSpacesSpaceIdPluginsCatalog(tid,spaceId, requestOptions, signal);
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: tid !== null && tid !== undefined && spaceId !== null && spaceId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPluginsCatalog>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetApiV1TenantsTidSpacesSpaceIdPluginsCatalogQueryResult = NonNullable<Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPluginsCatalog>>>
+export type GetApiV1TenantsTidSpacesSpaceIdPluginsCatalogQueryError = ErrorType<Error>
+
+
+export function useGetApiV1TenantsTidSpacesSpaceIdPluginsCatalog<TData = Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPluginsCatalog>>, TError = ErrorType<Error>>(
+ tid: string,
+    spaceId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPluginsCatalog>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPluginsCatalog>>,
+          TError,
+          Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPluginsCatalog>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetApiV1TenantsTidSpacesSpaceIdPluginsCatalog<TData = Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPluginsCatalog>>, TError = ErrorType<Error>>(
+ tid: string,
+    spaceId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPluginsCatalog>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPluginsCatalog>>,
+          TError,
+          Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPluginsCatalog>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetApiV1TenantsTidSpacesSpaceIdPluginsCatalog<TData = Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPluginsCatalog>>, TError = ErrorType<Error>>(
+ tid: string,
+    spaceId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPluginsCatalog>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary GET /api/v1/tenants/:tid/spaces/:spaceId/plugins/catalog
+ */
+
+export function useGetApiV1TenantsTidSpacesSpaceIdPluginsCatalog<TData = Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPluginsCatalog>>, TError = ErrorType<Error>>(
+ tid: string,
+    spaceId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidSpacesSpaceIdPluginsCatalog>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetApiV1TenantsTidSpacesSpaceIdPluginsCatalogQueryOptions(tid,spaceId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+/**
  * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/tenants/:tid/spaces/:spaceId/projects
  */
@@ -540,7 +886,7 @@ export function useGetApiV1TenantsTidSpacesSpaceIdProjects<TData = Awaited<Retur
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Creates Project/storage/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch defaults to HEAD; credentialRefId must belong to tenant and owner. Storage/worktree/sandbox initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/spaces/:spaceId/projects
  */
 export const postApiV1TenantsTidSpacesSpaceIdProjects = (

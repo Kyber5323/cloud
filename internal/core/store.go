@@ -82,11 +82,13 @@ type Store struct {
 	Assist     InputAssistProvider
 
 	// Events broadcasts committed collaboration-space invalidation notices to live
-	// SSE subscribers. Space association is optional (projects.space_id is nullable):
-	// a space-scoped project gates visibility to active space members (the
-	// resource-sharing boundary), while an unscoped project keeps owner-based
-	// authorization.
+	// SSE subscribers. Every project belongs to its tenant's sole collaboration
+	// space; current tenant membership gates visibility and authorization.
 	Events *SpaceHub
+
+	// Signals carries at-most-once work hints to the lease-holding Controller's Watch stream;
+	// clone requests stay durable in PostgreSQL whether or not a hint is delivered.
+	Signals *ControlHub
 }
 
 // NewStore obtains the injected SQL pool without creating or migrating schema.
@@ -98,7 +100,7 @@ func NewStore(db *gorm.DB) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get database pool: %w", err)
 	}
-	return &Store{Pool: pool, Events: NewSpaceHub()}, nil
+	return &Store{Pool: pool, Events: NewSpaceHub(), Signals: NewControlHub()}, nil
 }
 
 type transaction struct {
@@ -109,6 +111,8 @@ type transaction struct {
 	contextBuilder ContextBuilder
 	forms          FormDescriptorProvider
 	assist         InputAssistProvider
+	// queued names operations this transaction made claimable; they are published only after commit.
+	queued []string
 }
 
 func (t *transaction) exec(q string, args ...any) {
@@ -212,7 +216,9 @@ func (s *Store) transact(ctx context.Context, fn func(*transaction) Object) (out
 	t := &transaction{tx: tx, ctx: ctx, directory: s.Directory, contextBuilder: s.Context, forms: s.Forms, assist: s.Assist}
 	t.exec("SELECT pg_advisory_xact_lock(67420911)")
 	out = fn(t)
-	err = tx.Commit()
+	if err = tx.Commit(); err == nil {
+		s.signalOperations(t.queued)
+	}
 	return out, err
 }
 

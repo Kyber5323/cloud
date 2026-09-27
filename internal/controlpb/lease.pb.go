@@ -24,7 +24,7 @@ const (
 
 type Lease struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Service principal of the current holder, as verified from the caller's credential.
+	// ControllerId of the current holder, as the caller named itself in x-ora-controller-id metadata.
 	HolderId string `protobuf:"bytes,1,opt,name=holder_id,json=holderId,proto3" json:"holder_id,omitempty"`
 	// Monotonic fencing token; increases every time the lease changes hands.
 	Epoch         int64                  `protobuf:"varint,2,opt,name=epoch,proto3" json:"epoch,omitempty"`

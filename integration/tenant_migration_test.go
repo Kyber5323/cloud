@@ -71,7 +71,7 @@ func TestMigrateRejectsIncompatiblePreviousSpaceNames(t *testing.T) {
 		t.Fatal("mismatched historical names were silently reinterpreted")
 	}
 	var count int
-	must(t, pool.QueryRow("SELECT count(*) FROM schema_migrations WHERE version='0014_tenant_membership_and_join.sql'").Scan(&count))
+	must(t, pool.QueryRow("SELECT count(*) FROM schema_migrations WHERE version='0017_tenant_membership_and_join.sql'").Scan(&count))
 	if count != 0 {
 		t.Fatal("failed migration was recorded as applied")
 	}

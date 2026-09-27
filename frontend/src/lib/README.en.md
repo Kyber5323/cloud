@@ -15,7 +15,7 @@ Utilities shared by generated code and components that contain neither React nor
 | `navigation.ts` | The only contact with other origins: `navigateExternal` (the login redirect to the provider) and `openExternalTab` (a provider page in a new `noopener` tab, this tab stays); `replaceExternalNavigation` / `replaceExternalTabOpener` let the test scaffolding swap them, since jsdom does not allow spying on `location.assign` and has no `window.open`. |
 | `navigation.test.ts` | Verifies the replace-and-restore semantics. |
 | `paths.test.ts` | Verifies `safeReturnTo`, narrowing private join links, login encoding, and the `/w/` prefix. |
-| `paths.ts` | Workspace routes, login return paths, space address previews, and construction/validation of same-origin invitation and application links. |
+| `paths.ts` | Workspace routes (including plugins and repositories), login return paths, space address previews, and construction/validation of same-origin invitation and application links. |
 | `pagination.ts` / `pagination.test.ts` | Walks every cursor page so spaces, members, and applications are not silently truncated; tests cross-page ordering. |
 | `mock-api-client.ts` | Axios client for the MSW-mocked domain (`/mock-api/*`), kept separate from the real-backend generated client. It rewrites the real space slug to the seeded demo workspace so pages without a backend keep showing demo data in any space until they gain real API counterparts. The mock domain has no authentication. |
 | `utils.ts` | Re-exports `cn` (Tailwind-aware class merging); shadcn components import it via `@/lib/utils`. |

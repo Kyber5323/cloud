@@ -200,7 +200,7 @@ func TestControllerTakeoverReconcilesAndFences(t *testing.T) {
 	must(t, e)
 	replacementClient := *f.client
 	replacementClient.Subject = "controller-b"
-	replacement := &simulator.Controller{Client: &replacementClient, SubstrateURL: f.controller.SubstrateURL}
+	replacement := &simulator.Controller{Client: &replacementClient, SubstrateURL: f.controller.SubstrateURL, Executions: f.executions}
 	must(t, replacement.Acquire(context.Background()))
 	if replacement.Epoch != oldEpoch+1 {
 		t.Fatal("takeover epoch not advanced")
@@ -327,7 +327,7 @@ func TestPostgresAggregateConstraints(t *testing.T) {
 		{"project must have main", "INSERT INTO projects(id,tenant_id,owner_user_id,name,repository_url,default_branch,lifecycle) VALUES($1,$2,$3,'missing main','https://x','main','active')", []any{uuid.NewString(), f.tid, f.uid}},
 		{"main cannot vanish", "UPDATE workspaces SET deleted_at=now() WHERE id=$1", []any{wid}},
 		{"main cannot change aggregate", "UPDATE workspaces SET project_id=$1 WHERE id=$2", []any{uuid.NewString(), wid}},
-		{"cross-tenant owner", "INSERT INTO workspaces(id,tenant_id,owner_user_id,project_id,kind,desired_state,observed_state) VALUES($1,$2,$3,$4,'isolated','running','provisioning')", []any{uuid.NewString(), other.S("tenantId"), other.S("userId"), pid}},
+		{"cross-tenant owner", "INSERT INTO workspaces(id,tenant_id,owner_user_id,project_id,kind,desired_state,observed_state,requested_ref) VALUES($1,$2,$3,$4,'isolated','running','provisioning','main')", []any{uuid.NewString(), other.S("tenantId"), other.S("userId"), pid}},
 		{"task requires isolated", "INSERT INTO tasks(id,workspace_id,title) VALUES($1,$2,'wrong main task')", []any{uuid.NewString(), wid}},
 		{"last admin user cannot disable", "UPDATE users SET status='disabled' WHERE id=$1", []any{f.uid}},
 		{"last admin member cannot disable", "UPDATE tenant_memberships SET status='disabled' WHERE tenant_id=$1 AND user_id=$2", []any{f.tid, f.uid}},
@@ -351,7 +351,7 @@ func TestPostgresAggregateConstraints(t *testing.T) {
 	f.addMemberID(bob.S("id"), "member")
 	ref, e := f.store.ConfigureCredential(context.Background(), f.tid, bob.S("id"), "secret://bob/git")
 	must(t, e)
-	f.call("POST", f.path("/projects"), core.Object{"name": "wrong credential", "repositoryUrl": "https://example.invalid/repo.git", "credentialRefId": ref.S("id")}, "credential-owner", 404)
+	f.call("POST", f.path("/projects"), core.Object{"name": "wrong credential", "repositoryUrl": "https://example.invalid/repo.git", "defaultBranch": "main", "credentialRefId": ref.S("id")}, "credential-owner", 404)
 }
 
 func TestListPaginationAndErrorShape(t *testing.T) {

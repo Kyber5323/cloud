@@ -107,6 +107,25 @@ func TestDifferentMemberCanCreateRuntimeInSharedProject(t *testing.T) {
 	if status != 200 {
 		t.Fatalf("operation actor could not inspect shared operation: %d", status)
 	}
+	f.drain()
+	list, status, err := f.client.Call(context.Background(), "GET", f.path("/projects/"+pid+"/workspaces"), "gateway", gw, &bob, "", nil)
+	must(t, err)
+	if status != 200 {
+		t.Fatalf("member runtime list: want 200 got %d (%v)", status, list)
+	}
+	items := list["items"].([]any)
+	if len(items) != 2 {
+		t.Fatalf("shared project must expose main and isolated runtimes without legacy worktree rows: %v", list)
+	}
+	for _, item := range items {
+		w := core.Object(item.(map[string]any))
+		if w.S("observedState") != "ready" || w.S("baseCommitId") != f.commit || w.S("ownerUserId") != f.uid {
+			t.Fatalf("shared runtime lost Node clone readiness or project ownership: %v", w)
+		}
+	}
+	if f.scalar("SELECT count(*) FROM workspace_worktrees") != 0 || f.scalar("SELECT count(*) FROM project_storage") != 0 {
+		t.Fatal("shared runtime must not reintroduce retired storage or worktree provisioning")
+	}
 }
 
 // TestConcurrentMembersCannotStartTwoProjectOperations documents the current

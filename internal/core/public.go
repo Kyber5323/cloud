@@ -11,11 +11,11 @@ func itoa(n int) string { return strconv.Itoa(n) }
 
 // PublicRequest is populated only after service and final-user credentials are verified.
 type PublicRequest struct {
-	Method, Path, TenantID, ProjectID, WorkspaceID, SpaceID, OperationID, UserID, IssueID, CommentID, LabelID, StatusID, ViewID, RunID, ContextRefID, InteractionID, FormRef, InvitationID, JoinLinkID, JoinRequestID, Key, After, Query, GroupBy string
-	Limit                                                                                                                                                                                                                                         int
-	Body                                                                                                                                                                                                                                          Object
-	Identity                                                                                                                                                                                                                                      *Claims
-	Person                                                                                                                                                                                                                                        *DirectoryPerson
+	Method, Path, TenantID, ProjectID, WorkspaceID, SpaceID, OperationID, CloneID, UserID, IssueID, CommentID, LabelID, StatusID, ViewID, RunID, ContextRefID, InteractionID, FormRef, InvitationID, JoinLinkID, JoinRequestID, Key, After, Query, GroupBy string
+	Limit                                                                                                                                                                                                                                                  int
+	Body                                                                                                                                                                                                                                                   Object
+	Identity                                                                                                                                                                                                                                               *Claims
+	Person                                                                                                                                                                                                                                                 *DirectoryPerson
 }
 
 // Public executes one authorized public request in a short database transaction.
@@ -25,6 +25,7 @@ func (s *Store) Public(ctx context.Context, r *PublicRequest) (Object, int, erro
 	status := 200
 	var dispatches []dispatchTarget
 	var events []SpaceEvent
+	var accepted []string
 	result, e := s.transact(ctx, func(t *transaction) Object {
 		u := identityWithAlias(t, r.Identity)
 		uid := u.S("id")
@@ -82,6 +83,12 @@ func (s *Store) Public(ctx context.Context, r *PublicRequest) (Object, int, erro
 		case strings.HasSuffix(r.Path, "/members/huawei"):
 			out = addHuaweiMember(t, r, uid)
 			events = append(events, SpaceEvent{Type: "space.member_updated", SpaceID: soleSpace(t, r.TenantID).S("id")})
+		case r.SpaceID != "" && strings.HasSuffix(r.Path, "/plugins") && r.Method == "POST":
+			out = installSpacePlugin(t, r, uid)
+			events = append(events, SpaceEvent{Type: "space.plugins_updated", SpaceID: r.SpaceID})
+		case r.SpaceID != "" && strings.HasSuffix(r.Path, "/plugins") && r.Method == "DELETE":
+			out = removeSpacePlugin(t, r, uid)
+			events = append(events, SpaceEvent{Type: "space.plugins_updated", SpaceID: r.SpaceID})
 		case r.SpaceID != "" && r.Method == "PATCH":
 			out = patchSpace(t, r, uid)
 			events = append(events, SpaceEvent{Type: "space.updated", SpaceID: r.SpaceID, Version: out.N("version")})
@@ -98,6 +105,15 @@ func (s *Store) Public(ctx context.Context, r *PublicRequest) (Object, int, erro
 			out = createProject(t, r, uid, hash)
 			status = 202
 			events = append(events, SpaceEvent{Type: "project.created", SpaceID: out.O("resource").S("spaceId"), ProjectID: out.O("resource").S("id")})
+		case strings.HasSuffix(r.Path, "/clones"):
+			// Clone requests are accepted work items outside the operation model; they share the
+			// public idempotency scope but never create an operation or effect.
+			var queued string
+			out, queued = clonesPublic(t, r, uid)
+			status = 202
+			if queued != "" {
+				accepted = append(accepted, queued)
+			}
 		case r.OperationID != "":
 			out = retryOperation(t, r, uid)
 			status = 202
@@ -262,6 +278,9 @@ func (s *Store) Public(ctx context.Context, r *PublicRequest) (Object, int, erro
 				s.Events.Publish(ev)
 			}
 		}
+		for _, id := range accepted {
+			s.signalWork(id)
+		}
 	}
 	return result, status, e
 }
@@ -313,11 +332,16 @@ func readPublic(t *transaction, r *PublicRequest, uid string) Object {
 		switch {
 		case strings.HasSuffix(r.Path, "/projects"):
 			spaceMember(t, r.SpaceID, uid)
-			// The Workspace is the sharing boundary: space membership already gates the
-			// collection, and every active project in the space is visible to its members
-			// (project workspace-sharing migration). Unscoped projects have no space_id
-			// and never appear here.
+			// The tenant's sole space shares every live project with its active members.
 			return page(t, "SELECT p.* FROM projects p WHERE p.space_id=$1 AND p.deleted_at IS NULL", []any{r.SpaceID}, "p.id", r)
+		case strings.HasSuffix(r.Path, "/plugins/catalog"):
+			// The catalog snapshot is shared by every space of the deployment; space
+			// membership gates the read exactly like any other space-scoped list.
+			spaceMember(t, r.SpaceID, uid)
+			return pluginCatalog(t)
+		case strings.HasSuffix(r.Path, "/plugins"):
+			spaceMember(t, r.SpaceID, uid)
+			return spacePluginList(t, r.SpaceID)
 		default:
 			spaceMember(t, r.SpaceID, uid)
 			return t.one("SELECT * FROM collab_workspaces WHERE id=$1", r.SpaceID)
@@ -326,6 +350,9 @@ func readPublic(t *transaction, r *PublicRequest, uid string) Object {
 	switch {
 	case strings.HasSuffix(r.Path, "/invitations") || strings.HasSuffix(r.Path, "/join-links") || strings.HasSuffix(r.Path, "/join-requests"):
 		return adminJoinRead(t, r)
+	case r.CloneID != "" || strings.HasSuffix(r.Path, "/clones"):
+		out, _ := clonesPublic(t, r, uid)
+		return out
 	case strings.HasSuffix(r.Path, "/spaces"):
 		return listSpaces(t, r, uid)
 	case strings.HasSuffix(r.Path, "/members"):
@@ -372,7 +399,7 @@ func readPublic(t *transaction, r *PublicRequest, uid string) Object {
 	case r.ProjectID != "":
 		p := project(t, r.TenantID, uid, r.ProjectID)
 		if strings.HasSuffix(r.Path, "/workspaces") {
-			return page(t, "SELECT w.*,wt.branch_name,wt.base_commit_id,task.title FROM workspaces w JOIN workspace_worktrees wt ON wt.workspace_id=w.id LEFT JOIN tasks task ON task.workspace_id=w.id WHERE w.project_id=$1 AND w.tenant_id=$2 AND w.deleted_at IS NULL", []any{p.S("id"), r.TenantID}, "w.id", r)
+			return page(t, "SELECT w.*,wt.branch_name,task.title FROM workspaces w LEFT JOIN workspace_worktrees wt ON wt.workspace_id=w.id LEFT JOIN tasks task ON task.workspace_id=w.id WHERE w.project_id=$1 AND w.tenant_id=$2 AND w.deleted_at IS NULL", []any{p.S("id"), r.TenantID}, "w.id", r)
 		}
 		return p
 	default:
@@ -424,11 +451,12 @@ func createProject(t *transaction, r *PublicRequest, uid, hash string) Object {
 		_, password := parsed.User.Password()
 		require(!password && parsed.Scheme == "ssh", 400, "embedded_credentials_forbidden")
 	}
+	// The Node clones only a literal branch name and Cloud reads no remote repository, so the
+	// caller names the branch; HEAD would leave the Workspace's clone step blocked for good.
 	branch := r.Body.S("defaultBranch")
-	if branch == "" {
-		branch = "HEAD"
-	}
+	require(strings.TrimSpace(branch) != "", 400, "default_branch_required")
 	branch = validRef(branch)
+	require(branch != "HEAD", 400, "default_branch_required")
 	var cred any
 	if id := r.Body.S("credentialRefId"); id != "" {
 		require(validID(id), 400, "invalid_credential_ref")
@@ -437,15 +465,15 @@ func createProject(t *transaction, r *PublicRequest, uid, hash string) Object {
 	}
 	pid, wid := newID(), newID()
 	t.exec("INSERT INTO projects(id,tenant_id,owner_user_id,space_id,name,repository_url,default_branch,credential_ref_id,lifecycle) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'provisioning')", pid, r.TenantID, uid, spaceID, name, repo, branch, cred)
-	t.exec("INSERT INTO project_storage(project_id,observed_state) VALUES($1,'pending')", pid)
 	insertWorkspace(t, r.TenantID, uid, pid, wid, "main", branch, "")
-	op := newOperation(t, r, uid, pid, wid, "create_project", "storage", hash, Object{})
+	op := newOperation(t, r, uid, pid, wid, "create_project", "sandbox", hash, Object{})
 	return Object{"resource": t.one("SELECT * FROM projects WHERE id=$1", pid), "workspace": t.one("SELECT * FROM workspaces WHERE id=$1", wid), "operation": op}
 }
 
 func insertWorkspace(t *transaction, tid, uid, pid, wid, kind, ref, title string) {
-	t.exec("INSERT INTO workspaces(id,tenant_id,owner_user_id,project_id,kind,desired_state,observed_state) VALUES($1,$2,$3,$4,$5,'running','provisioning')", wid, tid, uid, pid, kind)
-	t.exec("INSERT INTO workspace_worktrees(workspace_id,relative_path,branch_name,requested_ref,provisioning_state) VALUES($1,$2,$3,$4,'pending')", wid, "workspaces/"+wid+"/checkout", "ora/"+wid, ref)
+	// The Workspace's Node clones ref into the Workspace's own data; there is no shared Project
+	// repository or linked worktree any more.
+	t.exec("INSERT INTO workspaces(id,tenant_id,owner_user_id,project_id,kind,desired_state,observed_state,requested_ref) VALUES($1,$2,$3,$4,$5,'running','provisioning',$6)", wid, tid, uid, pid, kind, ref)
 	if kind == "isolated" {
 		t.exec("INSERT INTO tasks(id,workspace_id,title) VALUES($1,$2,$3)", newID(), wid, title)
 	}
@@ -456,11 +484,17 @@ func createWorkspace(t *transaction, r *PublicRequest, p Object, uid, hash strin
 	idleProject(t, p.S("id"))
 	title := validText(r.Body.S("title"), 200)
 	ref := validRef(r.Body.S("baseRef"))
+	if ref == "HEAD" {
+		// HEAD means the Project's default branch, which is concrete for every Project created
+		// since defaultBranch became required; an older Project that still stores HEAD cannot say.
+		ref = p.S("defaultBranch")
+		require(ref != "HEAD", 400, "default_branch_required")
+	}
 	wid := newID()
 	// The project's durable owner is part of the workspace FK. A different
 	// tenant member may initiate this action, recorded separately as actor.
 	insertWorkspace(t, r.TenantID, p.S("ownerUserId"), p.S("id"), wid, "isolated", ref, title)
-	op := newOperation(t, r, uid, p.S("id"), wid, "create_workspace", "worktree", hash, Object{})
+	op := newOperation(t, r, uid, p.S("id"), wid, "create_workspace", "sandbox", hash, Object{})
 	return Object{"resource": workspace(t, r.TenantID, uid, wid, false), "operation": op}
 }
 
@@ -471,6 +505,7 @@ func newOperation(t *transaction, r *PublicRequest, uid, pid, wid, kind, step, h
 		w = wid
 	}
 	t.exec("INSERT INTO operations(id,tenant_id,actor_user_id,project_id,workspace_id,kind,state,step,request,idempotency_key,request_hash) VALUES($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10)", id, r.TenantID, uid, pid, w, kind, step, jsonText(req), r.Key, hash)
+	t.queued = append(t.queued, id)
 	return t.one("SELECT * FROM operations WHERE id=$1", id)
 }
 
@@ -552,5 +587,6 @@ func retryOperation(t *transaction, r *PublicRequest, uid string) Object {
 	version(o, r.Body.N("version"))
 	require(o.S("state") == "blocked" || o.S("state") == "retry_wait", 409, "operation_not_retryable")
 	t.exec("UPDATE operations SET state='queued',retry_at=NULL,error_code=NULL,version=version+1,updated_at=now() WHERE id=$1", r.OperationID)
+	t.queued = append(t.queued, r.OperationID)
 	return Object{"operation": ownedOperation(t, r, uid)}
 }

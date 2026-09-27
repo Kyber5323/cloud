@@ -110,6 +110,72 @@ export interface AssistSuggestion {
   suggestedValues: AssistSuggestionSuggestedValues;
 }
 
+export type CloneExecutionInput = { [key: string]: unknown };
+
+/**
+ * @nullable
+ */
+export type CloneExecutionResult = { [key: string]: unknown } | null;
+
+export interface CloneExecution {
+  /** @nullable */
+  cloneRequestId: string | null;
+  createdAt: string;
+  dispatchedEpoch: number;
+  executionId: string;
+  input: CloneExecutionInput;
+  nodeId: string;
+  operationId: string;
+  /** @nullable */
+  result: CloneExecutionResult;
+  updatedAt: string;
+  /** @nullable */
+  workspaceId: string | null;
+}
+
+export type CloneStateKind = typeof CloneStateKind[keyof typeof CloneStateKind];
+
+
+export const CloneStateKind = {
+  pending: 'pending',
+  succeeded: 'succeeded',
+  failed: 'failed',
+} as const;
+
+export type CloneStateReason = typeof CloneStateReason[keyof typeof CloneStateReason];
+
+
+export const CloneStateReason = {
+  sourceUnavailable: 'sourceUnavailable',
+  branchNotFound: 'branchNotFound',
+  destinationConflict: 'destinationConflict',
+  operationFailed: 'operationFailed',
+  interrupted: 'interrupted',
+  unspecified: 'unspecified',
+} as const;
+
+export interface CloneState {
+  commit?: string;
+  kind: CloneStateKind;
+  path?: string;
+  reason?: CloneStateReason;
+  retainedPath?: string;
+}
+
+export interface CloneOperation {
+  branch: string;
+  createdAt: string;
+  /** @nullable */
+  executionId: string | null;
+  /** @nullable */
+  nodeId: string | null;
+  operationId: string;
+  repository: string;
+  requestId: string;
+  state: CloneState;
+  updatedAt: string;
+}
+
 export type CollaborationTargetType = typeof CollaborationTargetType[keyof typeof CollaborationTargetType];
 
 
@@ -200,8 +266,7 @@ export interface ControllerProject {
   repositoryUrl: string;
   /** @nullable */
   secretRef: string | null;
-  /** @nullable */
-  spaceId: string | null;
+  spaceId: string;
   tenantId: string;
   version: number;
 }
@@ -214,7 +279,6 @@ export interface ControllerWorkspace {
      * @pattern ^([0-9a-f]{40}|[0-9a-f]{64})$
      */
   baseCommitId: string | null;
-  branchName: string;
   createdAt: string;
   /** @nullable */
   deletedAt: string | null;
@@ -224,7 +288,6 @@ export interface ControllerWorkspace {
   observedState: string;
   ownerUserId: string;
   projectId: string;
-  relativePath: string;
   requestedRef: string;
   runtimeGeneration: number;
   tenantId: string;
@@ -248,26 +311,48 @@ export const EffectRequestKind = {
   sandbox_terminate: 'sandbox_terminate',
   worktree_delete: 'worktree_delete',
   storage_delete: 'storage_delete',
+  workspace_data_delete: 'workspace_data_delete',
+  plugin_ensure: 'plugin_ensure',
+  plugin_delete: 'plugin_delete',
 } as const;
+
+export interface PluginReleaseTarget {
+  sha256: string;
+  target: string;
+  url: string;
+}
+
+export interface PluginUniversalRelease {
+  sha256: string;
+  url: string;
+}
 
 export interface EffectRequest {
   kind: EffectRequestKind;
+  pluginId?: string;
   projectId: string;
   repositoryUrl?: string;
   requestedRef?: string;
   sandboxInstanceId?: string;
+  targets?: PluginReleaseTarget[];
+  universal?: PluginUniversalRelease;
+  version?: string;
   workspaceId?: string;
 }
 
 export interface EffectResult {
   /** @pattern ^([0-9a-f]{40}|[0-9a-f]{64})$ */
   commitId?: string;
+  diagnostic?: string;
+  error?: string;
+  installed?: boolean;
   jobTerminated?: boolean;
   layoutVersion?: number;
   nodeId?: string;
   removed?: boolean;
   sandboxInstanceId?: string;
   terminated?: boolean;
+  version?: string;
 }
 
 export interface Effect {
@@ -686,6 +771,10 @@ export interface Node {
   idleAdmissionEpoch: number | null;
   initialized: boolean;
   lastSeenAt: string;
+  /** @nullable */
+  nodeId: string | null;
+  /** @nullable */
+  nodeIncarnationId: string | null;
   protocolVersion: number;
   sandboxInstanceId: string;
   serviceSubject: string;
@@ -713,11 +802,13 @@ export const OperationStep = {
   worktree: 'worktree',
   sandbox: 'sandbox',
   node: 'node',
+  clone: 'clone',
   ready: 'ready',
   quiesce: 'quiesce',
   terminate: 'terminate',
   cleanup: 'cleanup',
   storage_delete: 'storage_delete',
+  plugin: 'plugin',
   done: 'done',
 } as const;
 
@@ -755,6 +846,11 @@ export const WorkspaceObservedState = {
 export interface Workspace {
   admissionEpoch: number;
   admissionOpen: boolean;
+  /**
+     * @nullable
+     * @pattern ^([0-9a-f]{40}|[0-9a-f]{64})$
+     */
+  baseCommitId: string | null;
   createdAt: string;
   /** @nullable */
   deletedAt: string | null;
@@ -764,6 +860,7 @@ export interface Workspace {
   observedState: WorkspaceObservedState;
   ownerUserId: string;
   projectId: string;
+  requestedRef: string;
   runtimeGeneration: number;
   tenantId: string;
   version: number;
@@ -772,7 +869,9 @@ export interface Workspace {
 export type OperationRequestPrevious = {[key: string]: Workspace};
 
 export interface OperationRequest {
+  pluginId?: string;
   previous?: OperationRequestPrevious;
+  version?: string;
 }
 
 export interface OperationResult {
@@ -804,6 +903,86 @@ export interface Operation {
   workspaceId: string | null;
 }
 
+export type PluginCatalogEntryKind = typeof PluginCatalogEntryKind[keyof typeof PluginCatalogEntryKind];
+
+
+export const PluginCatalogEntryKind = {
+  workbench: 'workbench',
+  agent: 'agent',
+  webview: 'webview',
+  skill: 'skill',
+  mcp: 'mcp',
+  hook: 'hook',
+  pack: 'pack',
+  workflow: 'workflow',
+} as const;
+
+export type PluginLogoCandidateExtension = typeof PluginLogoCandidateExtension[keyof typeof PluginLogoCandidateExtension];
+
+
+export const PluginLogoCandidateExtension = {
+  svg: 'svg',
+  png: 'png',
+  webp: 'webp',
+  jpg: 'jpg',
+  jpeg: 'jpeg',
+} as const;
+
+export type PluginLogoCandidateRole = typeof PluginLogoCandidateRole[keyof typeof PluginLogoCandidateRole];
+
+
+export const PluginLogoCandidateRole = {
+  universal: 'universal',
+  light: 'light',
+  dark: 'dark',
+} as const;
+
+export interface PluginLogoCandidate {
+  extension: PluginLogoCandidateExtension;
+  role: PluginLogoCandidateRole;
+}
+
+export type PluginCatalogEntryLogo = {
+  universal: PluginLogoCandidate;
+} | {
+  dark: PluginLogoCandidate;
+  light: PluginLogoCandidate;
+} | null;
+
+export interface PluginCatalogEntry {
+  description: string;
+  /** @nullable */
+  homepage: string | null;
+  id: string;
+  identifier: string;
+  indexedAt: string;
+  kind: PluginCatalogEntryKind;
+  /** @nullable */
+  license: string | null;
+  logo: PluginCatalogEntryLogo;
+  marketplaceVisible: boolean;
+  /** @nullable */
+  packMembers: string[] | null;
+  /** @nullable */
+  readme: string | null;
+  /** @nullable */
+  sha256: string | null;
+  sourceNamespace: string;
+  sourceUrl: string;
+  /** @nullable */
+  targets: PluginReleaseTarget[] | null;
+  title: string;
+  /** @nullable */
+  url: string | null;
+  version: string;
+}
+
+export interface PluginCatalog {
+  items: PluginCatalogEntry[];
+  /** @nullable */
+  syncedAt?: string | null;
+}
+
 export interface Project {
   createdAt: string;
   /** @nullable */
@@ -816,8 +995,7 @@ export interface Project {
   name: string;
   ownerUserId: string;
   repositoryUrl: string;
-  /** @nullable */
-  spaceId: string | null;
+  spaceId: string;
   tenantId: string;
   version: number;
 }
@@ -835,23 +1013,13 @@ export interface Sandbox {
   workspaceId: string;
 }
 
-export interface Storage {
-  layoutVersion: number;
-  observedState: string;
-  projectId: string;
-  storageProfile: string;
-  /** @nullable */
-  substrateStorageId: string | null;
-  version: number;
-}
-
 export interface Snapshot {
+  clones: CloneExecution[];
   effects: Effect[];
   nodes: Node[];
   operation: Operation;
   project: ControllerProject;
   sandboxes: Sandbox[];
-  storage: Storage;
   workspaces: ControllerWorkspace[];
 }
 
@@ -878,6 +1046,8 @@ export const SpaceEventType = {
   projectcreated: 'project.created',
   projectupdated: 'project.updated',
   projectarchived: 'project.archived',
+  spaceplugins_updated: 'space.plugins_updated',
+  pluginscatalog_updated: 'plugins.catalog_updated',
 } as const;
 
 export interface SpaceEvent {
@@ -901,6 +1071,48 @@ export interface SpaceListItem {
   tenantId: string;
   updatedAt: string;
   version: number;
+}
+
+export type SpacePluginDesiredState = typeof SpacePluginDesiredState[keyof typeof SpacePluginDesiredState];
+
+
+export const SpacePluginDesiredState = {
+  installed: 'installed',
+  removed: 'removed',
+} as const;
+
+export type SpacePluginObservedState = typeof SpacePluginObservedState[keyof typeof SpacePluginObservedState];
+
+
+export const SpacePluginObservedState = {
+  pending: 'pending',
+  installing: 'installing',
+  installed: 'installed',
+  failed: 'failed',
+  removing: 'removing',
+  removed: 'removed',
+} as const;
+
+export interface SpacePlugin {
+  createdAt: string;
+  desiredState: SpacePluginDesiredState;
+  desiredVersion: string;
+  id: string;
+  identifier: string;
+  /** @nullable */
+  installError: string | null;
+  observedState: SpacePluginObservedState;
+  /** @nullable */
+  observedVersion: string | null;
+  sourceNamespace: string;
+  spaceId: string;
+  tenantId: string;
+  updatedAt: string;
+  version: number;
+}
+
+export interface SpacePluginList {
+  items: SpacePlugin[];
 }
 
 export interface Tenant {
@@ -1022,7 +1234,8 @@ export interface WorkspaceListItem {
      * @pattern ^([0-9a-f]{40}|[0-9a-f]{64})$
      */
   baseCommitId: string | null;
-  branchName: string;
+  /** @nullable */
+  branchName: string | null;
   createdAt: string;
   /** @nullable */
   deletedAt: string | null;
@@ -1032,6 +1245,7 @@ export interface WorkspaceListItem {
   observedState: WorkspaceListItemObservedState;
   ownerUserId: string;
   projectId: string;
+  requestedRef: string;
   runtimeGeneration: number;
   tenantId: string;
   /** @nullable */
@@ -1105,6 +1319,29 @@ export type PostApiV1TenantsBody = {
      * @pattern ^[a-z0-9][a-z0-9-]{0,63}$
      */
   slug: string;
+};
+
+export type GetApiV1TenantsTidClonesParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * Exclusive UUID cursor, ascending stable ordering.
+ */
+after?: string;
+};
+
+export type GetApiV1TenantsTidClones200 = {
+  items: CloneOperation[];
+  nextCursor: string;
+};
+
+export type PostApiV1TenantsTidClonesBody = {
+  branch: string;
+  repository: string;
+  requestId: string;
 };
 
 export type GetApiV1TenantsTidCollaborationTargets200 = {
@@ -1758,7 +1995,7 @@ export type GetApiV1TenantsTidProjects200 = {
 
 export type PostApiV1TenantsTidProjectsBody = {
   credentialRefId?: string;
-  defaultBranch?: string;
+  defaultBranch: string;
   name: string;
   repositoryUrl: string;
 };
@@ -1853,6 +2090,25 @@ export type PatchApiV1TenantsTidSpacesSpaceIdBody = {
   version: number;
 };
 
+export type DeleteApiV1TenantsTidSpacesSpaceIdPluginsBody = {
+  identifier: string;
+  /** @minimum 0 */
+  version: number;
+};
+
+export type DeleteApiV1TenantsTidSpacesSpaceIdPlugins200 = {
+  resource: SpacePlugin;
+};
+
+export type PostApiV1TenantsTidSpacesSpaceIdPluginsBody = {
+  identifier: string;
+  pluginVersion?: string;
+};
+
+export type PostApiV1TenantsTidSpacesSpaceIdPlugins200 = {
+  resource: SpacePlugin;
+};
+
 export type GetApiV1TenantsTidSpacesSpaceIdProjectsParams = {
 /**
  * @minimum 1
@@ -1872,7 +2128,7 @@ export type GetApiV1TenantsTidSpacesSpaceIdProjects200 = {
 
 export type PostApiV1TenantsTidSpacesSpaceIdProjectsBody = {
   credentialRefId?: string;
-  defaultBranch?: string;
+  defaultBranch: string;
   name: string;
   repositoryUrl: string;
 };
@@ -2049,6 +2305,8 @@ export const PostInternalV1OperationsOidDeferBodyErrorCode = {
   git_cleanup_failed: 'git_cleanup_failed',
   node_unavailable: 'node_unavailable',
   external_failure: 'external_failure',
+  clone_failed: 'clone_failed',
+  clone_result_unknown: 'clone_result_unknown',
 } as const;
 
 export type PostInternalV1OperationsOidDeferBodyState = typeof PostInternalV1OperationsOidDeferBodyState[keyof typeof PostInternalV1OperationsOidDeferBodyState];
@@ -2077,12 +2335,11 @@ export type PostInternalV1OperationsOidEffectsBodyKind = typeof PostInternalV1Op
 
 
 export const PostInternalV1OperationsOidEffectsBodyKind = {
-  storage_ensure: 'storage_ensure',
-  worktree_ensure: 'worktree_ensure',
   sandbox_ensure: 'sandbox_ensure',
   sandbox_terminate: 'sandbox_terminate',
-  worktree_delete: 'worktree_delete',
-  storage_delete: 'storage_delete',
+  workspace_data_delete: 'workspace_data_delete',
+  plugin_ensure: 'plugin_ensure',
+  plugin_delete: 'plugin_delete',
 } as const;
 
 export type PostInternalV1OperationsOidEffectsBody = {

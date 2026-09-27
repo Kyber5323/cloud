@@ -186,6 +186,151 @@
         ],
         "type": "object"
       },
+      "CloneExecution": {
+        "additionalProperties": false,
+        "properties": {
+          "cloneRequestId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "dispatchedEpoch": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "executionId": {
+            "type": "string"
+          },
+          "input": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "operationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "result": {
+            "additionalProperties": true,
+            "nullable": true,
+            "type": "object"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "workspaceId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "executionId",
+          "operationId",
+          "workspaceId",
+          "cloneRequestId",
+          "nodeId",
+          "input",
+          "result",
+          "dispatchedEpoch",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "CloneOperation": {
+        "additionalProperties": false,
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "executionId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "nodeId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "operationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "repository": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CloneState"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "repository",
+          "branch",
+          "executionId",
+          "nodeId",
+          "state",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "CloneState": {
+        "additionalProperties": false,
+        "properties": {
+          "commit": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "pending",
+              "succeeded",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "sourceUnavailable",
+              "branchNotFound",
+              "destinationConflict",
+              "operationFailed",
+              "interrupted",
+              "unspecified"
+            ],
+            "type": "string"
+          },
+          "retainedPath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
       "CollaborationTarget": {
         "additionalProperties": false,
         "properties": {
@@ -411,7 +556,6 @@
           },
           "spaceId": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "tenantId": {
@@ -455,9 +599,6 @@
             "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
             "type": "string"
           },
-          "branchName": {
-            "type": "string"
-          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -486,9 +627,6 @@
           },
           "projectId": {
             "format": "uuid",
-            "type": "string"
-          },
-          "relativePath": {
             "type": "string"
           },
           "requestedRef": {
@@ -521,8 +659,6 @@
           "admissionEpoch",
           "createdAt",
           "deletedAt",
-          "relativePath",
-          "branchName",
           "requestedRef",
           "baseCommitId"
         ],
@@ -627,8 +763,14 @@
               "sandbox_ensure",
               "sandbox_terminate",
               "worktree_delete",
-              "storage_delete"
+              "storage_delete",
+              "workspace_data_delete",
+              "plugin_ensure",
+              "plugin_delete"
             ],
+            "type": "string"
+          },
+          "pluginId": {
             "type": "string"
           },
           "projectId": {
@@ -643,6 +785,18 @@
           },
           "sandboxInstanceId": {
             "format": "uuid",
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/PluginReleaseTarget"
+            },
+            "type": "array"
+          },
+          "universal": {
+            "$ref": "#/components/schemas/PluginUniversalRelease"
+          },
+          "version": {
             "type": "string"
           },
           "workspaceId": {
@@ -663,6 +817,15 @@
             "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
             "type": "string"
           },
+          "diagnostic": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "installed": {
+            "type": "boolean"
+          },
           "jobTerminated": {
             "type": "boolean"
           },
@@ -671,7 +834,6 @@
             "type": "integer"
           },
           "nodeId": {
-            "format": "uuid",
             "type": "string"
           },
           "removed": {
@@ -683,6 +845,9 @@
           },
           "terminated": {
             "type": "boolean"
+          },
+          "version": {
+            "type": "string"
           }
         },
         "type": "object"
@@ -1782,6 +1947,14 @@
             "format": "date-time",
             "type": "string"
           },
+          "nodeId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "nodeIncarnationId": {
+            "nullable": true,
+            "type": "string"
+          },
           "protocolVersion": {
             "format": "int64",
             "type": "integer"
@@ -1813,7 +1986,9 @@
           "endedAt",
           "idleAdmissionEpoch",
           "version",
-          "workspaceId"
+          "workspaceId",
+          "nodeId",
+          "nodeIncarnationId"
         ],
         "type": "object"
       },
@@ -1882,11 +2057,13 @@
               "worktree",
               "sandbox",
               "node",
+              "clone",
               "ready",
               "quiesce",
               "terminate",
               "cleanup",
               "storage_delete",
+              "plugin",
               "done"
             ],
             "type": "string"
@@ -1934,11 +2111,17 @@
       "OperationRequest": {
         "additionalProperties": false,
         "properties": {
+          "pluginId": {
+            "type": "string"
+          },
           "previous": {
             "additionalProperties": {
               "$ref": "#/components/schemas/Workspace"
             },
             "type": "object"
+          },
+          "version": {
+            "type": "string"
           }
         },
         "type": "object"
@@ -1951,6 +2134,225 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "PluginCatalog": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PluginCatalogEntry"
+            },
+            "type": "array"
+          },
+          "syncedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "PluginCatalogEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "homepage": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "identifier": {
+            "type": "string"
+          },
+          "indexedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "workbench",
+              "agent",
+              "webview",
+              "skill",
+              "mcp",
+              "hook",
+              "pack",
+              "workflow"
+            ],
+            "type": "string"
+          },
+          "license": {
+            "nullable": true,
+            "type": "string"
+          },
+          "logo": {
+            "nullable": true,
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "universal": {
+                    "$ref": "#/components/schemas/PluginLogoCandidate"
+                  }
+                },
+                "required": [
+                  "universal"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "dark": {
+                    "$ref": "#/components/schemas/PluginLogoCandidate"
+                  },
+                  "light": {
+                    "$ref": "#/components/schemas/PluginLogoCandidate"
+                  }
+                },
+                "required": [
+                  "light",
+                  "dark"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "marketplaceVisible": {
+            "type": "boolean"
+          },
+          "packMembers": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "readme": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sha256": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sourceNamespace": {
+            "type": "string"
+          },
+          "sourceUrl": {
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/PluginReleaseTarget"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "nullable": true,
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sourceNamespace",
+          "identifier",
+          "title",
+          "kind",
+          "version",
+          "description",
+          "homepage",
+          "license",
+          "logo",
+          "url",
+          "sha256",
+          "targets",
+          "packMembers",
+          "readme",
+          "marketplaceVisible",
+          "sourceUrl",
+          "indexedAt"
+        ],
+        "type": "object"
+      },
+      "PluginLogoCandidate": {
+        "additionalProperties": false,
+        "properties": {
+          "extension": {
+            "enum": [
+              "svg",
+              "png",
+              "webp",
+              "jpg",
+              "jpeg"
+            ],
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "universal",
+              "light",
+              "dark"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "extension"
+        ],
+        "type": "object"
+      },
+      "PluginReleaseTarget": {
+        "additionalProperties": false,
+        "properties": {
+          "sha256": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "url",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "PluginUniversalRelease": {
+        "additionalProperties": false,
+        "properties": {
+          "sha256": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "sha256"
+        ],
         "type": "object"
       },
       "Project": {
@@ -1992,7 +2394,6 @@
           },
           "spaceId": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "tenantId": {
@@ -2071,6 +2472,12 @@
       "Snapshot": {
         "additionalProperties": false,
         "properties": {
+          "clones": {
+            "items": {
+              "$ref": "#/components/schemas/CloneExecution"
+            },
+            "type": "array"
+          },
           "effects": {
             "items": {
               "$ref": "#/components/schemas/Effect"
@@ -2095,9 +2502,6 @@
             },
             "type": "array"
           },
-          "storage": {
-            "$ref": "#/components/schemas/Storage"
-          },
           "workspaces": {
             "items": {
               "$ref": "#/components/schemas/ControllerWorkspace"
@@ -2108,11 +2512,11 @@
         "required": [
           "operation",
           "project",
-          "storage",
           "workspaces",
           "sandboxes",
           "nodes",
-          "effects"
+          "effects",
+          "clones"
         ],
         "type": "object"
       },
@@ -2189,7 +2593,9 @@
               "space.member_updated",
               "project.created",
               "project.updated",
-              "project.archived"
+              "project.archived",
+              "space.plugins_updated",
+              "plugins.catalog_updated"
             ],
             "type": "string"
           },
@@ -2263,25 +2669,62 @@
         ],
         "type": "object"
       },
-      "Storage": {
+      "SpacePlugin": {
         "additionalProperties": false,
         "properties": {
-          "layoutVersion": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "observedState": {
+          "createdAt": {
+            "format": "date-time",
             "type": "string"
           },
-          "projectId": {
+          "desiredState": {
+            "enum": [
+              "installed",
+              "removed"
+            ],
+            "type": "string"
+          },
+          "desiredVersion": {
+            "type": "string"
+          },
+          "id": {
             "format": "uuid",
             "type": "string"
           },
-          "storageProfile": {
+          "identifier": {
             "type": "string"
           },
-          "substrateStorageId": {
+          "installError": {
             "nullable": true,
+            "type": "string"
+          },
+          "observedState": {
+            "enum": [
+              "pending",
+              "installing",
+              "installed",
+              "failed",
+              "removing",
+              "removed"
+            ],
+            "type": "string"
+          },
+          "observedVersion": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sourceNamespace": {
+            "type": "string"
+          },
+          "spaceId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
             "type": "string"
           },
           "version": {
@@ -2290,12 +2733,34 @@
           }
         },
         "required": [
-          "projectId",
-          "substrateStorageId",
-          "storageProfile",
-          "layoutVersion",
+          "id",
+          "spaceId",
+          "tenantId",
+          "sourceNamespace",
+          "identifier",
+          "desiredState",
+          "desiredVersion",
           "observedState",
-          "version"
+          "observedVersion",
+          "installError",
+          "version",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "SpacePluginList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SpacePlugin"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
         ],
         "type": "object"
       },
@@ -2524,6 +2989,11 @@
           "admissionOpen": {
             "type": "boolean"
           },
+          "baseCommitId": {
+            "nullable": true,
+            "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+            "type": "string"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -2571,6 +3041,9 @@
           },
           "projectId": {
             "format": "uuid",
+            "type": "string"
+          },
+          "requestedRef": {
             "type": "string"
           },
           "runtimeGeneration": {
@@ -2599,7 +3072,9 @@
           "admissionOpen",
           "admissionEpoch",
           "createdAt",
-          "deletedAt"
+          "deletedAt",
+          "requestedRef",
+          "baseCommitId"
         ],
         "type": "object"
       },
@@ -2619,6 +3094,7 @@
             "type": "string"
           },
           "branchName": {
+            "nullable": true,
             "type": "string"
           },
           "createdAt": {
@@ -2668,6 +3144,9 @@
           },
           "projectId": {
             "format": "uuid",
+            "type": "string"
+          },
+          "requestedRef": {
             "type": "string"
           },
           "runtimeGeneration": {
@@ -2701,8 +3180,9 @@
           "admissionEpoch",
           "createdAt",
           "deletedAt",
-          "branchName",
+          "requestedRef",
           "baseCommitId",
+          "branchName",
           "title"
         ],
         "type": "object"
@@ -3696,6 +4176,443 @@
         "summary": "POST /api/v1/tenants",
         "tags": [
           "tenants"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tid}/clones": {
+      "get": {
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Clone requests are independent accepted work items outside the project/workspace operation model: Cloud accepts them in its own transaction, a Controller claims and dispatches them over the internal control contract, and only the submitting user can read them. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "operationId": "get_api_v1_tenants_tid_clones",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Exclusive UUID cursor, ascending stable ordering.",
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "$ref": "#/components/schemas/CloneOperation"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful command or resource response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid JSON/field/input, missing idempotency key, invalid pagination or evidence"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource absent or outside authorized tenant/owner scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version/idempotency conflict, resource_in_use, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version precondition required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal error; no SQL or secret details are exposed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "External capability not wired in this deployment (a port is Unavailable), e.g. form_descriptor_unavailable or assist_unavailable"
+          }
+        },
+        "security": [
+          {
+            "serviceCredential": [],
+            "userCredential": []
+          }
+        ],
+        "summary": "GET /api/v1/tenants/:tid/clones",
+        "tags": [
+          "clones"
+        ]
+      },
+      "post": {
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Clone requests are independent accepted work items outside the project/workspace operation model: Cloud accepts them in its own transaction, a Controller claims and dispatches them over the internal control contract, and only the submitting user can read them. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "operationId": "post_api_v1_tenants_tid_clones",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Scoped to tenant and user. Same key and canonical method/path/body returns the original response before version validation; changed request is 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "branch": {
+                    "type": "string"
+                  },
+                  "repository": {
+                    "type": "string"
+                  },
+                  "requestId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "requestId",
+                  "repository",
+                  "branch"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloneOperation"
+                }
+              }
+            },
+            "description": "Successful command or resource response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid JSON/field/input, missing idempotency key, invalid pagination or evidence"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource absent or outside authorized tenant/owner scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version/idempotency conflict, resource_in_use, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version precondition required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal error; no SQL or secret details are exposed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "External capability not wired in this deployment (a port is Unavailable), e.g. form_descriptor_unavailable or assist_unavailable"
+          }
+        },
+        "security": [
+          {
+            "serviceCredential": [],
+            "userCredential": []
+          }
+        ],
+        "summary": "POST /api/v1/tenants/:tid/clones",
+        "tags": [
+          "clones"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tid}/clones/{cloneId}": {
+      "get": {
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Clone requests are independent accepted work items outside the project/workspace operation model: Cloud accepts them in its own transaction, a Controller claims and dispatches them over the internal control contract, and only the submitting user can read them. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "operationId": "get_api_v1_tenants_tid_clones_cloneId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "cloneId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloneOperation"
+                }
+              }
+            },
+            "description": "Successful command or resource response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid JSON/field/input, missing idempotency key, invalid pagination or evidence"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource absent or outside authorized tenant/owner scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version/idempotency conflict, resource_in_use, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version precondition required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal error; no SQL or secret details are exposed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "External capability not wired in this deployment (a port is Unavailable), e.g. form_descriptor_unavailable or assist_unavailable"
+          }
+        },
+        "security": [
+          {
+            "serviceCredential": [],
+            "userCredential": []
+          }
+        ],
+        "summary": "GET /api/v1/tenants/:tid/clones/:cloneId",
+        "tags": [
+          "clones"
         ]
       }
     },
@@ -12925,7 +13842,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Creates Project/storage/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch defaults to HEAD; credentialRefId must belong to tenant and owner. Storage/worktree/sandbox initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_projects",
         "parameters": [
           {
@@ -12971,7 +13888,8 @@
                 },
                 "required": [
                   "name",
-                  "repositoryUrl"
+                  "repositoryUrl",
+                  "defaultBranch"
                 ],
                 "type": "object"
               }
@@ -13713,7 +14631,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Creates one isolated Workspace and Task display identity. title/baseRef required; branch and relative path are server-generated. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Creates one isolated Workspace and Task display identity. title/baseRef required; baseRef becomes the Workspace's requestedRef, which its Node clones; HEAD means the Project's defaultBranch. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_projects_pid_workspaces",
         "parameters": [
           {
@@ -14554,6 +15472,601 @@
         ]
       }
     },
+    "/api/v1/tenants/{tid}/spaces/{spaceId}/plugins": {
+      "delete": {
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "operationId": "delete_api_v1_tenants_tid_spaces_spaceId_plugins",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "spaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Scoped to tenant and user. Same key and canonical method/path/body returns the original response before version validation; changed request is 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "identifier": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "format": "int64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "identifier",
+                  "version"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "resource": {
+                      "$ref": "#/components/schemas/SpacePlugin"
+                    }
+                  },
+                  "required": [
+                    "resource"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful command or resource response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid JSON/field/input, missing idempotency key, invalid pagination or evidence"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource absent or outside authorized tenant/owner scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version/idempotency conflict, resource_in_use, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version precondition required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal error; no SQL or secret details are exposed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "External capability not wired in this deployment (a port is Unavailable), e.g. form_descriptor_unavailable or assist_unavailable"
+          }
+        },
+        "security": [
+          {
+            "serviceCredential": [],
+            "userCredential": []
+          }
+        ],
+        "summary": "DELETE /api/v1/tenants/:tid/spaces/:spaceId/plugins",
+        "tags": [
+          "spaces"
+        ]
+      },
+      "get": {
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "operationId": "get_api_v1_tenants_tid_spaces_spaceId_plugins",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "spaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpacePluginList"
+                }
+              }
+            },
+            "description": "Successful command or resource response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid JSON/field/input, missing idempotency key, invalid pagination or evidence"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource absent or outside authorized tenant/owner scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version/idempotency conflict, resource_in_use, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version precondition required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal error; no SQL or secret details are exposed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "External capability not wired in this deployment (a port is Unavailable), e.g. form_descriptor_unavailable or assist_unavailable"
+          }
+        },
+        "security": [
+          {
+            "serviceCredential": [],
+            "userCredential": []
+          }
+        ],
+        "summary": "GET /api/v1/tenants/:tid/spaces/:spaceId/plugins",
+        "tags": [
+          "spaces"
+        ]
+      },
+      "post": {
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "operationId": "post_api_v1_tenants_tid_spaces_spaceId_plugins",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "spaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Scoped to tenant and user. Same key and canonical method/path/body returns the original response before version validation; changed request is 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "identifier": {
+                    "type": "string"
+                  },
+                  "pluginVersion": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "identifier"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "resource": {
+                      "$ref": "#/components/schemas/SpacePlugin"
+                    }
+                  },
+                  "required": [
+                    "resource"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful command or resource response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid JSON/field/input, missing idempotency key, invalid pagination or evidence"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource absent or outside authorized tenant/owner scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version/idempotency conflict, resource_in_use, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version precondition required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal error; no SQL or secret details are exposed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "External capability not wired in this deployment (a port is Unavailable), e.g. form_descriptor_unavailable or assist_unavailable"
+          }
+        },
+        "security": [
+          {
+            "serviceCredential": [],
+            "userCredential": []
+          }
+        ],
+        "summary": "POST /api/v1/tenants/:tid/spaces/:spaceId/plugins",
+        "tags": [
+          "spaces"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tid}/spaces/{spaceId}/plugins/catalog": {
+      "get": {
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "operationId": "get_api_v1_tenants_tid_spaces_spaceId_plugins_catalog",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "spaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginCatalog"
+                }
+              }
+            },
+            "description": "Successful command or resource response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid JSON/field/input, missing idempotency key, invalid pagination or evidence"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource absent or outside authorized tenant/owner scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version/idempotency conflict, resource_in_use, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version precondition required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal error; no SQL or secret details are exposed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "External capability not wired in this deployment (a port is Unavailable), e.g. form_descriptor_unavailable or assist_unavailable"
+          }
+        },
+        "security": [
+          {
+            "serviceCredential": [],
+            "userCredential": []
+          }
+        ],
+        "summary": "GET /api/v1/tenants/:tid/spaces/:spaceId/plugins/catalog",
+        "tags": [
+          "spaces"
+        ]
+      }
+    },
     "/api/v1/tenants/{tid}/spaces/{spaceId}/projects": {
       "get": {
         "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
@@ -14717,7 +16230,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Creates Project/storage/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch defaults to HEAD; credentialRefId must belong to tenant and owner. Storage/worktree/sandbox initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_spaces_spaceId_projects",
         "parameters": [
           {
@@ -14772,7 +16285,8 @@
                 },
                 "required": [
                   "name",
-                  "repositoryUrl"
+                  "repositoryUrl",
+                  "defaultBranch"
                 ],
                 "type": "object"
               }
@@ -16445,7 +17959,7 @@
     },
     "/internal/v1/nodes/idle": {
       "post": {
-        "description": "Requires node service credential whose sub is a process UUID and whose workspaceId/sandboxId/generation match the current unterminated instance. Node identity cannot be replaced while live. Status/idle use Node version; ticket finish uses Ticket version and a completed replay is idempotent. initialized cannot regress. Idle is scoped to operationId and exact Workspace admissionEpoch; true requires no active tickets. false fails that quiesce operation with resource_in_use and restores original admission. Registration requires protocolVersion=1; Pod Running alone cannot make Ready.",
+        "description": "Kept for the Go simulator's Node: desktop Nodes hold no Cloud credential and are reported by their Controller over gRPC NodeReportService. Requires node service credential whose sub is a process UUID equal to the sandbox's ensured nodeId and whose workspaceId/sandboxId/generation match the current unterminated instance. Node identity cannot be replaced while live. Status/idle use Node version; ticket finish uses Ticket version and a completed replay is idempotent. initialized cannot regress. Idle is scoped to operationId and exact Workspace admissionEpoch; true requires no active tickets. false fails that quiesce operation with resource_in_use and restores original admission. Registration requires protocolVersion=1; Pod Running alone cannot make Ready.",
         "operationId": "post_internal_v1_nodes_idle",
         "requestBody": {
           "content": {
@@ -16595,7 +18109,7 @@
     },
     "/internal/v1/nodes/register": {
       "post": {
-        "description": "Requires node service credential whose sub is a process UUID and whose workspaceId/sandboxId/generation match the current unterminated instance. Node identity cannot be replaced while live. Status/idle use Node version; ticket finish uses Ticket version and a completed replay is idempotent. initialized cannot regress. Idle is scoped to operationId and exact Workspace admissionEpoch; true requires no active tickets. false fails that quiesce operation with resource_in_use and restores original admission. Registration requires protocolVersion=1; Pod Running alone cannot make Ready.",
+        "description": "Kept for the Go simulator's Node: desktop Nodes hold no Cloud credential and are reported by their Controller over gRPC NodeReportService. Requires node service credential whose sub is a process UUID equal to the sandbox's ensured nodeId and whose workspaceId/sandboxId/generation match the current unterminated instance. Node identity cannot be replaced while live. Status/idle use Node version; ticket finish uses Ticket version and a completed replay is idempotent. initialized cannot regress. Idle is scoped to operationId and exact Workspace admissionEpoch; true requires no active tickets. false fails that quiesce operation with resource_in_use and restores original admission. Registration requires protocolVersion=1; Pod Running alone cannot make Ready.",
         "operationId": "post_internal_v1_nodes_register",
         "requestBody": {
           "content": {
@@ -16724,7 +18238,7 @@
     },
     "/internal/v1/nodes/status": {
       "post": {
-        "description": "Requires node service credential whose sub is a process UUID and whose workspaceId/sandboxId/generation match the current unterminated instance. Node identity cannot be replaced while live. Status/idle use Node version; ticket finish uses Ticket version and a completed replay is idempotent. initialized cannot regress. Idle is scoped to operationId and exact Workspace admissionEpoch; true requires no active tickets. false fails that quiesce operation with resource_in_use and restores original admission. Registration requires protocolVersion=1; Pod Running alone cannot make Ready.",
+        "description": "Kept for the Go simulator's Node: desktop Nodes hold no Cloud credential and are reported by their Controller over gRPC NodeReportService. Requires node service credential whose sub is a process UUID equal to the sandbox's ensured nodeId and whose workspaceId/sandboxId/generation match the current unterminated instance. Node identity cannot be replaced while live. Status/idle use Node version; ticket finish uses Ticket version and a completed replay is idempotent. initialized cannot regress. Idle is scoped to operationId and exact Workspace admissionEpoch; true requires no active tickets. false fails that quiesce operation with resource_in_use and restores original admission. Registration requires protocolVersion=1; Pod Running alone cannot make Ready.",
         "operationId": "post_internal_v1_nodes_status",
         "requestBody": {
           "content": {
@@ -16864,7 +18378,7 @@
     },
     "/internal/v1/nodes/tickets/{ticket}/finish": {
       "post": {
-        "description": "Requires node service credential whose sub is a process UUID and whose workspaceId/sandboxId/generation match the current unterminated instance. Node identity cannot be replaced while live. Status/idle use Node version; ticket finish uses Ticket version and a completed replay is idempotent. initialized cannot regress. Idle is scoped to operationId and exact Workspace admissionEpoch; true requires no active tickets. false fails that quiesce operation with resource_in_use and restores original admission. Registration requires protocolVersion=1; Pod Running alone cannot make Ready.",
+        "description": "Kept for the Go simulator's Node: desktop Nodes hold no Cloud credential and are reported by their Controller over gRPC NodeReportService. Requires node service credential whose sub is a process UUID equal to the sandbox's ensured nodeId and whose workspaceId/sandboxId/generation match the current unterminated instance. Node identity cannot be replaced while live. Status/idle use Node version; ticket finish uses Ticket version and a completed replay is idempotent. initialized cannot regress. Idle is scoped to operationId and exact Workspace admissionEpoch; true requires no active tickets. false fails that quiesce operation with resource_in_use and restores original admission. Registration requires protocolVersion=1; Pod Running alone cannot make Ready.",
         "operationId": "post_internal_v1_nodes_tickets_ticket_finish",
         "parameters": [
           {
@@ -17138,7 +18652,7 @@
     },
     "/internal/v1/operations/{oid}/advance": {
       "post": {
-        "description": "Controller requests require an independent controller service credential; holder, active database-time lease epoch and operation version are checked. Derives the next step server-side. Requires current-epoch successful effects. quiesce requires all tickets finished and fresh exact-epoch idle proof from each live Node. node step atomically commits worktree readiness, Workspace Ready/admission, and operation success after fresh initialized current Node. Cleanup and storage deletion cannot complete before termination confirmation.",
+        "description": "Controller requests require an independent controller service credential; holder, active database-time lease epoch and operation version are checked. Derives the next step server-side. Requires current-epoch successful effects. Create goes sandbox, node, clone; start goes sandbox, node. quiesce requires all tickets finished and fresh exact-epoch idle proof from each live Node. The clone step requires the operation's latest clone execution (registered over gRPC) to have succeeded on the current Node; it records the baseline commit and commits Workspace Ready/admission with operation success, re-checking the fresh initialized current Node. start commits the same readiness at its node step. Workspace data deletion is planned and completed only after termination confirmation.",
         "operationId": "post_internal_v1_operations_oid_advance",
         "parameters": [
           {
@@ -17313,7 +18827,9 @@
                       "termination_unconfirmed",
                       "git_cleanup_failed",
                       "node_unavailable",
-                      "external_failure"
+                      "external_failure",
+                      "clone_failed",
+                      "clone_result_unknown"
                     ],
                     "type": "string"
                   },
@@ -17479,12 +18995,11 @@
                   },
                   "kind": {
                     "enum": [
-                      "storage_ensure",
-                      "worktree_ensure",
                       "sandbox_ensure",
                       "sandbox_terminate",
-                      "worktree_delete",
-                      "storage_delete"
+                      "workspace_data_delete",
+                      "plugin_ensure",
+                      "plugin_delete"
                     ],
                     "type": "string"
                   },
@@ -17626,7 +19141,7 @@
     },
     "/internal/v1/operations/{oid}/effects/{eid}/result": {
       "post": {
-        "description": "Controller requests require an independent controller service credential; holder, active database-time lease epoch and operation version are checked. Reports/reconciles one scoped external effect. External ID cannot change; succeeded evidence is immutable. absent is allowed only for a planned effect. Worktree success requires real commitId and jobTerminated; cleanup requires removed and jobTerminated; termination requires terminated; storage requires layoutVersion=1; sandbox requires its preallocated instance ID. This endpoint trusts the authenticated controller's Substrate observation, not client-supplied status.",
+        "description": "Controller requests require an independent controller service credential; holder, active database-time lease epoch and operation version are checked. Reports/reconciles one scoped external effect. External ID cannot change; succeeded evidence is immutable. absent is allowed only for a planned effect. Sandbox success requires its preallocated instance ID and the nodeId its Node will present; termination requires terminated; Workspace data deletion requires removed. This endpoint trusts the authenticated controller's Substrate observation, not client-supplied status.",
         "operationId": "post_internal_v1_operations_oid_effects_eid_result",
         "parameters": [
           {

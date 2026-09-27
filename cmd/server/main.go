@@ -5,20 +5,26 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 
 	"github.com/wanglongan587/cloud/internal/api/router"
 	"github.com/wanglongan587/cloud/internal/collab"
 	"github.com/wanglongan587/cloud/internal/config"
+	"github.com/wanglongan587/cloud/internal/controlgrpc"
 	"github.com/wanglongan587/cloud/internal/core"
 	"github.com/wanglongan587/cloud/internal/logger"
+	"github.com/wanglongan587/cloud/internal/pluginmarket"
 	"github.com/wanglongan587/cloud/internal/repository"
 )
 
@@ -85,22 +91,65 @@ func run() (runErr error) {
 			return e
 		}
 	}
+	// The marketplace sync loop is owned by this process like gateway.RunCleanup:
+	// the ctx cancellation on shutdown stops it and the WaitGroup below waits
+	// for the in-flight sync (network + scan only; no database transaction
+	// spans them) before the process exits.
+	var syncGroup sync.WaitGroup
+	if cfg.Plugins.SyncEnabled {
+		source := pluginmarket.Source{Namespace: "official", URL: cfg.Plugins.MarketplaceURL, Branch: cfg.Plugins.MarketplaceBranch}
+		syncer := pluginmarket.NewSyncer(source, filepath.Join(os.TempDir(), "ora-cloud-plugins", "official"), store, log)
+		syncGroup.Add(1)
+		go func() {
+			defer syncGroup.Done()
+			pluginmarket.RunSyncLoop(ctx, syncer.Sync, cfg.Plugins.SyncInterval, pluginmarket.ContextSleep, log)
+		}()
+	}
 	gin.SetMode(cfg.Server.Mode)
 	server := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Server.Port), Handler: router.New(store, auth, log, directory), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: cfg.Server.ReadTimeout, WriteTimeout: cfg.Server.WriteTimeout, IdleTimeout: 60 * time.Second}
-	failed := make(chan error, 1)
+	// The control listener is bound before serving so a taken port fails startup, not a Controller.
+	control, e := net.Listen("tcp", cfg.Control.GRPCAddr)
+	if e != nil {
+		return e
+	}
+	grpcServer := controlgrpc.New(store)
+	failed := make(chan error, 2)
 	go func() {
 		log.Info("Cloud listening", zap.String("address", server.Addr))
 		failed <- server.ListenAndServe()
 	}()
+	go func() {
+		log.Info("Cloud control listening", zap.String("address", control.Addr().String()))
+		failed <- grpcServer.Serve(control)
+	}()
 	select {
 	case e = <-failed:
-		if errors.Is(e, http.ErrServerClosed) {
+		cancel()
+		syncGroup.Wait()
+		if errors.Is(e, http.ErrServerClosed) || errors.Is(e, grpc.ErrServerStopped) {
 			return nil
 		}
 		return e
 	case <-ctx.Done():
 		shutdown, stop := context.WithTimeout(context.Background(), 10*time.Second)
 		defer stop()
-		return server.Shutdown(shutdown)
+		// In-flight control calls finish or are cut at the same deadline as HTTP; a Controller
+		// retries with the same submission identity, so cutting them loses nothing durable.
+		// Tell the lease holder to stop claiming before its stream is cut; the Drain signal is a
+		// hint, so a Controller that misses it simply fails its next claim against a stopped server.
+		store.Signals.Drain()
+		stopped := make(chan struct{})
+		go func() {
+			grpcServer.GracefulStop()
+			close(stopped)
+		}()
+		select {
+		case <-stopped:
+		case <-shutdown.Done():
+			grpcServer.Stop()
+		}
+		e = server.Shutdown(shutdown)
+		syncGroup.Wait()
+		return e
 	}
 }

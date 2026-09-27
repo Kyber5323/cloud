@@ -166,6 +166,25 @@ describe('useSpaceEvents', () => {
   const spaceId = '22222222-2222-2222-2222-222222222222'
   const eventsUrl = `/api/v1/tenants/${tenantId}/spaces/${spaceId}/events`
 
+  /** Renders the events hook over a client seeded with the given query keys. */
+  function renderEvents(
+    queryClient: QueryClient,
+    keys: string[][],
+  ): { unmount: () => void; invalidated: (key: string[]) => boolean } {
+    for (const key of keys) {
+      queryClient.setQueryData(key, [])
+    }
+    const { unmount } = renderHook(() => useSpaceEvents(tenantId, spaceId), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      ),
+    })
+    return {
+      unmount,
+      invalidated: (key) => queryClient.getQueryState(key)?.isInvalidated === true,
+    }
+  }
+
   it('invalidates the queries each event names, reconnects after the stream ends, and stops on 401', async () => {
     let connections = 0
     server.use(
@@ -194,16 +213,12 @@ describe('useSpaceEvents', () => {
     const membersKey = [`/api/v1/tenants/${tenantId}/members`]
     const spacesKey = ['/api/v1/me/spaces']
     const foreignKey = ['/api/v1/tenants/other/spaces']
-    for (const key of [projectsKey, membersKey, spacesKey, foreignKey]) {
-      queryClient.setQueryData(key, [])
-    }
-    const invalidated = (key: string[]) => queryClient.getQueryState(key)?.isInvalidated === true
-
-    const { unmount } = renderHook(() => useSpaceEvents(tenantId, spaceId), {
-      wrapper: ({ children }: { children: ReactNode }) => (
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-      ),
-    })
+    const { unmount, invalidated } = renderEvents(queryClient, [
+      projectsKey,
+      membersKey,
+      spacesKey,
+      foreignKey,
+    ])
 
     await waitFor(() => expect(invalidated(spacesKey)).toBe(true))
     expect(invalidated(projectsKey)).toBe(true)
@@ -242,6 +257,25 @@ describe('useSpaceEvents', () => {
     await waitFor(() => expect(queryClient.getQueryState(spacesKey)?.isInvalidated).toBe(true))
     await new Promise((resolve) => setTimeout(resolve, 1200))
     expect(connections).toBe(1)
+    unmount()
+  })
+
+  it('invalidates the plugin queries the plugin event types name', async () => {
+    server.use(
+      http.get(eventsUrl, () =>
+        eventStream([
+          'data: {"type":"space.plugins_updated","spaceId":"S","version":2}\n\n',
+          'data: {"type":"plugins.catalog_updated","spaceId":""}\n\n',
+        ]),
+      ),
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const pluginsKey = [`/api/v1/tenants/${tenantId}/spaces/${spaceId}/plugins`]
+    const catalogKey = [`/api/v1/tenants/${tenantId}/spaces/${spaceId}/plugins/catalog`]
+    const { unmount, invalidated } = renderEvents(queryClient, [pluginsKey, catalogKey])
+
+    await waitFor(() => expect(invalidated(pluginsKey)).toBe(true))
+    expect(invalidated(catalogKey)).toBe(true)
     unmount()
   })
 

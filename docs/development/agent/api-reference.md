@@ -194,7 +194,7 @@ workflow_not_available` (3B-1) is **SUPERSEDED**.
 | Method | Path | Body fields | Response |
 | --- | --- | --- | --- |
 | GET | `/projects` | — | `{items, nextCursor}` (tenant-level, **owner-filtered** — see access note) |
-| POST 🔑 | `/projects` | `name`*, `repositoryUrl`*, `defaultBranch`, `credentialRefId` | 202 `{resource, workspace, operation}` |
+| POST 🔑 | `/projects` | `name`*, `repositoryUrl`*, `defaultBranch`* (not `HEAD`), `credentialRefId` | 202 `{resource, workspace, operation}` |
 | GET | `/projects/{pid}` | — | Project |
 | PATCH | `/projects/{pid}` | `name`, 🔢`version` | Project |
 | DELETE 🔑 | `/projects/{pid}` | 🔢`version` | 202 `{resource, operation}` |
@@ -208,6 +208,10 @@ workflow_not_available` (3B-1) is **SUPERSEDED**.
 | POST 🔑 | `/operations/{oid}/retry` | 🔢`version` | `{operation}` |
 | GET | `/resource-status` | — | `{items}` (admin projection) |
 | POST 🔑 | `/workspaces/{wid}/administrative-stop` | 🔢`version` | 202 `{resource, operation}` (admin) |
+| GET | `/spaces/{sid}/plugins/catalog` | — | `{items, syncedAt}` (catalog snapshot, never the network) |
+| GET | `/spaces/{sid}/plugins` | — | `{items: SpacePlugin[]}` (desired/observed states) |
+| POST 🔑 | `/spaces/{sid}/plugins` | `identifier`* (canonical `ns/name`), `pluginVersion` (defaults to catalog version; pinned) | `{resource: SpacePlugin}` |
+| DELETE 🔑 | `/spaces/{sid}/plugins` | `identifier`*, 🔢`version` | `{resource: SpacePlugin}` |
 
 ### Access model (Project Workspace Sharing, Step 3)
 

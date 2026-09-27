@@ -88,10 +88,12 @@ func Document() map[string]any {
 	s["Invitation"] = object(obj{"id": uuid(), "tenantId": uuid(), "createdBy": uuid(), "createdAt": timestamp(), "expiresAt": timestamp(), "revokedAt": optional(timestamp()), "consumedBy": optional(uuid()), "consumedAt": optional(timestamp()), "version": number()}, "id", "tenantId", "createdBy", "createdAt", "expiresAt", "version")
 	s["JoinLink"] = object(obj{"id": uuid(), "tenantId": uuid(), "createdBy": uuid(), "createdAt": timestamp(), "expiresAt": timestamp(), "revokedAt": optional(timestamp()), "version": number()}, "id", "tenantId", "createdBy", "createdAt", "expiresAt", "version")
 	s["JoinRequest"] = object(obj{"id": uuid(), "tenantId": uuid(), "userId": uuid(), "linkId": uuid(), "status": enumeration("pending", "approved", "rejected"), "createdAt": timestamp(), "decidedAt": optional(timestamp()), "decidedBy": optional(uuid()), "version": number(), "name": str(), "displayName": str()}, "id", "tenantId", "userId", "linkId", "status", "createdAt", "version")
-	s["SpaceEvent"] = object(obj{"type": enumeration("space.updated", "space.member_updated", "project.created", "project.updated", "project.archived"), "spaceId": uuid(), "projectId": optional(uuid()), "version": number()}, "type", "spaceId")
-	s["Project"] = resource("id tenantId ownerUserId spaceId name repositoryUrl defaultBranch credentialRefId lifecycle version createdAt deletedAt", "spaceId credentialRefId deletedAt")
-	s["Workspace"] = resource("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version admissionOpen admissionEpoch createdAt deletedAt", "deletedAt")
-	s["WorkspaceListItem"] = resource("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version admissionOpen admissionEpoch createdAt deletedAt branchName baseCommitId title", "deletedAt baseCommitId title")
+	s["SpaceEvent"] = object(obj{"type": enumeration("space.updated", "space.member_updated", "project.created", "project.updated", "project.archived", "space.plugins_updated", "plugins.catalog_updated"), "spaceId": uuid(), "projectId": optional(uuid()), "version": number()}, "type", "spaceId")
+	s["Project"] = resource("id tenantId ownerUserId spaceId name repositoryUrl defaultBranch credentialRefId lifecycle version createdAt deletedAt", "credentialRefId deletedAt")
+	s["Workspace"] = resource("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version admissionOpen admissionEpoch createdAt deletedAt requestedRef baseCommitId", "deletedAt baseCommitId")
+	// branchName is the retired linked-worktree branch; only Workspaces created before the Node
+	// clone flow have one.
+	s["WorkspaceListItem"] = resource("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version admissionOpen admissionEpoch createdAt deletedAt requestedRef baseCommitId branchName title", "deletedAt baseCommitId branchName title")
 	s["Comment"] = resource("id tenantId issueId authorUserId authorType authorId parentId body seq version createdAt updatedAt deletedAt", "authorUserId authorId parentId deletedAt")
 	commentProps := properties(s, "Comment")
 	commentProps["seq"] = number()
@@ -150,14 +152,45 @@ func Document() map[string]any {
 	s["TimelineEntry"] = object(obj{"kind": enumeration("comment", "activity"), "id": uuid(), "seq": number(), "createdAt": timestamp(), "authorType": enumeration("user", "agent", "team", "system"), "authorId": optional(uuid()), "authorUserId": optional(uuid()), "body": optional(str()), "parentId": optional(uuid()), "action": optional(str()), "details": optional(obj{"type": "object", "additionalProperties": true})}, "kind", "id", "seq", "createdAt", "authorType", "authorId", "authorUserId", "body", "parentId", "action", "details")
 	s["AdminResource"] = resource("id projectId ownerUserId kind desiredState observedState runtimeGeneration version", "")
 	s["AdminOperation"] = resource("id tenantId projectId workspaceId kind state step version createdAt updatedAt", "workspaceId")
-	s["OperationRequest"] = object(obj{"previous": obj{"type": "object", "additionalProperties": ref("Workspace")}})
+	// Plugin marketplace catalog snapshot: cloud-authoritative listing rows the
+	// UI renders without ever touching the network. id is the canonical
+	// namespace/identifier pair the install API addresses.
+	s["PluginCatalogEntry"] = resource("id sourceNamespace identifier title kind version description homepage license logo url sha256 targets packMembers readme marketplaceVisible sourceUrl indexedAt", "homepage license logo url sha256 targets packMembers readme")
+	pluginEntryProps := properties(s, "PluginCatalogEntry")
+	// Plugin versions are semver strings, not the optimistic integer `version`
+	// of mutable resources; fields() typed it as a number by name.
+	pluginEntryProps["version"] = str()
+	pluginEntryProps["kind"] = enumeration("workbench", "agent", "webview", "skill", "mcp", "hook", "pack", "workflow")
+	pluginEntryProps["marketplaceVisible"] = boolean()
+	pluginEntryProps["indexedAt"] = timestamp()
+	// Nullable oneOf must be inline: OpenAPI 3.0 ignores siblings of $ref, so
+	// optional(ref(...)) would drop the nullable flag and reject null logos.
+	pluginEntryProps["logo"] = obj{"oneOf": []any{
+		object(obj{"universal": ref("PluginLogoCandidate")}, "universal"),
+		object(obj{"light": ref("PluginLogoCandidate"), "dark": ref("PluginLogoCandidate")}, "light", "dark"),
+	}, "nullable": true}
+	pluginEntryProps["targets"] = optional(array(ref("PluginReleaseTarget")))
+	pluginEntryProps["packMembers"] = optional(array(str()))
+	s["PluginCatalog"] = object(obj{"items": array(ref("PluginCatalogEntry")), "syncedAt": optional(timestamp())}, "items")
+	s["SpacePlugin"] = resource("id spaceId tenantId sourceNamespace identifier desiredState desiredVersion observedState observedVersion installError version createdAt updatedAt", "observedVersion installError")
+	spacePluginProps := properties(s, "SpacePlugin")
+	spacePluginProps["desiredState"] = enumeration("installed", "removed")
+	spacePluginProps["observedState"] = enumeration("pending", "installing", "installed", "failed", "removing", "removed")
+	spacePluginProps["observedVersion"] = optional(str())
+	spacePluginProps["installError"] = optional(str())
+	s["SpacePluginList"] = object(obj{"items": array(ref("SpacePlugin"))}, "items")
+	s["PluginUniversalRelease"] = object(obj{"url": str(), "sha256": str()}, "url", "sha256")
+	s["PluginReleaseTarget"] = object(obj{"target": str(), "url": str(), "sha256": str()}, "target", "url", "sha256")
+	s["PluginLogoCandidate"] = object(obj{"role": enumeration("universal", "light", "dark"), "extension": enumeration("svg", "png", "webp", "jpg", "jpeg")}, "role", "extension")
+	s["OperationRequest"] = object(obj{"previous": obj{"type": "object", "additionalProperties": ref("Workspace")}, "pluginId": str(), "version": str()})
 	s["OperationResult"] = object(obj{"resourceId": uuid()})
 	s["Operation"] = resource("id tenantId actorUserId projectId workspaceId kind state step request result errorCode idempotencyKey requestHash controllerEpoch retryAt version createdAt updatedAt", "workspaceId errorCode controllerEpoch retryAt")
 	opProps := properties(s, "Operation")
 	opProps["request"] = ref("OperationRequest")
 	opProps["result"] = ref("OperationResult")
 	opProps["state"] = enumeration("queued", "running", "retry_wait", "blocked", "succeeded", "failed")
-	opProps["step"] = enumeration("storage", "worktree", "sandbox", "node", "ready", "quiesce", "terminate", "cleanup", "storage_delete", "done")
+	// storage, worktree and storage_delete are retired steps that only historical operations carry.
+	opProps["step"] = enumeration("storage", "worktree", "sandbox", "node", "clone", "ready", "quiesce", "terminate", "cleanup", "storage_delete", "plugin", "done")
 	for _, name := range []string{"Workspace", "WorkspaceListItem", "AdminResource"} {
 		p := properties(s, name)
 		p["kind"] = enumeration("main", "isolated")
@@ -167,28 +200,47 @@ func Document() map[string]any {
 	s["Lease"] = resource("name holderId epoch expiresAt", "")
 	properties(s, "Lease")["holderId"] = str()
 	properties(s, "Lease")["epoch"] = number()
-	s["Storage"] = resource("projectId substrateStorageId storageProfile layoutVersion observedState version", "substrateStorageId")
-	properties(s, "Storage")["substrateStorageId"] = optional(str())
 	s["Sandbox"] = resource("id workspaceId generation substrateSandboxId observedState createdAt terminatedAt version", "substrateSandboxId terminatedAt")
 	properties(s, "Sandbox")["substrateSandboxId"] = optional(str())
-	s["Node"] = resource("id sandboxInstanceId serviceSubject connectionState protocolVersion initialized lastSeenAt endedAt idleAdmissionEpoch version workspaceId", "endedAt idleAdmissionEpoch")
+	s["Node"] = resource("id sandboxInstanceId serviceSubject connectionState protocolVersion initialized lastSeenAt endedAt idleAdmissionEpoch version workspaceId nodeId nodeIncarnationId", "endedAt idleAdmissionEpoch nodeId nodeIncarnationId")
+	properties(s, "Node")["nodeId"] = optional(str())
+	properties(s, "Node")["nodeIncarnationId"] = optional(str())
 	s["Ticket"] = resource("id tenantId workspaceId nodeInstanceId actorUserId admissionEpoch kind state createdAt finishedAt version", "finishedAt")
-	s["EffectRequest"] = object(obj{"kind": enumeration("storage_ensure", "worktree_ensure", "sandbox_ensure", "sandbox_terminate", "worktree_delete", "storage_delete"), "projectId": uuid(), "workspaceId": uuid(), "repositoryUrl": str(), "requestedRef": str(), "sandboxInstanceId": uuid()}, "kind", "projectId")
-	s["EffectResult"] = object(obj{"layoutVersion": number(), "commitId": obj{"type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"}, "jobTerminated": boolean(), "removed": boolean(), "terminated": boolean(), "sandboxInstanceId": uuid(), "nodeId": uuid()})
+	// storage_ensure, worktree_ensure, worktree_delete and storage_delete are retired kinds that only
+	// historical effects carry.
+	s["EffectRequest"] = object(obj{"kind": enumeration("storage_ensure", "worktree_ensure", "sandbox_ensure", "sandbox_terminate", "worktree_delete", "storage_delete", "workspace_data_delete", "plugin_ensure", "plugin_delete"), "projectId": uuid(), "workspaceId": uuid(), "repositoryUrl": str(), "requestedRef": str(), "sandboxInstanceId": uuid(), "pluginId": str(), "version": str(), "universal": ref("PluginUniversalRelease"), "targets": array(ref("PluginReleaseTarget"))}, "kind", "projectId")
+	s["EffectResult"] = object(obj{"layoutVersion": number(), "commitId": obj{"type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"}, "jobTerminated": boolean(), "removed": boolean(), "terminated": boolean(), "installed": boolean(), "sandboxInstanceId": uuid(), "nodeId": str(), "version": str(), "error": str(), "diagnostic": str()})
 	s["Effect"] = resource("id operationId projectId workspaceId kind state externalId request result reconciledEpoch createdAt version", "workspaceId externalId")
 	ep := properties(s, "Effect")
 	ep["externalId"] = optional(str())
 	ep["request"] = ref("EffectRequest")
 	ep["result"] = ref("EffectResult")
-	s["ControllerProject"] = resource("id tenantId ownerUserId spaceId name repositoryUrl defaultBranch credentialRefId lifecycle version createdAt deletedAt secretRef", "spaceId credentialRefId deletedAt secretRef")
-	s["ControllerWorkspace"] = resource("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version admissionOpen admissionEpoch createdAt deletedAt relativePath branchName requestedRef baseCommitId", "deletedAt baseCommitId")
-	for _, name := range []string{"WorkspaceListItem", "ControllerWorkspace"} {
+	s["ControllerProject"] = resource("id tenantId ownerUserId spaceId name repositoryUrl defaultBranch credentialRefId lifecycle version createdAt deletedAt secretRef", "credentialRefId deletedAt secretRef")
+	s["ControllerWorkspace"] = resource("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version admissionOpen admissionEpoch createdAt deletedAt requestedRef baseCommitId", "deletedAt baseCommitId")
+	for _, name := range []string{"Workspace", "WorkspaceListItem", "ControllerWorkspace"} {
 		properties(s, name)["baseCommitId"] = optional(obj{"type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"})
 	}
-	s["Snapshot"] = object(obj{"operation": ref("Operation"), "project": ref("ControllerProject"), "storage": ref("Storage"), "workspaces": array(ref("ControllerWorkspace")), "sandboxes": array(ref("Sandbox")), "nodes": array(ref("Node")), "effects": array(ref("Effect"))}, "operation", "project", "storage", "workspaces", "sandboxes", "nodes", "effects")
+	// A Workspace operation's clone executions, registered through the gRPC ExecutionService.
+	s["CloneExecution"] = resource("executionId operationId workspaceId cloneRequestId nodeId input result dispatchedEpoch createdAt updatedAt", "workspaceId cloneRequestId result")
+	ce := properties(s, "CloneExecution")
+	ce["nodeId"] = str()
+	ce["executionId"] = str()
+	ce["input"] = obj{"type": "object", "additionalProperties": true}
+	ce["result"] = optional(obj{"type": "object", "additionalProperties": true})
+	ce["dispatchedEpoch"] = number()
+	s["Snapshot"] = object(obj{"operation": ref("Operation"), "project": ref("ControllerProject"), "workspaces": array(ref("ControllerWorkspace")), "sandboxes": array(ref("Sandbox")), "nodes": array(ref("Node")), "effects": array(ref("Effect")), "clones": array(ref("CloneExecution"))}, "operation", "project", "workspaces", "sandboxes", "nodes", "effects", "clones")
 	s["EmptyClaim"] = object(obj{"operation": obj{"type": "object", "nullable": true, "enum": []any{nil}}}, "operation")
 	s["Access"] = object(obj{"userId": uuid(), "tenantId": uuid(), "workspaceId": uuid(), "allowedAction": enumeration("read", "execute"), "executable": boolean(), "runtimeGeneration": number()}, "userId", "tenantId", "workspaceId", "allowedAction", "executable", "runtimeGeneration")
 	s["IdleRefusal"] = object(obj{"accepted": boolean(), "errorCode": enumeration("resource_in_use")}, "accepted", "errorCode")
+	// Clone requests mirror the transitional Controller DTO: the tagged state carries the terminal
+	// fact, and identities assigned at dispatch are null until a Controller records it.
+	s["CloneState"] = object(obj{"kind": enumeration("pending", "succeeded", "failed"), "path": str(), "commit": str(), "reason": enumeration("sourceUnavailable", "branchNotFound", "destinationConflict", "operationFailed", "interrupted", "unspecified"), "retainedPath": str()}, "kind")
+	cloneProps := fields("operationId createdAt updatedAt")
+	for _, name := range []string{"requestId", "repository", "branch"} {
+		cloneProps[name] = str()
+	}
+	cloneProps["executionId"], cloneProps["nodeId"], cloneProps["state"] = optional(str()), optional(str()), ref("CloneState")
+	s["CloneOperation"] = object(cloneProps, "operationId", "requestId", "repository", "branch", "executionId", "nodeId", "state", "createdAt", "updatedAt")
 	paths := obj{}
 	for _, r := range router.Routes() {
 		path := r.Path
@@ -284,6 +336,8 @@ func tag(r router.Route) string {
 		return "internal"
 	case strings.HasPrefix(r.Path, "/api/v1/me"):
 		return "me"
+	case strings.Contains(r.Path, "/clones"):
+		return "clones"
 	case strings.Contains(r.Path, "/spaces"):
 		return "spaces"
 	case strings.Contains(r.Path, "/workspaces"):
@@ -299,7 +353,7 @@ func tag(r router.Route) string {
 }
 
 func isList(r router.Route) bool {
-	return r.Method == "GET" && (strings.HasSuffix(r.Path, "/tenants") || strings.HasSuffix(r.Path, "/members") || strings.HasSuffix(r.Path, "/projects") || strings.HasSuffix(r.Path, "/workspaces") || strings.HasSuffix(r.Path, "/spaces") || strings.HasSuffix(r.Path, "/resource-status") || strings.HasSuffix(r.Path, "/issue-statuses") || strings.HasSuffix(r.Path, "/labels") || strings.HasSuffix(r.Path, "/issue-views") || strings.HasSuffix(r.Path, "/comments") || strings.HasSuffix(r.Path, "/subscribers") || strings.HasSuffix(r.Path, "/invitations") || strings.HasSuffix(r.Path, "/join-links") || strings.HasSuffix(r.Path, "/join-requests"))
+	return r.Method == "GET" && (strings.HasSuffix(r.Path, "/tenants") || strings.HasSuffix(r.Path, "/members") || strings.HasSuffix(r.Path, "/projects") || strings.HasSuffix(r.Path, "/workspaces") || strings.HasSuffix(r.Path, "/spaces") || strings.HasSuffix(r.Path, "/resource-status") || strings.HasSuffix(r.Path, "/issue-statuses") || strings.HasSuffix(r.Path, "/labels") || strings.HasSuffix(r.Path, "/issue-views") || strings.HasSuffix(r.Path, "/comments") || strings.HasSuffix(r.Path, "/subscribers") || strings.HasSuffix(r.Path, "/invitations") || strings.HasSuffix(r.Path, "/join-links") || strings.HasSuffix(r.Path, "/join-requests") || strings.HasSuffix(r.Path, "/clones"))
 }
 
 func responseSchema(r router.Route) (schema obj, status string) {
@@ -367,6 +421,14 @@ func responseSchema(r router.Route) (schema obj, status string) {
 	switch {
 	case strings.Contains(r.Path, "/spaces"):
 		switch {
+		case strings.Contains(r.Path, "/plugins"):
+			if r.Method == "GET" && strings.HasSuffix(r.Path, "/plugins/catalog") {
+				return ref("PluginCatalog"), "200"
+			}
+			if r.Method == "GET" {
+				return ref("SpacePluginList"), "200"
+			}
+			return object(obj{"resource": ref("SpacePlugin")}, "resource"), "200"
 		case strings.Contains(r.Path, "/projects"):
 			if r.Method == "GET" {
 				return object(obj{"items": array(ref("Project")), "nextCursor": str()}, "items", "nextCursor"), "200"
@@ -464,6 +526,15 @@ func responseSchema(r router.Route) (schema obj, status string) {
 			return object(obj{"items": array(ref("Issue")), "nextCursor": str()}, "items", "nextCursor"), "200"
 		}
 		return ref("Issue"), "200"
+	case strings.Contains(r.Path, "/clones"):
+		switch {
+		case isList(r):
+			return object(obj{"items": array(ref("CloneOperation")), "nextCursor": str()}, "items", "nextCursor"), "200"
+		case r.Method == "GET":
+			return ref("CloneOperation"), "200"
+		default:
+			return ref("CloneOperation"), "202"
+		}
 	case r.Path == "/api/v1/tenants" && r.Method == "POST":
 		return ref("TenantCreated"), "201"
 	}
@@ -527,11 +598,14 @@ func optionalField(name string, r router.Route) bool {
 	switch name {
 	case "description", "category", "color", "icon", "filter", "position", "parentId", "input", "targets", "contextRefs":
 		return true
+	case "pluginVersion":
+		// Omitted install pins the catalog's current version.
+		return true
 	case "values":
 		// Confirm must state what it is confirming; assist may be asked with a still-empty form.
 		return strings.HasSuffix(r.Path, "/assist")
 	}
-	return name == "defaultBranch" || name == "credentialRefId" || name == "role" && strings.HasSuffix(r.Path, "/members/huawei") || name == "version" && r.Method == "PUT" || name == "epoch" && r.Action == "access" || name == "workspaceId" && r.Action == "plan" || name == "externalId" && r.Action == "effect_result"
+	return name == "credentialRefId" || name == "role" && strings.HasSuffix(r.Path, "/members/huawei") || name == "version" && r.Method == "PUT" || name == "epoch" && r.Action == "access" || name == "workspaceId" && r.Action == "plan" || name == "externalId" && r.Action == "effect_result"
 }
 
 func inputSchema(name string, r router.Route) obj {
@@ -574,9 +648,9 @@ func inputSchema(name string, r router.Route) obj {
 		if r.Action == "admit" {
 			return enumeration("task", "interaction")
 		}
-		return enumeration("storage_ensure", "worktree_ensure", "sandbox_ensure", "sandbox_terminate", "worktree_delete", "storage_delete")
+		return enumeration("sandbox_ensure", "sandbox_terminate", "workspace_data_delete", "plugin_ensure", "plugin_delete")
 	case "errorCode":
-		return enumeration("substrate_timeout", "termination_unconfirmed", "git_cleanup_failed", "node_unavailable", "external_failure")
+		return enumeration("substrate_timeout", "termination_unconfirmed", "git_cleanup_failed", "node_unavailable", "external_failure", "clone_failed", "clone_result_unknown")
 	case "tenantId", "operationId", "ticketId", "credentialRefId":
 		return uuid()
 	case "category":
@@ -642,13 +716,13 @@ func description(r router.Route) string {
 	case "plan":
 		return base + "Only the effect kind appropriate to the current step is allowed. Scope is restricted to operation workspaces. Plan persists BEFORE dispatch; sandbox plan atomically increments generation and allocates a unique live instance. Old instance must be confirmed terminated. Same plan returns the same effect ID."
 	case "effect_result":
-		return base + "Reports/reconciles one scoped external effect. External ID cannot change; succeeded evidence is immutable. absent is allowed only for a planned effect. Worktree success requires real commitId and jobTerminated; cleanup requires removed and jobTerminated; termination requires terminated; storage requires layoutVersion=1; sandbox requires its preallocated instance ID. This endpoint trusts the authenticated controller's Substrate observation, not client-supplied status."
+		return base + "Reports/reconciles one scoped external effect. External ID cannot change; succeeded evidence is immutable. absent is allowed only for a planned effect. Sandbox success requires its preallocated instance ID and the nodeId its Node will present; termination requires terminated; Workspace data deletion requires removed. This endpoint trusts the authenticated controller's Substrate observation, not client-supplied status."
 	case "advance":
-		return base + "Derives the next step server-side. Requires current-epoch successful effects. quiesce requires all tickets finished and fresh exact-epoch idle proof from each live Node. node step atomically commits worktree readiness, Workspace Ready/admission, and operation success after fresh initialized current Node. Cleanup and storage deletion cannot complete before termination confirmation."
+		return base + "Derives the next step server-side. Requires current-epoch successful effects. Create goes sandbox, node, clone; start goes sandbox, node. quiesce requires all tickets finished and fresh exact-epoch idle proof from each live Node. The clone step requires the operation's latest clone execution (registered over gRPC) to have succeeded on the current Node; it records the baseline commit and commits Workspace Ready/admission with operation success, re-checking the fresh initialized current Node. start commits the same readiness at its node step. Workspace data deletion is planned and completed only after termination confirmation."
 	case "defer":
 		return base + "Preserves operation/effect/resource references and current step; sets blocked or retry_wait with bounded retry delay. Never reports cleanup success on timeout."
 	case "node_register", "node_status", "node_idle", "node_finish":
-		return "Requires node service credential whose sub is a process UUID and whose workspaceId/sandboxId/generation match the current unterminated instance. Node identity cannot be replaced while live. Status/idle use Node version; ticket finish uses Ticket version and a completed replay is idempotent. initialized cannot regress. Idle is scoped to operationId and exact Workspace admissionEpoch; true requires no active tickets. false fails that quiesce operation with resource_in_use and restores original admission. Registration requires protocolVersion=1; Pod Running alone cannot make Ready."
+		return "Kept for the Go simulator's Node: desktop Nodes hold no Cloud credential and are reported by their Controller over gRPC NodeReportService. Requires node service credential whose sub is a process UUID equal to the sandbox's ensured nodeId and whose workspaceId/sandboxId/generation match the current unterminated instance. Node identity cannot be replaced while live. Status/idle use Node version; ticket finish uses Ticket version and a completed replay is idempotent. initialized cannot regress. Idle is scoped to operationId and exact Workspace admissionEpoch; true requires no active tickets. false fails that quiesce operation with resource_in_use and restores original admission. Registration requires protocolVersion=1; Pod Running alone cannot make Ready."
 	}
 	if strings.Contains(r.Path, "/spaces") {
 		switch {
@@ -662,6 +736,9 @@ func description(r router.Route) string {
 	}
 	if r.Path == "/api/v1/tenants" && r.Method == "POST" {
 		base = "Public requests require a gateway service credential plus a caller-bound user credential. The verified identity authorizes self-service provisioning without prior membership. Atomically creates a tenant and its sole visible collaboration space with the same name and the given globally unique, immutable slug; the caller becomes its first administrator. The idempotency key is matched per user across tenants and recorded under the new tenant. "
+	}
+	if strings.Contains(r.Path, "/clones") {
+		base += "Clone requests are independent accepted work items outside the project/workspace operation model: Cloud accepts them in its own transaction, a Controller claims and dispatches them over the internal control contract, and only the submitting user can read them. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. "
 	}
 	if strings.Contains(r.Path, "members") && !strings.Contains(r.Path, "/spaces") {
 		if r.Method == "GET" {
@@ -683,10 +760,10 @@ func description(r router.Route) string {
 		base += "Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. "
 	}
 	if strings.HasSuffix(r.Path, "/projects") && r.Method == "POST" {
-		base += "Creates Project/storage/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch defaults to HEAD; credentialRefId must belong to tenant and owner. Storage/worktree/sandbox initialization is asynchronous. "
+		base += "Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. "
 	}
 	if strings.HasSuffix(r.Path, "/workspaces") && r.Method == "POST" {
-		base += "Creates one isolated Workspace and Task display identity. title/baseRef required; branch and relative path are server-generated. "
+		base += "Creates one isolated Workspace and Task display identity. title/baseRef required; baseRef becomes the Workspace's requestedRef, which its Node clones; HEAD means the Project's defaultBranch. "
 	}
 	pagination := "Lists use ascending UUID pagination."
 	if r.Path == "/api/v1/me/tenants" {

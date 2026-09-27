@@ -20,13 +20,14 @@
 - [logger](logger/README.en.md) provides structured, non-blocking JSON logging via Zap and Lumberjack.
 - [simulator](simulator/README.en.md) implements in-process doubles for the Substrate execution engine, Controller, and Workspace Node.
 - [controlpb](controlpb/README.en.md) holds the gRPC Go code (server stubs and messages) generated from the Controller internal control contract under [`proto/`](../proto/README.en.md); read-only.
+- [controlgrpc](controlgrpc/README.en.md) serves that contract over gRPC: the caller-identity interceptor, `Fault` → status mapping, the lease service; translation only, no business rules.
 
 ## Layering and architectural rules
 
 1. **Unidirectional dependencies**:
    - `cmd/*` $\rightarrow$ `internal/api/router`, `internal/gateway`, `internal/core`, `internal/config`, `internal/logger`, `internal/repository`.
    - `internal/gateway` $\rightarrow$ `internal/core` (the `Claims` type only), `internal/config`, `internal/logger`; `internal/gateway/idaas`, `internal/gateway/github` and `internal/gateway/devlogin` $\rightarrow$ `internal/gateway`. The Gateway never queries Cloud business tables.
-   - `internal/api/router` $\rightarrow$ `internal/core`, `internal/contract`.
+   - `internal/api/router` $\rightarrow$ `internal/core`, `internal/contract`; `internal/controlgrpc` $\rightarrow$ `internal/core`, `internal/controlpb`.
    - `internal/core` $\rightarrow$ standard library, `gorm.io/gorm`, `internal/core/migrations`.
    - `internal/repository` $\rightarrow$ `internal/config`, `gorm.io/gorm`.
    - Lower layers (`core`, `repository`) never import upper presentation layers (`api`, `router`).

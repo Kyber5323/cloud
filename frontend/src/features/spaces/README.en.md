@@ -29,3 +29,5 @@ Depends on the generated client, `features/auth/session`, and TanStack Query. La
 ## Testing
 
 MSW replaces the generated client's network boundary; pure tests cover slugs, SSE frames, and reconnect delays.
+
+Creation uses shared `CreateFormSubmit` error and pending feedback. SSE handles tenant membership revocation, plugin selection and catalog updates by refreshing the corresponding queries.
