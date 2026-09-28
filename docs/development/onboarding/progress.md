@@ -1,5 +1,8 @@
 # 开发进度（新员工向）
 
+> 本文是历史过程记录，不是产品契约。它留在 `docs/` 里是既有写法，新的 PR 协作笔记不要再加到这里，
+> 放到仓库根目录的 [`plans/<主题>/`](../../../plans/README.md)，并在该项工作合并前删除。
+
 一眼看清 Ora Cloud 目前**做到哪了、在进行什么、刻意没做什么**。更新于 **Wave 3B-2 Workflow
 Interaction Shell 实现并验证 + User Registration 落地 + Project Workspace Sharing（Step 3）+
 Workspace Member Management & Onboarding（Step 3A）**之后：`@` 协作链路
