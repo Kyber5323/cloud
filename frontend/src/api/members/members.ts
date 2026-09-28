@@ -58,7 +58,7 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
 };
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Active tenant members may read the roster. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Active tenant members may read the roster. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/tenants/:tid/members
  */
 export const getApiV1TenantsTidMembers = (
@@ -228,7 +228,7 @@ export const usePostApiV1TenantsTidMembersHuawei = <TError = ErrorType<Error>,
       return useMutation(getPostApiV1TenantsTidMembersHuaweiMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Administrator only. Existing memberships require matching version; new and disabled memberships must enter through a fresh directory check, invitation redemption or approved application. Last effective administrator cannot be disabled/demoted, including concurrent changes. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Administrator only. Existing memberships require matching version; new and disabled memberships must enter through a fresh directory check, invitation redemption or approved application. Last effective administrator cannot be disabled/demoted, including concurrent changes. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary PUT /api/v1/tenants/:tid/members/:uid
  */
 export const putApiV1TenantsTidMembersUid = (

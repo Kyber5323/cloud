@@ -64,3 +64,9 @@ See [core overview](../README.en.md), [cloudctl CLI](../../../cmd/cloudctl/READM
 - **`0015_plugins.sql`** (append-only): the plugin marketplace's three tables plus enum widening:
   - `plugin_sources` (deployment-global source, default `official` namespace), `plugin_catalog_entries` (catalog snapshot; reads never leave the database), `space_plugins` (authoritative per-space selection, `UNIQUE(space_id, source_namespace, identifier)`), `workspace_plugin_instances` (fan-out execution facts with tenant/owner/project/workspace composite foreign keys).
   - Widens `operations.kind` (+install_plugin/remove_plugin), `operations.step` (+plugin), `external_effects.kind` (+plugin_ensure/plugin_delete); the original CHECKs live in 0001 (PG names them table_column_check), dropped and rebuilt with the extended sets.
+
+## Append-only multiplayer runtime migrations
+
+0018–0023 follow published 0017 without rewriting it: 0018 records only provable creators, otherwise NULL; 0019 persists PostgreSQL control sessions, epochs and audit; 0020 independent force-stop targets and restart phases; 0021 separates Node operation IDs from Cloud operation IDs and retains retries; 0022 plugin requester, pinned release and durable pending intent; 0023 credential ownership evidence, availability, scope, capabilities and version. Existing owner FKs, credential associations and operation history remain intact. Personal/unknown references associated with inactive members freeze on upgrade; team attribution and effective binding are never guessed.
+
+Real PostgreSQL fresh/0017-upgrade evidence is in integration/runtime_upgrade_test.go, runtime_control_test.go, repository_credentials_test.go and plugin_maintenance_test.go. Transactions contain database work only; Node recovery logs are not a second business authority.
