@@ -22,6 +22,9 @@ const (
 	RuntimeControlService_ListBindings_FullMethodName       = "/ora.cloud.internal.v1.RuntimeControlService/ListBindings"
 	RuntimeControlService_AcknowledgeBinding_FullMethodName = "/ora.cloud.internal.v1.RuntimeControlService/AcknowledgeBinding"
 	RuntimeControlService_GetExecutionPermit_FullMethodName = "/ora.cloud.internal.v1.RuntimeControlService/GetExecutionPermit"
+	RuntimeControlService_GetEffectPermit_FullMethodName    = "/ora.cloud.internal.v1.RuntimeControlService/GetEffectPermit"
+	RuntimeControlService_ListForceStops_FullMethodName     = "/ora.cloud.internal.v1.RuntimeControlService/ListForceStops"
+	RuntimeControlService_ConfirmForceStop_FullMethodName   = "/ora.cloud.internal.v1.RuntimeControlService/ConfirmForceStop"
 )
 
 // RuntimeControlServiceClient is the client API for RuntimeControlService service.
@@ -31,10 +34,13 @@ const (
 // Mandatory for controlled cloud execution. Legacy participants must refuse execution when this
 // service or the Node runtime_control capability is unavailable, without falling back to raw clone.
 type RuntimeControlServiceClient interface {
-	ListBindings(ctx context.Context, in *ListRuntimeBindingsRequest, opts ...grpc.CallOption) (*ListRuntimeBindingsResponse, error)
-	AcknowledgeBinding(ctx context.Context, in *AcknowledgeRuntimeBindingRequest, opts ...grpc.CallOption) (*AcknowledgeRuntimeBindingResponse, error)
+	ListBindings(ctx context.Context, in *ListBindingsRequest, opts ...grpc.CallOption) (*ListBindingsResponse, error)
+	AcknowledgeBinding(ctx context.Context, in *AcknowledgeBindingRequest, opts ...grpc.CallOption) (*AcknowledgeBindingResponse, error)
 	// Read-only and intentionally not submission-replayed: every dispatch obtains current authority.
-	GetExecutionPermit(ctx context.Context, in *GetRuntimeExecutionPermitRequest, opts ...grpc.CallOption) (*GetRuntimeExecutionPermitResponse, error)
+	GetExecutionPermit(ctx context.Context, in *GetExecutionPermitRequest, opts ...grpc.CallOption) (*GetExecutionPermitResponse, error)
+	GetEffectPermit(ctx context.Context, in *GetEffectPermitRequest, opts ...grpc.CallOption) (*GetEffectPermitResponse, error)
+	ListForceStops(ctx context.Context, in *ListForceStopsRequest, opts ...grpc.CallOption) (*ListForceStopsResponse, error)
+	ConfirmForceStop(ctx context.Context, in *ConfirmForceStopRequest, opts ...grpc.CallOption) (*ConfirmForceStopResponse, error)
 }
 
 type runtimeControlServiceClient struct {
@@ -45,9 +51,9 @@ func NewRuntimeControlServiceClient(cc grpc.ClientConnInterface) RuntimeControlS
 	return &runtimeControlServiceClient{cc}
 }
 
-func (c *runtimeControlServiceClient) ListBindings(ctx context.Context, in *ListRuntimeBindingsRequest, opts ...grpc.CallOption) (*ListRuntimeBindingsResponse, error) {
+func (c *runtimeControlServiceClient) ListBindings(ctx context.Context, in *ListBindingsRequest, opts ...grpc.CallOption) (*ListBindingsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListRuntimeBindingsResponse)
+	out := new(ListBindingsResponse)
 	err := c.cc.Invoke(ctx, RuntimeControlService_ListBindings_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -55,9 +61,9 @@ func (c *runtimeControlServiceClient) ListBindings(ctx context.Context, in *List
 	return out, nil
 }
 
-func (c *runtimeControlServiceClient) AcknowledgeBinding(ctx context.Context, in *AcknowledgeRuntimeBindingRequest, opts ...grpc.CallOption) (*AcknowledgeRuntimeBindingResponse, error) {
+func (c *runtimeControlServiceClient) AcknowledgeBinding(ctx context.Context, in *AcknowledgeBindingRequest, opts ...grpc.CallOption) (*AcknowledgeBindingResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(AcknowledgeRuntimeBindingResponse)
+	out := new(AcknowledgeBindingResponse)
 	err := c.cc.Invoke(ctx, RuntimeControlService_AcknowledgeBinding_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -65,10 +71,40 @@ func (c *runtimeControlServiceClient) AcknowledgeBinding(ctx context.Context, in
 	return out, nil
 }
 
-func (c *runtimeControlServiceClient) GetExecutionPermit(ctx context.Context, in *GetRuntimeExecutionPermitRequest, opts ...grpc.CallOption) (*GetRuntimeExecutionPermitResponse, error) {
+func (c *runtimeControlServiceClient) GetExecutionPermit(ctx context.Context, in *GetExecutionPermitRequest, opts ...grpc.CallOption) (*GetExecutionPermitResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetRuntimeExecutionPermitResponse)
+	out := new(GetExecutionPermitResponse)
 	err := c.cc.Invoke(ctx, RuntimeControlService_GetExecutionPermit_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runtimeControlServiceClient) GetEffectPermit(ctx context.Context, in *GetEffectPermitRequest, opts ...grpc.CallOption) (*GetEffectPermitResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetEffectPermitResponse)
+	err := c.cc.Invoke(ctx, RuntimeControlService_GetEffectPermit_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runtimeControlServiceClient) ListForceStops(ctx context.Context, in *ListForceStopsRequest, opts ...grpc.CallOption) (*ListForceStopsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListForceStopsResponse)
+	err := c.cc.Invoke(ctx, RuntimeControlService_ListForceStops_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runtimeControlServiceClient) ConfirmForceStop(ctx context.Context, in *ConfirmForceStopRequest, opts ...grpc.CallOption) (*ConfirmForceStopResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ConfirmForceStopResponse)
+	err := c.cc.Invoke(ctx, RuntimeControlService_ConfirmForceStop_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -82,10 +118,13 @@ func (c *runtimeControlServiceClient) GetExecutionPermit(ctx context.Context, in
 // Mandatory for controlled cloud execution. Legacy participants must refuse execution when this
 // service or the Node runtime_control capability is unavailable, without falling back to raw clone.
 type RuntimeControlServiceServer interface {
-	ListBindings(context.Context, *ListRuntimeBindingsRequest) (*ListRuntimeBindingsResponse, error)
-	AcknowledgeBinding(context.Context, *AcknowledgeRuntimeBindingRequest) (*AcknowledgeRuntimeBindingResponse, error)
+	ListBindings(context.Context, *ListBindingsRequest) (*ListBindingsResponse, error)
+	AcknowledgeBinding(context.Context, *AcknowledgeBindingRequest) (*AcknowledgeBindingResponse, error)
 	// Read-only and intentionally not submission-replayed: every dispatch obtains current authority.
-	GetExecutionPermit(context.Context, *GetRuntimeExecutionPermitRequest) (*GetRuntimeExecutionPermitResponse, error)
+	GetExecutionPermit(context.Context, *GetExecutionPermitRequest) (*GetExecutionPermitResponse, error)
+	GetEffectPermit(context.Context, *GetEffectPermitRequest) (*GetEffectPermitResponse, error)
+	ListForceStops(context.Context, *ListForceStopsRequest) (*ListForceStopsResponse, error)
+	ConfirmForceStop(context.Context, *ConfirmForceStopRequest) (*ConfirmForceStopResponse, error)
 	mustEmbedUnimplementedRuntimeControlServiceServer()
 }
 
@@ -96,14 +135,23 @@ type RuntimeControlServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedRuntimeControlServiceServer struct{}
 
-func (UnimplementedRuntimeControlServiceServer) ListBindings(context.Context, *ListRuntimeBindingsRequest) (*ListRuntimeBindingsResponse, error) {
+func (UnimplementedRuntimeControlServiceServer) ListBindings(context.Context, *ListBindingsRequest) (*ListBindingsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListBindings not implemented")
 }
-func (UnimplementedRuntimeControlServiceServer) AcknowledgeBinding(context.Context, *AcknowledgeRuntimeBindingRequest) (*AcknowledgeRuntimeBindingResponse, error) {
+func (UnimplementedRuntimeControlServiceServer) AcknowledgeBinding(context.Context, *AcknowledgeBindingRequest) (*AcknowledgeBindingResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AcknowledgeBinding not implemented")
 }
-func (UnimplementedRuntimeControlServiceServer) GetExecutionPermit(context.Context, *GetRuntimeExecutionPermitRequest) (*GetRuntimeExecutionPermitResponse, error) {
+func (UnimplementedRuntimeControlServiceServer) GetExecutionPermit(context.Context, *GetExecutionPermitRequest) (*GetExecutionPermitResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetExecutionPermit not implemented")
+}
+func (UnimplementedRuntimeControlServiceServer) GetEffectPermit(context.Context, *GetEffectPermitRequest) (*GetEffectPermitResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetEffectPermit not implemented")
+}
+func (UnimplementedRuntimeControlServiceServer) ListForceStops(context.Context, *ListForceStopsRequest) (*ListForceStopsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListForceStops not implemented")
+}
+func (UnimplementedRuntimeControlServiceServer) ConfirmForceStop(context.Context, *ConfirmForceStopRequest) (*ConfirmForceStopResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ConfirmForceStop not implemented")
 }
 func (UnimplementedRuntimeControlServiceServer) mustEmbedUnimplementedRuntimeControlServiceServer() {}
 func (UnimplementedRuntimeControlServiceServer) testEmbeddedByValue()                               {}
@@ -127,7 +175,7 @@ func RegisterRuntimeControlServiceServer(s grpc.ServiceRegistrar, srv RuntimeCon
 }
 
 func _RuntimeControlService_ListBindings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListRuntimeBindingsRequest)
+	in := new(ListBindingsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -139,13 +187,13 @@ func _RuntimeControlService_ListBindings_Handler(srv interface{}, ctx context.Co
 		FullMethod: RuntimeControlService_ListBindings_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RuntimeControlServiceServer).ListBindings(ctx, req.(*ListRuntimeBindingsRequest))
+		return srv.(RuntimeControlServiceServer).ListBindings(ctx, req.(*ListBindingsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _RuntimeControlService_AcknowledgeBinding_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AcknowledgeRuntimeBindingRequest)
+	in := new(AcknowledgeBindingRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -157,13 +205,13 @@ func _RuntimeControlService_AcknowledgeBinding_Handler(srv interface{}, ctx cont
 		FullMethod: RuntimeControlService_AcknowledgeBinding_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RuntimeControlServiceServer).AcknowledgeBinding(ctx, req.(*AcknowledgeRuntimeBindingRequest))
+		return srv.(RuntimeControlServiceServer).AcknowledgeBinding(ctx, req.(*AcknowledgeBindingRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _RuntimeControlService_GetExecutionPermit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetRuntimeExecutionPermitRequest)
+	in := new(GetExecutionPermitRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -175,7 +223,61 @@ func _RuntimeControlService_GetExecutionPermit_Handler(srv interface{}, ctx cont
 		FullMethod: RuntimeControlService_GetExecutionPermit_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RuntimeControlServiceServer).GetExecutionPermit(ctx, req.(*GetRuntimeExecutionPermitRequest))
+		return srv.(RuntimeControlServiceServer).GetExecutionPermit(ctx, req.(*GetExecutionPermitRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RuntimeControlService_GetEffectPermit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetEffectPermitRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeControlServiceServer).GetEffectPermit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RuntimeControlService_GetEffectPermit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeControlServiceServer).GetEffectPermit(ctx, req.(*GetEffectPermitRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RuntimeControlService_ListForceStops_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListForceStopsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeControlServiceServer).ListForceStops(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RuntimeControlService_ListForceStops_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeControlServiceServer).ListForceStops(ctx, req.(*ListForceStopsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RuntimeControlService_ConfirmForceStop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConfirmForceStopRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeControlServiceServer).ConfirmForceStop(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RuntimeControlService_ConfirmForceStop_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeControlServiceServer).ConfirmForceStop(ctx, req.(*ConfirmForceStopRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -198,6 +300,18 @@ var RuntimeControlService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetExecutionPermit",
 			Handler:    _RuntimeControlService_GetExecutionPermit_Handler,
+		},
+		{
+			MethodName: "GetEffectPermit",
+			Handler:    _RuntimeControlService_GetEffectPermit_Handler,
+		},
+		{
+			MethodName: "ListForceStops",
+			Handler:    _RuntimeControlService_ListForceStops_Handler,
+		},
+		{
+			MethodName: "ConfirmForceStop",
+			Handler:    _RuntimeControlService_ConfirmForceStop_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

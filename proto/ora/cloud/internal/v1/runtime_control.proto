@@ -2,13 +2,18 @@ syntax = "proto3";
 
 package ora.cloud.internal.v1;
 
+import "ora/cloud/internal/v1/operations.proto";
+
 // Mandatory for controlled cloud execution. Legacy participants must refuse execution when this
 // service or the Node runtime_control capability is unavailable, without falling back to raw clone.
 service RuntimeControlService {
-  rpc ListBindings(ListRuntimeBindingsRequest) returns (ListRuntimeBindingsResponse);
-  rpc AcknowledgeBinding(AcknowledgeRuntimeBindingRequest) returns (AcknowledgeRuntimeBindingResponse);
+  rpc ListBindings(ListBindingsRequest) returns (ListBindingsResponse);
+  rpc AcknowledgeBinding(AcknowledgeBindingRequest) returns (AcknowledgeBindingResponse);
   // Read-only and intentionally not submission-replayed: every dispatch obtains current authority.
-  rpc GetExecutionPermit(GetRuntimeExecutionPermitRequest) returns (GetRuntimeExecutionPermitResponse);
+  rpc GetExecutionPermit(GetExecutionPermitRequest) returns (GetExecutionPermitResponse);
+  rpc GetEffectPermit(GetEffectPermitRequest) returns (GetEffectPermitResponse);
+  rpc ListForceStops(ListForceStopsRequest) returns (ListForceStopsResponse);
+  rpc ConfirmForceStop(ConfirmForceStopRequest) returns (ConfirmForceStopResponse);
 }
 
 // Scope allocated by Cloud. Epochs name different authorities; none substitutes for another.
@@ -32,9 +37,9 @@ message RuntimeBinding {
   int64 expires_at_ms = 17;
 }
 
-message ListRuntimeBindingsRequest { int64 epoch = 1; }
-message ListRuntimeBindingsResponse { repeated RuntimeBinding bindings = 1; }
-message AcknowledgeRuntimeBindingRequest {
+message ListBindingsRequest { int64 epoch = 1; }
+message ListBindingsResponse { repeated RuntimeBinding bindings = 1; }
+message AcknowledgeBindingRequest {
   string submission_id = 1;
   int64 epoch = 2;
   string workspace_id = 3;
@@ -44,12 +49,52 @@ message AcknowledgeRuntimeBindingRequest {
   bool input_closed = 7;
   repeated string unfinished_execution_ids = 8;
 }
-message AcknowledgeRuntimeBindingResponse {}
-message GetRuntimeExecutionPermitRequest {
+message AcknowledgeBindingResponse {}
+message GetExecutionPermitRequest {
   int64 epoch = 1;
   string workspace_id = 2;
   string node_instance_id = 3;
   int64 control_epoch = 4;
   string execution_id = 5;
 }
-message GetRuntimeExecutionPermitResponse { RuntimeBinding binding = 1; }
+message GetExecutionPermitResponse { RuntimeBinding binding = 1; }
+
+
+// Fresh authority for one persisted lifecycle effect. Never inferred from an old plan replay.
+message RuntimeEffectPermit {
+ string tenant_id = 1;
+ string workspace_id = 2;
+ string sandbox_id = 3;
+ int64 runtime_generation = 4;
+ int64 controller_epoch = 5;
+ int64 control_epoch = 6;
+ int64 issued_at_ms = 7;
+ int64 expires_at_ms = 8;
+}
+message GetEffectPermitRequest {
+ int64 epoch = 1;
+ string effect_id = 2;
+ string force_stop_id = 3;
+}
+message GetEffectPermitResponse { RuntimeEffectPermit permit = 1; }
+message RuntimeForceStopPlan {
+ string id = 1;
+ int64 version = 2;
+ string workspace_id = 3;
+ repeated Effect effects = 4;
+}
+message ListForceStopsRequest { int64 epoch = 1; }
+message ListForceStopsResponse { repeated RuntimeForceStopPlan plans = 1; }
+message ConfirmForceStopRequest {
+ string submission_id = 1;
+ int64 epoch = 2;
+ string force_stop_id = 3;
+ int64 version = 4;
+ string effect_id = 5;
+ bool terminated = 6;
+ bool late_ensure_fenced = 7;
+}
+message ConfirmForceStopResponse {
+ int64 version = 1;
+ bool completed = 2;
+}
