@@ -217,6 +217,9 @@ func Document() map[string]any {
 	ep["result"] = ref("EffectResult")
 	s["ControllerProject"] = resource("id tenantId ownerUserId spaceId name repositoryUrl defaultBranch credentialRefId lifecycle version createdAt deletedAt secretRef", "credentialRefId deletedAt secretRef")
 	s["ControllerWorkspace"] = resource("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version admissionOpen admissionEpoch createdAt deletedAt requestedRef baseCommitId", "deletedAt baseCommitId")
+	addRuntimeCreator(s, "Workspace", true)
+	addRuntimeCreator(s, "WorkspaceListItem", true)
+	addRuntimeCreator(s, "ControllerWorkspace", false)
 	for _, name := range []string{"Workspace", "WorkspaceListItem", "ControllerWorkspace"} {
 		properties(s, name)["baseCommitId"] = optional(obj{"type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"})
 	}
@@ -277,6 +280,9 @@ func Document() map[string]any {
 		if r.Path == "/api/v1/tenants/:tid/people" {
 			parameters = append(parameters, obj{"name": "keyword", "in": "query", "required": true, "schema": obj{"type": "string", "minLength": 2, "maxLength": 100}})
 		}
+		if r.Method == "GET" && strings.HasSuffix(r.Path, "/workspaces") && strings.Contains(r.Path, "/projects/") {
+			parameters = append(parameters, obj{"name": "scope", "in": "query", "schema": enumeration("own", "all"), "description": "own lists runtimes the caller created. all, the default, lists every runtime in the project."})
+		}
 		if len(parameters) > 0 {
 			operation["parameters"] = parameters
 		}
@@ -302,7 +308,7 @@ func Document() map[string]any {
 		"operationId": "getSpaceEvents",
 		"tags":        []string{"spaces"},
 		"summary":     "Stream collaboration space events over server-sent events",
-		"description": "Membership is verified before the stream opens. Events are lightweight invalidation notices published after commit; clients refetch authoritative state over REST.",
+		"description": "Membership is verified before the stream opens and again before each notice, so disabling a member closes the stream without delivering that notice. Events are refresh hints with no runtime content; clients refetch REST, which checks the creator or a current administrator.",
 		"parameters": []any{
 			obj{"name": "tid", "in": "path", "required": true, "schema": uuid()},
 			obj{"name": "spaceId", "in": "path", "required": true, "schema": uuid()},
@@ -700,15 +706,15 @@ func description(r router.Route) string {
 	case "/api/v1/tenants/:tid/members/huawei":
 		return "Tenant administrators add a selected Huawei person by stable globalUserId. Cloud searches Tianzhou again and verifies current employment before creating or reactivating membership."
 	}
-	base := "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. "
+	base := "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. "
 	if r.Action != "" {
 		base = "Controller requests require an independent controller service credential; holder, active database-time lease epoch and operation version are checked. "
 	}
 	switch r.Action {
 	case "access":
-		return "Checks final user, active tenant membership and tenant scope. Execute additionally requires current controller lease epoch, open admission, ready workspace and a fresh initialized Node. This lookup is not an execution reservation; use admissions."
+		return "Checks the final user, active membership, and runtime use by the creator or a current administrator. Missing use returns 403 runtime_use_forbidden and no content. Execute also requires the current controller lease, open admission, a ready runtime and a fresh initialized Node. An active execution ticket returns 409 resource_in_use. This lookup is not an execution reservation; use admissions."
 	case "admit":
-		return "Atomically reserves an active task/interaction ticket on the current Node under the same transaction lock as stop/delete. Requires current controller holder+epoch and caller-bound final-user token. Unknown/uncompleted tickets remain active; bound Node explicitly finishes them. Repeated ticket UUID with identical scope returns it while admission remains open."
+		return "Reserves one active task or interaction ticket for a caller who may use the runtime. Another active ticket returns 409 resource_in_use and does not insert a second ticket. A caller without use permission receives 403 runtime_use_forbidden even when the runtime is occupied. The same ticket UUID and scope returns the existing ticket. Requires the current controller holder and epoch and a caller-bound user token."
 	case "lease_acquire", "lease_renew", "lease_release":
 		return "Controller subject is holderId. Global lease lasts 30 seconds using PostgreSQL clock_timestamp(); renew every 10 seconds. Expired acquisition increments epoch, active same-holder acquisition returns current lease. Release and renew require exact live holder+epoch."
 	case "claim":
@@ -751,7 +757,7 @@ func description(r router.Route) string {
 		base += "Administrator response explicitly excludes repository URL, worktree details, credentials, execution output and operation request/result/error details. Administrative stop still requires idle evidence. "
 	}
 	if strings.Contains(r.Path, "operations") {
-		base += "Active tenant members may inspect project operations; administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. "
+		base += "Operation detail and retry follow the target runtime's creator or a current administrator, not the historical actor. administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. "
 	}
 	if r.Method == "PATCH" && !strings.Contains(r.Path, "/spaces") {
 		base += "Only project name may change; version must match. "
@@ -763,7 +769,10 @@ func description(r router.Route) string {
 		base += "Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. "
 	}
 	if strings.HasSuffix(r.Path, "/workspaces") && r.Method == "POST" {
-		base += "Creates one isolated Workspace and Task display identity. title/baseRef required; baseRef becomes the Workspace's requestedRef, which its Node clones; HEAD means the Project's defaultBranch. "
+		base += "Creates one isolated Workspace and Task display identity. title/baseRef required; baseRef becomes the Workspace's requestedRef, which its Node clones; HEAD means the Project's defaultBranch. The requester is the creator; the project owner is unchanged. "
+	}
+	if strings.HasSuffix(r.Path, "/workspaces") && r.Method == "GET" {
+		base += "scope=own lists runtimes the caller created. The default scope=all lists every runtime. requestedRef and baseCommitId are omitted unless the caller is the creator or a current administrator. "
 	}
 	pagination := "Lists use ascending UUID pagination."
 	if r.Path == "/api/v1/me/tenants" {
@@ -781,7 +790,7 @@ func errorDescription(code string) string {
 	case "401":
 		return "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
 	case "403":
-		return "Disabled user, inactive/missing membership, wrong service role, or admin required"
+		return "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
 	case "404":
 		return "Resource absent or outside authorized tenant/owner scope"
 	case "409":

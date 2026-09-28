@@ -2,8 +2,10 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
@@ -60,11 +62,32 @@ func TestTenantMigrationFrom0016PreservesRuntimeCloneAndPlugins(t *testing.T) {
 	must(t, store.Migrate(context.Background()))
 	must(t, store.CheckSchema(context.Background()))
 	for _, table := range tables {
-		if after := snapshot(table); after != before[table] {
-			t.Fatalf("0017 rewrote upstream %s: before %s after %s", table, before[table], after)
-		}
+		preservedUpgradeRow(t, table, before[table], snapshot(table))
 	}
 	if columnNullable(t, pool, "projects", "space_id") || tableExists(t, pool, "collab_workspace_members") {
 		t.Fatal("0017 must require project space association and remove the second membership authority")
+	}
+}
+
+// preservedUpgradeRow keeps every value captured before 0017. Later migrations
+// may add creator columns, and an unproven historical runtime stays unknown.
+func preservedUpgradeRow(t *testing.T, table, before, after string) {
+	t.Helper()
+	var oldRow, nextRow map[string]any
+	must(t, json.Unmarshal([]byte(before), &oldRow))
+	must(t, json.Unmarshal([]byte(after), &nextRow))
+	for key, value := range oldRow {
+		if !reflect.DeepEqual(nextRow[key], value) {
+			t.Fatalf("upgrade rewrote %s.%s: before %v after %v", table, key, value, nextRow[key])
+		}
+	}
+	if table != "workspaces" {
+		if len(nextRow) != len(oldRow) {
+			t.Fatalf("upgrade added columns to %s: before %s after %s", table, before, after)
+		}
+		return
+	}
+	if nextRow["creator_resolution"] != "unknown" || nextRow["creator_user_id"] != nil || nextRow["creator_source"] != nil || nextRow["creator_source_operation_id"] != nil || nextRow["creator_resolution_reason"] != "missing" {
+		t.Fatalf("upgrade guessed a workspace creator: %s", after)
 	}
 }

@@ -29,21 +29,19 @@ Controller、Node、Substrate、cluster Compose、手写前端界面、成员授
 
 ## 当前阶段
 
-下一会话只做第 2 阶段。没有进行中的阶段。
+下一会话只做第 3 阶段。没有进行中的阶段。
 
 ## 已落地
 
-`0018_runtime_control.sql` 已追加在 `0017_tenant_membership_and_join.sql` 之后。`0001`–`0017` 的已发布 SQL 没有改。创建本文时 Cloud `main` 为 `3123e3e`。再加迁移从 `0019` 起追加。
+`0018_runtime_control.sql` 已追加在 `0017_tenant_membership_and_join.sql` 之后，`0019_runtime_use_actor.sql` 接在 `0018` 之后。`0001`–`0017` 的已发布 SQL 没有改。创建本文时 Cloud `main` 为 `3123e3e`。再加迁移从 `0020` 起追加。
 
-第 1 阶段只落地了表、列、约束和迁移测试。下列行为仍然和创建本文时一样，不是目标规则：
+第 1 阶段只落地了表、列、约束和迁移测试。第 2 阶段接上了使用权限。下列行为仍然不是目标规则：
 
-- `internal/core/store.go` 的 `workspace` 按活动租户成员放行。
-- `internal/core/public.go` 的 `insertWorkspace` 把项目 `owner_user_id` 写入运行时；创建请求者在 operation 的 actor 上。
-- `internal/core/node.go` 的 `access` 可以留下多张活动 `execution_tickets`。
-- `internal/core/public.go` 的 `workspaceAction` 把带活动保护的停止记成 `administrative_stop`。
+- `internal/core/public.go` 的 `workspaceAction` 仍按活动租户成员启动、停止、重启和删除，并把带活动保护的停止记成 `administrative_stop`。使用权限和当前会话还没接到这些动作上。
 - `internal/core/plugins.go` 允许成员安装和移除；项目忙时整单冲突。
-- `internal/core/migrations/0001_core.sql` 的 `credential_refs` 只有 owner 外键。
+- `internal/core/migrations/0001_core.sql` 的 `credential_refs` 只有 owner 外键。冻结和新远程操作还没生效。
 - `internal/controlgrpc/server.go` 使用调用者自报的 `x-ora-controller-id`。
+- 没有 `runtime_control_sessions` 的获取、续期或释放。没有活动执行票据不等于空闲，也不表示进程已停止。
 
 ## 阶段
 
@@ -67,11 +65,15 @@ Controller、Node、Substrate、cluster Compose、手写前端界面、成员授
 
 ### 2. 使用权限
 
-状态：未开始。
+状态：已完成。
 
-把概况与内容权限接到运行时读取、operation 查询、事件投递和 `access`。列表能区分调用者自己的运行时和管理员可见的全部运行时。无使用权限与被占用使用不同错误。成员停用或管理员降级后，下一次校验生效。不建授权表。
+没有新的授权表。迁移是 `internal/core/migrations/0019_runtime_use_actor.sql`：执行票据的发起者不再必须等于 `owner_user_id`。创建项目或独立运行时时，创建者写成该次已验证请求者，并指向对应的创建 operation；项目 `owner_user_id` 不改。历史未知创建者仍只给当前管理员使用。
 
-必读：使用权限 ADR 与其核心用例。
+读取、列表、operation 查询和重试、`access` / `admissions` 按当前 PostgreSQL 成员身份计算。概况含名称、创建者、生命周期和准入；`requestedRef` 与 `baseCommitId` 只给创建者或当前管理员。`scope=own` 是调用者自己创建的运行时，默认 `scope=all` 是项目内全部运行时。无使用权限是 `403 runtime_use_forbidden`，有权限但已有活动执行票据是 `409 resource_in_use`。成员停用后下一次 HTTP 与准入拒绝；管理员降为成员后，下一次校验失去他人运行时的内容权限，自己创建的运行时还在。空间事件在每次投递前重查成员身份，载荷仍只是刷新提示。
+
+跑过 `TestRuntimeContentAccessRequiresCreatorOrCurrentAdmin`，并复跑 `go test ./integration`。
+
+本阶段不能宣称独占获取、强停、插件调度、凭据冻结或内部契约已经生效。启动、停止、重启和删除仍未接到使用权限。六份 ADR 仍是 `approved`。specs 未改，核心用例证据仍是 `Missing`。
 
 ### 3. 独占
 

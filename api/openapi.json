@@ -603,6 +603,40 @@
             "format": "date-time",
             "type": "string"
           },
+          "creatorResolution": {
+            "enum": [
+              "known",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "creatorResolutionReason": {
+            "enum": [
+              "missing",
+              "conflict",
+              "unprovable"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "creatorSource": {
+            "enum": [
+              "create_project_operation",
+              "create_workspace_operation"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "creatorSourceOperationId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "creatorUserId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
           "deletedAt": {
             "format": "date-time",
             "nullable": true,
@@ -660,7 +694,12 @@
           "createdAt",
           "deletedAt",
           "requestedRef",
-          "baseCommitId"
+          "baseCommitId",
+          "creatorUserId",
+          "creatorResolution",
+          "creatorResolutionReason",
+          "creatorSource",
+          "creatorSourceOperationId"
         ],
         "type": "object"
       },
@@ -2994,8 +3033,45 @@
             "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
             "type": "string"
           },
+          "contentAllowed": {
+            "type": "boolean"
+          },
           "createdAt": {
             "format": "date-time",
+            "type": "string"
+          },
+          "creatorResolution": {
+            "enum": [
+              "known",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "creatorResolutionReason": {
+            "enum": [
+              "missing",
+              "conflict",
+              "unprovable"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "creatorSource": {
+            "enum": [
+              "create_project_operation",
+              "create_workspace_operation"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "creatorSourceOperationId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "creatorUserId": {
+            "format": "uuid",
+            "nullable": true,
             "type": "string"
           },
           "deletedAt": {
@@ -3073,8 +3149,9 @@
           "admissionEpoch",
           "createdAt",
           "deletedAt",
-          "requestedRef",
-          "baseCommitId"
+          "creatorUserId",
+          "creatorResolution",
+          "creatorResolutionReason"
         ],
         "type": "object"
       },
@@ -3097,8 +3174,45 @@
             "nullable": true,
             "type": "string"
           },
+          "contentAllowed": {
+            "type": "boolean"
+          },
           "createdAt": {
             "format": "date-time",
+            "type": "string"
+          },
+          "creatorResolution": {
+            "enum": [
+              "known",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "creatorResolutionReason": {
+            "enum": [
+              "missing",
+              "conflict",
+              "unprovable"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "creatorSource": {
+            "enum": [
+              "create_project_operation",
+              "create_workspace_operation"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "creatorSourceOperationId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "creatorUserId": {
+            "format": "uuid",
+            "nullable": true,
             "type": "string"
           },
           "deletedAt": {
@@ -3180,10 +3294,11 @@
           "admissionEpoch",
           "createdAt",
           "deletedAt",
-          "requestedRef",
-          "baseCommitId",
-          "branchName",
-          "title"
+          "title",
+          "creatorUserId",
+          "creatorResolution",
+          "creatorResolutionReason",
+          "contentAllowed"
         ],
         "type": "object"
       }
@@ -3285,7 +3400,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -3425,7 +3540,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -3492,7 +3607,7 @@
     },
     "/api/v1/me": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_me",
         "responses": {
           "200": {
@@ -3533,7 +3648,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -3678,7 +3793,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -3823,7 +3938,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -3890,7 +4005,7 @@
     },
     "/api/v1/me/tenants": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists page in ascending creation order; the after cursor is an exclusive tenant UUID.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists page in ascending creation order; the after cursor is an exclusive tenant UUID.",
         "operationId": "get_api_v1_me_tenants",
         "parameters": [
           {
@@ -3968,7 +4083,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -4114,7 +4229,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -4181,7 +4296,7 @@
     },
     "/api/v1/tenants/{tid}/clones": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Clone requests are independent accepted work items outside the project/workspace operation model: Cloud accepts them in its own transaction, a Controller claims and dispatches them over the internal control contract, and only the submitting user can read them. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Clone requests are independent accepted work items outside the project/workspace operation model: Cloud accepts them in its own transaction, a Controller claims and dispatches them over the internal control contract, and only the submitting user can read them. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_clones",
         "parameters": [
           {
@@ -4268,7 +4383,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -4333,7 +4448,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Clone requests are independent accepted work items outside the project/workspace operation model: Cloud accepts them in its own transaction, a Controller claims and dispatches them over the internal control contract, and only the submitting user can read them. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Clone requests are independent accepted work items outside the project/workspace operation model: Cloud accepts them in its own transaction, a Controller claims and dispatches them over the internal control contract, and only the submitting user can read them. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_clones",
         "parameters": [
           {
@@ -4423,7 +4538,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -4490,7 +4605,7 @@
     },
     "/api/v1/tenants/{tid}/clones/{cloneId}": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Clone requests are independent accepted work items outside the project/workspace operation model: Cloud accepts them in its own transaction, a Controller claims and dispatches them over the internal control contract, and only the submitting user can read them. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Clone requests are independent accepted work items outside the project/workspace operation model: Cloud accepts them in its own transaction, a Controller claims and dispatches them over the internal control contract, and only the submitting user can read them. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_clones_cloneId",
         "parameters": [
           {
@@ -4551,7 +4666,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -4618,7 +4733,7 @@
     },
     "/api/v1/tenants/{tid}/collaboration/forms/{formRef}": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_collaboration_forms_formRef",
         "parameters": [
           {
@@ -4681,7 +4796,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -4748,7 +4863,7 @@
     },
     "/api/v1/tenants/{tid}/collaboration/targets": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_collaboration_targets",
         "parameters": [
           {
@@ -4816,7 +4931,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -4883,7 +4998,7 @@
     },
     "/api/v1/tenants/{tid}/invitations": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_invitations",
         "parameters": [
           {
@@ -4970,7 +5085,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -5035,7 +5150,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_invitations",
         "parameters": [
           {
@@ -5117,7 +5232,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -5184,7 +5299,7 @@
     },
     "/api/v1/tenants/{tid}/invitations/{iid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_invitations_iid",
         "parameters": [
           {
@@ -5277,7 +5392,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -5344,7 +5459,7 @@
     },
     "/api/v1/tenants/{tid}/issue-groups": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issue-groups",
         "parameters": [
           {
@@ -5424,7 +5539,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -5491,7 +5606,7 @@
     },
     "/api/v1/tenants/{tid}/issue-statuses": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issue-statuses",
         "parameters": [
           {
@@ -5578,7 +5693,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -5643,7 +5758,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issue-statuses",
         "parameters": [
           {
@@ -5756,7 +5871,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -5823,7 +5938,7 @@
     },
     "/api/v1/tenants/{tid}/issue-statuses/{sid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_issue-statuses_sid",
         "parameters": [
           {
@@ -5916,7 +6031,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -5981,7 +6096,7 @@
         ]
       },
       "put": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "put_api_v1_tenants_tid_issue-statuses_sid",
         "parameters": [
           {
@@ -6088,7 +6203,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -6155,7 +6270,7 @@
     },
     "/api/v1/tenants/{tid}/issue-views": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issue-views",
         "parameters": [
           {
@@ -6242,7 +6357,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -6307,7 +6422,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issue-views",
         "parameters": [
           {
@@ -6402,7 +6517,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -6469,7 +6584,7 @@
     },
     "/api/v1/tenants/{tid}/issue-views/{vid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_issue-views_vid",
         "parameters": [
           {
@@ -6562,7 +6677,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -6627,7 +6742,7 @@
         ]
       },
       "put": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "put_api_v1_tenants_tid_issue-views_vid",
         "parameters": [
           {
@@ -6716,7 +6831,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -6783,7 +6898,7 @@
     },
     "/api/v1/tenants/{tid}/issues": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues",
         "parameters": [
           {
@@ -6851,7 +6966,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -6916,7 +7031,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues",
         "parameters": [
           {
@@ -7050,7 +7165,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -7117,7 +7232,7 @@
     },
     "/api/v1/tenants/{tid}/issues/batch": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_batch",
         "parameters": [
           {
@@ -7236,7 +7351,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -7303,7 +7418,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_issues_iid",
         "parameters": [
           {
@@ -7396,7 +7511,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -7461,7 +7576,7 @@
         ]
       },
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid",
         "parameters": [
           {
@@ -7522,7 +7637,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -7587,7 +7702,7 @@
         ]
       },
       "put": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "put_api_v1_tenants_tid_issues_iid",
         "parameters": [
           {
@@ -7712,7 +7827,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -7779,7 +7894,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/collaboration/assist": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_iid_collaboration_assist",
         "parameters": [
           {
@@ -7875,7 +7990,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -7942,7 +8057,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/comments": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid_comments",
         "parameters": [
           {
@@ -8038,7 +8153,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -8103,7 +8218,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_iid_comments",
         "parameters": [
           {
@@ -8236,7 +8351,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -8303,7 +8418,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/comments/{cid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_issues_iid_comments_cid",
         "parameters": [
           {
@@ -8405,7 +8520,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -8470,7 +8585,7 @@
         ]
       },
       "put": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "put_api_v1_tenants_tid_issues_iid_comments_cid",
         "parameters": [
           {
@@ -8564,7 +8679,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -8631,7 +8746,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/context-refs": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid_context-refs",
         "parameters": [
           {
@@ -8708,7 +8823,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -8773,7 +8888,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_iid_context-refs",
         "parameters": [
           {
@@ -8887,7 +9002,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -8954,7 +9069,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/context-refs/{crid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_issues_iid_context-refs_crid",
         "parameters": [
           {
@@ -9047,7 +9162,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -9114,7 +9229,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/interactions": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid_interactions",
         "parameters": [
           {
@@ -9191,7 +9306,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -9258,7 +9373,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/interactions/{ixid}/confirm": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_iid_interactions_ixid_confirm",
         "parameters": [
           {
@@ -9374,7 +9489,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -9441,7 +9556,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/labels": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid_labels",
         "parameters": [
           {
@@ -9537,7 +9652,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -9602,7 +9717,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_iid_labels",
         "parameters": [
           {
@@ -9703,7 +9818,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -9770,7 +9885,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/labels/{lid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_issues_iid_labels_lid",
         "parameters": [
           {
@@ -9863,7 +9978,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -9930,7 +10045,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/move": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_iid_move",
         "parameters": [
           {
@@ -10033,7 +10148,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -10100,7 +10215,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/runs": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid_runs",
         "parameters": [
           {
@@ -10177,7 +10292,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -10242,7 +10357,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_iid_runs",
         "parameters": [
           {
@@ -10356,7 +10471,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -10423,7 +10538,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/runs/{rid}": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid_runs_rid",
         "parameters": [
           {
@@ -10493,7 +10608,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -10560,7 +10675,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/subscribers": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_issues_iid_subscribers",
         "parameters": [
           {
@@ -10661,7 +10776,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -10726,7 +10841,7 @@
         ]
       },
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid_subscribers",
         "parameters": [
           {
@@ -10822,7 +10937,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -10887,7 +11002,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_iid_subscribers",
         "parameters": [
           {
@@ -10988,7 +11103,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -11055,7 +11170,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/timeline": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid_timeline",
         "parameters": [
           {
@@ -11132,7 +11247,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -11199,7 +11314,7 @@
     },
     "/api/v1/tenants/{tid}/join-links": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_join-links",
         "parameters": [
           {
@@ -11286,7 +11401,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -11351,7 +11466,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_join-links",
         "parameters": [
           {
@@ -11433,7 +11548,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -11500,7 +11615,7 @@
     },
     "/api/v1/tenants/{tid}/join-links/{lid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_join-links_lid",
         "parameters": [
           {
@@ -11593,7 +11708,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -11660,7 +11775,7 @@
     },
     "/api/v1/tenants/{tid}/join-requests": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_join-requests",
         "parameters": [
           {
@@ -11747,7 +11862,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -11814,7 +11929,7 @@
     },
     "/api/v1/tenants/{tid}/join-requests/{rid}/approve": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_join-requests_rid_approve",
         "parameters": [
           {
@@ -11907,7 +12022,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -11974,7 +12089,7 @@
     },
     "/api/v1/tenants/{tid}/join-requests/{rid}/reject": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_join-requests_rid_reject",
         "parameters": [
           {
@@ -12067,7 +12182,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -12134,7 +12249,7 @@
     },
     "/api/v1/tenants/{tid}/labels": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_labels",
         "parameters": [
           {
@@ -12221,7 +12336,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -12286,7 +12401,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_labels",
         "parameters": [
           {
@@ -12380,7 +12495,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -12447,7 +12562,7 @@
     },
     "/api/v1/tenants/{tid}/labels/{lid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_labels_lid",
         "parameters": [
           {
@@ -12540,7 +12655,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -12605,7 +12720,7 @@
         ]
       },
       "put": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "put_api_v1_tenants_tid_labels_lid",
         "parameters": [
           {
@@ -12693,7 +12808,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -12760,7 +12875,7 @@
     },
     "/api/v1/tenants/{tid}/members": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Active tenant members may read the roster. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Active tenant members may read the roster. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_members",
         "parameters": [
           {
@@ -12847,7 +12962,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -13007,7 +13122,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -13074,7 +13189,7 @@
     },
     "/api/v1/tenants/{tid}/members/{uid}": {
       "put": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Administrator only. Existing memberships require matching version; new and disabled memberships must enter through a fresh directory check, invitation redemption or approved application. Last effective administrator cannot be disabled/demoted, including concurrent changes. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Administrator only. Existing memberships require matching version; new and disabled memberships must enter through a fresh directory check, invitation redemption or approved application. Last effective administrator cannot be disabled/demoted, including concurrent changes. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "put_api_v1_tenants_tid_members_uid",
         "parameters": [
           {
@@ -13171,7 +13286,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -13238,7 +13353,7 @@
     },
     "/api/v1/tenants/{tid}/operations/{oid}": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Active tenant members may inspect project operations; administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Operation detail and retry follow the target runtime's creator or a current administrator, not the historical actor. administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_operations_oid",
         "parameters": [
           {
@@ -13306,7 +13421,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -13373,7 +13488,7 @@
     },
     "/api/v1/tenants/{tid}/operations/{oid}/retry": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Active tenant members may inspect project operations; administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Operation detail and retry follow the target runtime's creator or a current administrator, not the historical actor. administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_operations_oid_retry",
         "parameters": [
           {
@@ -13482,7 +13597,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -13623,7 +13738,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -13690,7 +13805,7 @@
     },
     "/api/v1/tenants/{tid}/projects": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_projects",
         "parameters": [
           {
@@ -13777,7 +13892,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -13842,7 +13957,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_projects",
         "parameters": [
           {
@@ -13953,7 +14068,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -14020,7 +14135,7 @@
     },
     "/api/v1/tenants/{tid}/projects/{pid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_projects_pid",
         "parameters": [
           {
@@ -14126,7 +14241,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -14191,7 +14306,7 @@
         ]
       },
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_projects_pid",
         "parameters": [
           {
@@ -14252,7 +14367,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -14317,7 +14432,7 @@
         ]
       },
       "patch": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Only project name may change; version must match. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Only project name may change; version must match. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "patch_api_v1_tenants_tid_projects_pid",
         "parameters": [
           {
@@ -14403,7 +14518,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -14470,7 +14585,7 @@
     },
     "/api/v1/tenants/{tid}/projects/{pid}/workspaces": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. scope=own lists runtimes the caller created. The default scope=all lists every runtime. requestedRef and baseCommitId are omitted unless the caller is the creator or a current administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_projects_pid_workspaces",
         "parameters": [
           {
@@ -14507,6 +14622,18 @@
             "name": "after",
             "schema": {
               "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "own lists runtimes the caller created. all, the default, lists every runtime in the project.",
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "enum": [
+                "own",
+                "all"
+              ],
               "type": "string"
             }
           }
@@ -14566,7 +14693,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -14631,7 +14758,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Creates one isolated Workspace and Task display identity. title/baseRef required; baseRef becomes the Workspace's requestedRef, which its Node clones; HEAD means the Project's defaultBranch. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Creates one isolated Workspace and Task display identity. title/baseRef required; baseRef becomes the Workspace's requestedRef, which its Node clones; HEAD means the Project's defaultBranch. The requester is the creator; the project owner is unchanged. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_projects_pid_workspaces",
         "parameters": [
           {
@@ -14739,7 +14866,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -14806,7 +14933,7 @@
     },
     "/api/v1/tenants/{tid}/resource-status": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Administrator response explicitly excludes repository URL, worktree details, credentials, execution output and operation request/result/error details. Administrative stop still requires idle evidence. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Administrator response explicitly excludes repository URL, worktree details, credentials, execution output and operation request/result/error details. Administrative stop still requires idle evidence. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_resource-status",
         "parameters": [
           {
@@ -14893,7 +15020,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -14960,7 +15087,7 @@
     },
     "/api/v1/tenants/{tid}/spaces": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_spaces",
         "parameters": [
           {
@@ -15047,7 +15174,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -15114,7 +15241,7 @@
     },
     "/api/v1/tenants/{tid}/spaces/{spaceId}": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_spaces_spaceId",
         "parameters": [
           {
@@ -15175,7 +15302,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -15240,7 +15367,7 @@
         ]
       },
       "patch": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Name and description may change; tenant and space names update together. Slug is immutable. Requires tenant admin and a matching version. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Name and description may change; tenant and space names update together. Slug is immutable. Requires tenant admin and a matching version. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "patch_api_v1_tenants_tid_spaces_spaceId",
         "parameters": [
           {
@@ -15329,7 +15456,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -15396,7 +15523,7 @@
     },
     "/api/v1/tenants/{tid}/spaces/{spaceId}/events": {
       "get": {
-        "description": "Membership is verified before the stream opens. Events are lightweight invalidation notices published after commit; clients refetch authoritative state over REST.",
+        "description": "Membership is verified before the stream opens and again before each notice, so disabling a member closes the stream without delivering that notice. Events are refresh hints with no runtime content; clients refetch REST, which checks the creator or a current administrator.",
         "operationId": "getSpaceEvents",
         "parameters": [
           {
@@ -15447,7 +15574,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -15474,7 +15601,7 @@
     },
     "/api/v1/tenants/{tid}/spaces/{spaceId}/plugins": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_spaces_spaceId_plugins",
         "parameters": [
           {
@@ -15580,7 +15707,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -15645,7 +15772,7 @@
         ]
       },
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_spaces_spaceId_plugins",
         "parameters": [
           {
@@ -15706,7 +15833,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -15771,7 +15898,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_spaces_spaceId_plugins",
         "parameters": [
           {
@@ -15874,7 +16001,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -15941,7 +16068,7 @@
     },
     "/api/v1/tenants/{tid}/spaces/{spaceId}/plugins/catalog": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_spaces_spaceId_plugins_catalog",
         "parameters": [
           {
@@ -16002,7 +16129,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -16069,7 +16196,7 @@
     },
     "/api/v1/tenants/{tid}/spaces/{spaceId}/projects": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_spaces_spaceId_projects",
         "parameters": [
           {
@@ -16165,7 +16292,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -16230,7 +16357,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_spaces_spaceId_projects",
         "parameters": [
           {
@@ -16350,7 +16477,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -16417,7 +16544,7 @@
     },
     "/api/v1/tenants/{tid}/workspaces/{wid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_workspaces_wid",
         "parameters": [
           {
@@ -16523,7 +16650,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -16588,7 +16715,7 @@
         ]
       },
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_workspaces_wid",
         "parameters": [
           {
@@ -16649,7 +16776,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -16716,7 +16843,7 @@
     },
     "/api/v1/tenants/{tid}/workspaces/{wid}/administrative-stop": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Administrator response explicitly excludes repository URL, worktree details, credentials, execution output and operation request/result/error details. Administrative stop still requires idle evidence. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Administrator response explicitly excludes repository URL, worktree details, credentials, execution output and operation request/result/error details. Administrative stop still requires idle evidence. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_workspaces_wid_administrative-stop",
         "parameters": [
           {
@@ -16822,7 +16949,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -16889,7 +17016,7 @@
     },
     "/api/v1/tenants/{tid}/workspaces/{wid}/start": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_workspaces_wid_start",
         "parameters": [
           {
@@ -16995,7 +17122,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -17062,7 +17189,7 @@
     },
     "/api/v1/tenants/{tid}/workspaces/{wid}/stop": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_workspaces_wid_stop",
         "parameters": [
           {
@@ -17168,7 +17295,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -17278,7 +17405,7 @@
     },
     "/internal/v1/access": {
       "post": {
-        "description": "Checks final user, active tenant membership and tenant scope. Execute additionally requires current controller lease epoch, open admission, ready workspace and a fresh initialized Node. This lookup is not an execution reservation; use admissions.",
+        "description": "Checks the final user, active membership, and runtime use by the creator or a current administrator. Missing use returns 403 runtime_use_forbidden and no content. Execute also requires the current controller lease, open admission, a ready runtime and a fresh initialized Node. An active execution ticket returns 409 resource_in_use. This lookup is not an execution reservation; use admissions.",
         "operationId": "post_internal_v1_access",
         "requestBody": {
           "content": {
@@ -17357,7 +17484,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -17424,7 +17551,7 @@
     },
     "/internal/v1/admissions": {
       "post": {
-        "description": "Atomically reserves an active task/interaction ticket on the current Node under the same transaction lock as stop/delete. Requires current controller holder+epoch and caller-bound final-user token. Unknown/uncompleted tickets remain active; bound Node explicitly finishes them. Repeated ticket UUID with identical scope returns it while admission remains open.",
+        "description": "Reserves one active task or interaction ticket for a caller who may use the runtime. Another active ticket returns 409 resource_in_use and does not insert a second ticket. A caller without use permission receives 403 runtime_use_forbidden even when the runtime is occupied. The same ticket UUID and scope returns the existing ticket. Requires the current controller holder and epoch and a caller-bound user token.",
         "operationId": "post_internal_v1_admissions",
         "requestBody": {
           "content": {
@@ -17517,7 +17644,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -17637,7 +17764,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -17765,7 +17892,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -17893,7 +18020,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -18043,7 +18170,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -18172,7 +18299,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -18312,7 +18439,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -18451,7 +18578,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -18586,7 +18713,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -18731,7 +18858,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -18903,7 +19030,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -19075,7 +19202,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -19259,7 +19386,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {
@@ -19325,7 +19452,7 @@
     },
     "/internal/v1/operations/{oid}/snapshot": {
       "post": {
-        "description": "Controller requests require an independent controller service credential; holder, active database-time lease epoch and operation version are checked. Active tenant members may inspect project operations; administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Controller requests require an independent controller service credential; holder, active database-time lease epoch and operation version are checked. Operation detail and retry follow the target runtime's creator or a current administrator, not the historical actor. administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_internal_v1_operations_oid_snapshot",
         "parameters": [
           {
@@ -19404,7 +19531,7 @@
                 }
               }
             },
-            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
           },
           "404": {
             "content": {

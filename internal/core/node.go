@@ -6,16 +6,22 @@ func access(t *transaction, r *ControlRequest) Object {
 	tid, wid := r.Body.S("tenantId"), r.Body.S("workspaceId")
 	membership(t, tid, u.S("id"), false)
 	w := workspace(t, tid, u.S("id"), wid, false)
+	// Permission before occupancy, so a caller who cannot use the runtime
+	// never learns that it is in use and never receives its content.
+	requireRuntimeUse(t, tid, u.S("id"), w)
 	p := project(t, tid, u.S("id"), w.S("projectId"))
 	action := r.Body.S("action")
 	require(action == "read" || action == "execute", 400, "invalid_action")
 	executable := w.B("admissionOpen") && w.S("desiredState") == "running" && w.S("observedState") == "ready" && p.S("lifecycle") == "active"
 	n := t.one("SELECT n.id,s.id AS sandbox_id,s.generation FROM node_instances n JOIN sandbox_instances s ON s.id=n.sandbox_instance_id WHERE s.workspace_id=$1 AND s.generation=$2 AND s.terminated_at IS NULL AND n.ended_at IS NULL AND n.initialized AND n.connection_state='connected' AND n.last_seen_at>clock_timestamp()-interval '30 seconds'", wid, w.N("runtimeGeneration"))
 	executable = executable && n != nil
-	if action == "execute" {
-		require(executable, 409, "execution_closed")
-	}
 	if r.Action == "access" {
+		if action == "execute" && runtimeOccupied(t, wid) {
+			reject(409, "resource_in_use")
+		}
+		if action == "execute" {
+			require(executable, 409, "execution_closed")
+		}
 		return Object{"userId": u.S("id"), "tenantId": tid, "workspaceId": wid, "allowedAction": action, "executable": executable, "runtimeGeneration": w.N("runtimeGeneration")}
 	}
 	require(action == "execute", 400, "invalid_action")
@@ -27,6 +33,10 @@ func access(t *transaction, r *ControlRequest) Object {
 		require(existing.S("tenantId") == tid && existing.S("workspaceId") == wid && existing.S("actorUserId") == u.S("id") && existing.S("kind") == kind, 409, "idempotency_conflict")
 		return existing
 	}
+	if runtimeOccupied(t, wid) {
+		reject(409, "resource_in_use")
+	}
+	require(executable, 409, "execution_closed")
 	t.exec("INSERT INTO execution_tickets(id,tenant_id,workspace_id,node_instance_id,actor_user_id,admission_epoch,kind,state) VALUES($1,$2,$3,$4,$5,$6,$7,'active')", ticketID, tid, wid, n.S("id"), u.S("id"), w.N("admissionEpoch"), kind)
 	return t.one("SELECT * FROM execution_tickets WHERE id=$1", ticketID)
 }

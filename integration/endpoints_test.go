@@ -126,8 +126,8 @@ func TestDatabaseEffectAndTicketScopes(t *testing.T) {
 	bob := f.call("GET", "/api/v1/me", nil, "", 200)
 	f.user.Subject = "alice"
 	f.addMemberID(bob.S("id"), "member")
-	if _, e := f.store.Pool.Exec("INSERT INTO execution_tickets(id,tenant_id,workspace_id,node_instance_id,actor_user_id,admission_epoch,kind,state) VALUES($1,$2,$3,$4,$5,0,'task','active')", uuid.NewString(), f.tid, aw, node.Subject, bob.S("id")); e == nil {
-		t.Fatal("ticket accepted an actor who does not own the workspace")
+	if _, e := f.store.Pool.Exec("INSERT INTO execution_tickets(id,tenant_id,workspace_id,node_instance_id,actor_user_id,admission_epoch,kind,state) VALUES($1,$2,$3,$4,$5,0,'task','active')", uuid.NewString(), f.tid, aw, node.Subject, bob.S("id")); e != nil {
+		t.Fatal("ticket rejected an initiator who is a tenant member but not the workspace owner", e)
 	}
 	// The verified gateway key cannot elevate itself by placing controller in role.
 	nowClaims := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "gateway-a"}, Role: "controller"}

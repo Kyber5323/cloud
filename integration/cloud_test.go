@@ -440,12 +440,19 @@ func TestIdentityConcurrencyMembershipAndIsolation(t *testing.T) {
 	f.drain()
 	pid, wid := created.O("resource").S("id"), created.O("workspace").S("id")
 	f.user.Subject = "new-user"
-	// Joining the tenant grants access to its sole space, including shared
-	// projects, runtime workspaces, and their operations.
+	// Joining shares the project and runtime overview. Content, operation
+	// detail and execution stay with the creator or a current administrator.
 	f.call("GET", f.path("/projects/"+pid), nil, "", 200)
-	f.call("GET", f.path("/workspaces/"+wid), nil, "", 200)
-	f.call("GET", f.path("/operations/"+created.O("operation").S("id")), nil, "", 200)
-	f.internal("/internal/v1/access", core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "epoch": f.controller.Epoch}, 200)
+	overview := f.call("GET", f.path("/workspaces/"+wid), nil, "", 200)
+	if hasRuntimeContent(overview) || overview.B("contentAllowed") {
+		t.Fatal("membership exposed runtime content", overview)
+	}
+	if denied := f.call("GET", f.path("/operations/"+created.O("operation").S("id")), nil, "", 403); denied.S("code") != "runtime_use_forbidden" {
+		t.Fatal(denied)
+	}
+	if denied := f.internal("/internal/v1/access", core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "epoch": f.controller.Epoch}, 403); denied.S("code") != "runtime_use_forbidden" {
+		t.Fatal(denied)
+	}
 	list := f.call("GET", f.path("/projects"), nil, "", 200)
 	if len(list["items"].([]any)) != 1 {
 		t.Fatal("list owner filter missing")

@@ -49,12 +49,20 @@ func TestHuaweiGlobalIdentityBindsPreAddedMemberAcrossEmployeeNumberChange(t *te
 	}
 	project := f.create("huawei-shared-project")
 	f.drain()
-	controller := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: f.client.Subject}}
 	login := huaweiClaims("idaas-uuid-1", person.GlobalUserID)
-	access, status, err := f.client.Call(context.Background(), "POST", "/internal/v1/access", "controller", controller, &login, "", core.Object{"tenantId": f.tid, "workspaceId": project.O("workspace").S("id"), "action": "read"})
+	gw := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "gateway-a"}}
+	// Overview is shared, so the first verified read can bind the pre-added
+	// identity. Content access to another member's runtime stays forbidden.
+	overview, status, err := f.client.Call(context.Background(), "GET", f.path("/workspaces/"+project.O("workspace").S("id")), "gateway", gw, &login, "", nil)
 	must(t, err)
-	if status != 200 || access.S("userId") != added.S("userId") {
-		t.Fatalf("first verified access did not bind the preadded identity: %d %v", status, access)
+	if status != 200 || hasRuntimeContent(overview) {
+		t.Fatalf("first verified overview did not bind without exposing content: %d %v", status, overview)
+	}
+	controller := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: f.client.Subject}}
+	denied, status, err := f.client.Call(context.Background(), "POST", "/internal/v1/access", "controller", controller, &login, "", core.Object{"tenantId": f.tid, "workspaceId": project.O("workspace").S("id"), "action": "read"})
+	must(t, err)
+	if status != 403 || denied.S("code") != "runtime_use_forbidden" {
+		t.Fatalf("preadded member used another runtime: %d %v", status, denied)
 	}
 	loggedIn := joinCall(t, f, huaweiClaims("idaas-uuid-1", person.GlobalUserID), "GET", "/api/v1/me", "", nil, 200)
 	if loggedIn.S("id") != added.S("userId") {

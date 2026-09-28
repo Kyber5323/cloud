@@ -53,7 +53,7 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 /**
- * Checks final user, active tenant membership and tenant scope. Execute additionally requires current controller lease epoch, open admission, ready workspace and a fresh initialized Node. This lookup is not an execution reservation; use admissions.
+ * Checks the final user, active membership, and runtime use by the creator or a current administrator. Missing use returns 403 runtime_use_forbidden and no content. Execute also requires the current controller lease, open admission, a ready runtime and a fresh initialized Node. An active execution ticket returns 409 resource_in_use. This lookup is not an execution reservation; use admissions.
  * @summary access
  */
 export const postInternalV1Access = (
@@ -121,7 +121,7 @@ export const usePostInternalV1Access = <TError = ErrorType<Error>,
       return useMutation(getPostInternalV1AccessMutationOptions(options), queryClient);
     }
     /**
- * Atomically reserves an active task/interaction ticket on the current Node under the same transaction lock as stop/delete. Requires current controller holder+epoch and caller-bound final-user token. Unknown/uncompleted tickets remain active; bound Node explicitly finishes them. Repeated ticket UUID with identical scope returns it while admission remains open.
+ * Reserves one active task or interaction ticket for a caller who may use the runtime. Another active ticket returns 409 resource_in_use and does not insert a second ticket. A caller without use permission receives 403 runtime_use_forbidden even when the runtime is occupied. The same ticket UUID and scope returns the existing ticket. Requires the current controller holder and epoch and a caller-bound user token.
  * @summary admit
  */
 export const postInternalV1Admissions = (
@@ -1011,7 +1011,7 @@ export const usePostInternalV1OperationsOidEffectsEidResult = <TError = ErrorTyp
       return useMutation(getPostInternalV1OperationsOidEffectsEidResultMutationOptions(options), queryClient);
     }
     /**
- * Controller requests require an independent controller service credential; holder, active database-time lease epoch and operation version are checked. Active tenant members may inspect project operations; administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Controller requests require an independent controller service credential; holder, active database-time lease epoch and operation version are checked. Operation detail and retry follow the target runtime's creator or a current administrator, not the historical actor. administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary snapshot
  */
 export const postInternalV1OperationsOidSnapshot = (

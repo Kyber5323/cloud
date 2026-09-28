@@ -464,9 +464,10 @@ func project(t *transaction, tid, uid, pid string) Object {
 	return p
 }
 
-// workspace loads a live runtime workspace in the tenant. Non-admin access
-// inherits the parent project's tenant membership. The admin form
-// (administrative-stop) requires tenant administration.
+// workspace loads a live runtime in the tenant. Non-admin access requires
+// active membership of the parent project's space. That membership is not
+// content use: callers returning or executing runtime content also apply
+// requireRuntimeUse. The admin form serves administrative stop.
 func workspace(t *transaction, tid, uid, wid string, admin bool) Object {
 	require(validID(wid), 404, "not_found")
 	if admin {

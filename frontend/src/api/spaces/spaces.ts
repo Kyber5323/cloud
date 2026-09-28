@@ -67,7 +67,7 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
 };
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/tenants/:tid/spaces
  */
 export const getApiV1TenantsTidSpaces = (
@@ -168,7 +168,7 @@ export function useGetApiV1TenantsTidSpaces<TData = Awaited<ReturnType<typeof ge
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/tenants/:tid/spaces/:spaceId
  */
 export const getApiV1TenantsTidSpacesSpaceId = (
@@ -268,7 +268,7 @@ export function useGetApiV1TenantsTidSpacesSpaceId<TData = Awaited<ReturnType<ty
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Name and description may change; tenant and space names update together. Slug is immutable. Requires tenant admin and a matching version. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Name and description may change; tenant and space names update together. Slug is immutable. Requires tenant admin and a matching version. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary PATCH /api/v1/tenants/:tid/spaces/:spaceId
  */
 export const patchApiV1TenantsTidSpacesSpaceId = (
@@ -338,7 +338,7 @@ export const usePatchApiV1TenantsTidSpacesSpaceId = <TError = ErrorType<Error>,
       return useMutation(getPatchApiV1TenantsTidSpacesSpaceIdMutationOptions(options), queryClient);
     }
     /**
- * Membership is verified before the stream opens. Events are lightweight invalidation notices published after commit; clients refetch authoritative state over REST.
+ * Membership is verified before the stream opens and again before each notice, so disabling a member closes the stream without delivering that notice. Events are refresh hints with no runtime content; clients refetch REST, which checks the creator or a current administrator.
  * @summary Stream collaboration space events over server-sent events
  */
 export const getSpaceEvents = (
@@ -438,7 +438,7 @@ export function useGetSpaceEvents<TData = Awaited<ReturnType<typeof getSpaceEven
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary DELETE /api/v1/tenants/:tid/spaces/:spaceId/plugins
  */
 export const deleteApiV1TenantsTidSpacesSpaceIdPlugins = (
@@ -508,7 +508,7 @@ export const useDeleteApiV1TenantsTidSpacesSpaceIdPlugins = <TError = ErrorType<
       return useMutation(getDeleteApiV1TenantsTidSpacesSpaceIdPluginsMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/tenants/:tid/spaces/:spaceId/plugins
  */
 export const getApiV1TenantsTidSpacesSpaceIdPlugins = (
@@ -608,7 +608,7 @@ export function useGetApiV1TenantsTidSpacesSpaceIdPlugins<TData = Awaited<Return
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/spaces/:spaceId/plugins
  */
 export const postApiV1TenantsTidSpacesSpaceIdPlugins = (
@@ -678,7 +678,7 @@ export const usePostApiV1TenantsTidSpacesSpaceIdPlugins = <TError = ErrorType<Er
       return useMutation(getPostApiV1TenantsTidSpacesSpaceIdPluginsMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/tenants/:tid/spaces/:spaceId/plugins/catalog
  */
 export const getApiV1TenantsTidSpacesSpaceIdPluginsCatalog = (
@@ -778,7 +778,7 @@ export function useGetApiV1TenantsTidSpacesSpaceIdPluginsCatalog<TData = Awaited
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/tenants/:tid/spaces/:spaceId/projects
  */
 export const getApiV1TenantsTidSpacesSpaceIdProjects = (
@@ -886,7 +886,7 @@ export function useGetApiV1TenantsTidSpacesSpaceIdProjects<TData = Awaited<Retur
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/spaces/:spaceId/projects
  */
 export const postApiV1TenantsTidSpacesSpaceIdProjects = (

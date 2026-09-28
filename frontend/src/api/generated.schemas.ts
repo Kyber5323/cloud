@@ -271,6 +271,37 @@ export interface ControllerProject {
   version: number;
 }
 
+export type ControllerWorkspaceCreatorResolution = typeof ControllerWorkspaceCreatorResolution[keyof typeof ControllerWorkspaceCreatorResolution];
+
+
+export const ControllerWorkspaceCreatorResolution = {
+  known: 'known',
+  unknown: 'unknown',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ControllerWorkspaceCreatorResolutionReason = typeof ControllerWorkspaceCreatorResolutionReason[keyof typeof ControllerWorkspaceCreatorResolutionReason] | null;
+
+
+export const ControllerWorkspaceCreatorResolutionReason = {
+  missing: 'missing',
+  conflict: 'conflict',
+  unprovable: 'unprovable',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ControllerWorkspaceCreatorSource = typeof ControllerWorkspaceCreatorSource[keyof typeof ControllerWorkspaceCreatorSource] | null;
+
+
+export const ControllerWorkspaceCreatorSource = {
+  create_project_operation: 'create_project_operation',
+  create_workspace_operation: 'create_workspace_operation',
+} as const;
+
 export interface ControllerWorkspace {
   admissionEpoch: number;
   admissionOpen: boolean;
@@ -280,6 +311,15 @@ export interface ControllerWorkspace {
      */
   baseCommitId: string | null;
   createdAt: string;
+  creatorResolution: ControllerWorkspaceCreatorResolution;
+  /** @nullable */
+  creatorResolutionReason: ControllerWorkspaceCreatorResolutionReason;
+  /** @nullable */
+  creatorSource: ControllerWorkspaceCreatorSource;
+  /** @nullable */
+  creatorSourceOperationId: string | null;
+  /** @nullable */
+  creatorUserId: string | null;
   /** @nullable */
   deletedAt: string | null;
   desiredState: string;
@@ -812,6 +852,37 @@ export const OperationStep = {
   done: 'done',
 } as const;
 
+export type WorkspaceCreatorResolution = typeof WorkspaceCreatorResolution[keyof typeof WorkspaceCreatorResolution];
+
+
+export const WorkspaceCreatorResolution = {
+  known: 'known',
+  unknown: 'unknown',
+} as const;
+
+/**
+ * @nullable
+ */
+export type WorkspaceCreatorResolutionReason = typeof WorkspaceCreatorResolutionReason[keyof typeof WorkspaceCreatorResolutionReason] | null;
+
+
+export const WorkspaceCreatorResolutionReason = {
+  missing: 'missing',
+  conflict: 'conflict',
+  unprovable: 'unprovable',
+} as const;
+
+/**
+ * @nullable
+ */
+export type WorkspaceCreatorSource = typeof WorkspaceCreatorSource[keyof typeof WorkspaceCreatorSource] | null;
+
+
+export const WorkspaceCreatorSource = {
+  create_project_operation: 'create_project_operation',
+  create_workspace_operation: 'create_workspace_operation',
+} as const;
+
 export type WorkspaceDesiredState = typeof WorkspaceDesiredState[keyof typeof WorkspaceDesiredState];
 
 
@@ -850,8 +921,18 @@ export interface Workspace {
      * @nullable
      * @pattern ^([0-9a-f]{40}|[0-9a-f]{64})$
      */
-  baseCommitId: string | null;
+  baseCommitId?: string | null;
+  contentAllowed?: boolean;
   createdAt: string;
+  creatorResolution: WorkspaceCreatorResolution;
+  /** @nullable */
+  creatorResolutionReason: WorkspaceCreatorResolutionReason;
+  /** @nullable */
+  creatorSource?: WorkspaceCreatorSource;
+  /** @nullable */
+  creatorSourceOperationId?: string | null;
+  /** @nullable */
+  creatorUserId: string | null;
   /** @nullable */
   deletedAt: string | null;
   desiredState: WorkspaceDesiredState;
@@ -860,7 +941,7 @@ export interface Workspace {
   observedState: WorkspaceObservedState;
   ownerUserId: string;
   projectId: string;
-  requestedRef: string;
+  requestedRef?: string;
   runtimeGeneration: number;
   tenantId: string;
   version: number;
@@ -1195,6 +1276,37 @@ export interface User {
   version: number;
 }
 
+export type WorkspaceListItemCreatorResolution = typeof WorkspaceListItemCreatorResolution[keyof typeof WorkspaceListItemCreatorResolution];
+
+
+export const WorkspaceListItemCreatorResolution = {
+  known: 'known',
+  unknown: 'unknown',
+} as const;
+
+/**
+ * @nullable
+ */
+export type WorkspaceListItemCreatorResolutionReason = typeof WorkspaceListItemCreatorResolutionReason[keyof typeof WorkspaceListItemCreatorResolutionReason] | null;
+
+
+export const WorkspaceListItemCreatorResolutionReason = {
+  missing: 'missing',
+  conflict: 'conflict',
+  unprovable: 'unprovable',
+} as const;
+
+/**
+ * @nullable
+ */
+export type WorkspaceListItemCreatorSource = typeof WorkspaceListItemCreatorSource[keyof typeof WorkspaceListItemCreatorSource] | null;
+
+
+export const WorkspaceListItemCreatorSource = {
+  create_project_operation: 'create_project_operation',
+  create_workspace_operation: 'create_workspace_operation',
+} as const;
+
 export type WorkspaceListItemDesiredState = typeof WorkspaceListItemDesiredState[keyof typeof WorkspaceListItemDesiredState];
 
 
@@ -1233,10 +1345,20 @@ export interface WorkspaceListItem {
      * @nullable
      * @pattern ^([0-9a-f]{40}|[0-9a-f]{64})$
      */
-  baseCommitId: string | null;
+  baseCommitId?: string | null;
   /** @nullable */
-  branchName: string | null;
+  branchName?: string | null;
+  contentAllowed: boolean;
   createdAt: string;
+  creatorResolution: WorkspaceListItemCreatorResolution;
+  /** @nullable */
+  creatorResolutionReason: WorkspaceListItemCreatorResolutionReason;
+  /** @nullable */
+  creatorSource?: WorkspaceListItemCreatorSource;
+  /** @nullable */
+  creatorSourceOperationId?: string | null;
+  /** @nullable */
+  creatorUserId: string | null;
   /** @nullable */
   deletedAt: string | null;
   desiredState: WorkspaceListItemDesiredState;
@@ -1245,7 +1367,7 @@ export interface WorkspaceListItem {
   observedState: WorkspaceListItemObservedState;
   ownerUserId: string;
   projectId: string;
-  requestedRef: string;
+  requestedRef?: string;
   runtimeGeneration: number;
   tenantId: string;
   /** @nullable */
@@ -2032,7 +2154,19 @@ limit?: number;
  * Exclusive UUID cursor, ascending stable ordering.
  */
 after?: string;
+/**
+ * own lists runtimes the caller created. all, the default, lists every runtime in the project.
+ */
+scope?: GetApiV1TenantsTidProjectsPidWorkspacesScope;
 };
+
+export type GetApiV1TenantsTidProjectsPidWorkspacesScope = typeof GetApiV1TenantsTidProjectsPidWorkspacesScope[keyof typeof GetApiV1TenantsTidProjectsPidWorkspacesScope];
+
+
+export const GetApiV1TenantsTidProjectsPidWorkspacesScope = {
+  own: 'own',
+  all: 'all',
+} as const;
 
 export type GetApiV1TenantsTidProjectsPidWorkspaces200 = {
   items: WorkspaceListItem[];

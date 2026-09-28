@@ -283,7 +283,7 @@ func New(store *core.Store, auth *core.Authenticator, log *zap.Logger, directori
 						return
 					}
 				}
-				out, status, e = store.Public(c.Request.Context(), &core.PublicRequest{Method: c.Request.Method, Path: c.Request.URL.Path, TenantID: c.Param("tid"), ProjectID: c.Param("pid"), WorkspaceID: c.Param("wid"), SpaceID: c.Param("spaceId"), OperationID: c.Param("oid"), CloneID: c.Param("cloneId"), UserID: c.Param("uid"), IssueID: c.Param("iid"), CommentID: c.Param("cid"), LabelID: c.Param("lid"), StatusID: c.Param("sid"), ViewID: c.Param("vid"), RunID: c.Param("rid"), ContextRefID: c.Param("crid"), InteractionID: c.Param("ixid"), FormRef: c.Param("formRef"), InvitationID: c.Param("iid"), JoinLinkID: c.Param("lid"), JoinRequestID: c.Param("rid"), Key: c.GetHeader("Idempotency-Key"), Limit: limit, After: c.Query("after"), Query: c.Query("q"), GroupBy: c.Query("by"), Body: body, Identity: user, Person: person})
+				out, status, e = store.Public(c.Request.Context(), &core.PublicRequest{Method: c.Request.Method, Path: c.Request.URL.Path, TenantID: c.Param("tid"), ProjectID: c.Param("pid"), WorkspaceID: c.Param("wid"), SpaceID: c.Param("spaceId"), OperationID: c.Param("oid"), CloneID: c.Param("cloneId"), UserID: c.Param("uid"), IssueID: c.Param("iid"), CommentID: c.Param("cid"), LabelID: c.Param("lid"), StatusID: c.Param("sid"), ViewID: c.Param("vid"), RunID: c.Param("rid"), ContextRefID: c.Param("crid"), InteractionID: c.Param("ixid"), FormRef: c.Param("formRef"), InvitationID: c.Param("iid"), JoinLinkID: c.Param("lid"), JoinRequestID: c.Param("rid"), Key: c.GetHeader("Idempotency-Key"), Limit: limit, After: c.Query("after"), Query: c.Query("q"), GroupBy: c.Query("by"), Scope: c.Query("scope"), Body: body, Identity: user, Person: person})
 			} else {
 				out, e = store.Control(c.Request.Context(), &core.ControlRequest{Action: route.Action, OperationID: c.Param("oid"), EffectID: c.Param("eid"), TicketID: c.Param("ticket"), Body: body, Service: service, Identity: user})
 			}
@@ -304,9 +304,9 @@ func New(store *core.Store, auth *core.Authenticator, log *zap.Logger, directori
 }
 
 // sseEvents streams committed space invalidation events to a verified member.
-// Authorization reuses the REST path: the caller must be able to read the space.
-// Events are lightweight invalidation notices; the authoritative state is always
-// fetched over REST afterwards.
+// Membership is checked again before each notice, so a disable closes the
+// stream without delivering that notice. The payload stays a refresh hint;
+// runtime content is loaded with the creator or current-administrator check.
 func sseEvents(store *core.Store, auth *core.Authenticator, c *gin.Context) {
 	_, user, fault := verifyPublicCredentials(c, auth)
 	if fault != nil {
@@ -350,7 +350,7 @@ func sseEvents(store *core.Store, auth *core.Authenticator, c *gin.Context) {
 			if err != nil || status != 200 {
 				return
 			}
-			b, err := json.Marshal(ev)
+			b, err := core.MarshalSpaceEvent(ev)
 			if err != nil {
 				return
 			}

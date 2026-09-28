@@ -80,7 +80,7 @@ func TestProjectSpaceScopingAndRoleGates(t *testing.T) {
 }
 
 // TestDifferentMemberCanCreateRuntimeInSharedProject keeps the project owner
-// binding intact while recording the initiating member as the operation actor.
+// binding intact while recording the initiating member as the runtime creator.
 func TestDifferentMemberCanCreateRuntimeInSharedProject(t *testing.T) {
 	f := setup(t)
 	gw := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "gateway-a"}}
@@ -119,8 +119,17 @@ func TestDifferentMemberCanCreateRuntimeInSharedProject(t *testing.T) {
 	}
 	for _, item := range items {
 		w := core.Object(item.(map[string]any))
-		if w.S("observedState") != "ready" || w.S("baseCommitId") != f.commit || w.S("ownerUserId") != f.uid {
+		if w.S("observedState") != "ready" || w.S("ownerUserId") != f.uid {
 			t.Fatalf("shared runtime lost Node clone readiness or project ownership: %v", w)
+		}
+		if w.S("creatorUserId") == bobID {
+			if !w.B("contentAllowed") || w.S("baseCommitId") != f.commit {
+				t.Fatalf("creator lost runtime content: %v", w)
+			}
+			continue
+		}
+		if w.B("contentAllowed") || hasRuntimeContent(w) {
+			t.Fatalf("member saw another runtime's content: %v", w)
 		}
 	}
 	if f.scalar("SELECT count(*) FROM workspace_worktrees") != 0 || f.scalar("SELECT count(*) FROM project_storage") != 0 {

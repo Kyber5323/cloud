@@ -11,11 +11,11 @@ func itoa(n int) string { return strconv.Itoa(n) }
 
 // PublicRequest is populated only after service and final-user credentials are verified.
 type PublicRequest struct {
-	Method, Path, TenantID, ProjectID, WorkspaceID, SpaceID, OperationID, CloneID, UserID, IssueID, CommentID, LabelID, StatusID, ViewID, RunID, ContextRefID, InteractionID, FormRef, InvitationID, JoinLinkID, JoinRequestID, Key, After, Query, GroupBy string
-	Limit                                                                                                                                                                                                                                                  int
-	Body                                                                                                                                                                                                                                                   Object
-	Identity                                                                                                                                                                                                                                               *Claims
-	Person                                                                                                                                                                                                                                                 *DirectoryPerson
+	Method, Path, TenantID, ProjectID, WorkspaceID, SpaceID, OperationID, CloneID, UserID, IssueID, CommentID, LabelID, StatusID, ViewID, RunID, ContextRefID, InteractionID, FormRef, InvitationID, JoinLinkID, JoinRequestID, Key, After, Query, GroupBy, Scope string
+	Limit                                                                                                                                                                                                                                                         int
+	Body                                                                                                                                                                                                                                                          Object
+	Identity                                                                                                                                                                                                                                                      *Claims
+	Person                                                                                                                                                                                                                                                        *DirectoryPerson
 }
 
 // Public executes one authorized public request in a short database transaction.
@@ -395,11 +395,12 @@ func readPublic(t *transaction, r *PublicRequest, uid string) Object {
 	case r.OperationID != "":
 		return ownedOperation(t, r, uid)
 	case r.WorkspaceID != "":
-		return workspace(t, r.TenantID, uid, r.WorkspaceID, false)
+		w := workspace(t, r.TenantID, uid, r.WorkspaceID, false)
+		return presentRuntime(w, runtimeContentAllowed(membership(t, r.TenantID, uid, false).S("role"), uid, w))
 	case r.ProjectID != "":
 		p := project(t, r.TenantID, uid, r.ProjectID)
 		if strings.HasSuffix(r.Path, "/workspaces") {
-			return page(t, "SELECT w.*,wt.branch_name,task.title FROM workspaces w LEFT JOIN workspace_worktrees wt ON wt.workspace_id=w.id LEFT JOIN tasks task ON task.workspace_id=w.id WHERE w.project_id=$1 AND w.tenant_id=$2 AND w.deleted_at IS NULL", []any{p.S("id"), r.TenantID}, "w.id", r)
+			return runtimeList(t, r, uid, p.S("id"))
 		}
 		return p
 	default:
@@ -467,7 +468,10 @@ func createProject(t *transaction, r *PublicRequest, uid, hash string) Object {
 	t.exec("INSERT INTO projects(id,tenant_id,owner_user_id,space_id,name,repository_url,default_branch,credential_ref_id,lifecycle) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'provisioning')", pid, r.TenantID, uid, spaceID, name, repo, branch, cred)
 	insertWorkspace(t, r.TenantID, uid, pid, wid, "main", branch, "")
 	op := newOperation(t, r, uid, pid, wid, "create_project", "sandbox", hash, Object{})
-	return Object{"resource": t.one("SELECT * FROM projects WHERE id=$1", pid), "workspace": t.one("SELECT * FROM workspaces WHERE id=$1", wid), "operation": op}
+	// The creator points at this operation, so the workspace row has to exist first.
+	bindRuntimeCreator(t, wid, uid, op.S("id"), "create_project_operation")
+	w := t.one("SELECT * FROM workspaces WHERE id=$1", wid)
+	return Object{"resource": t.one("SELECT * FROM projects WHERE id=$1", pid), "workspace": presentRuntime(w, runtimeContentAllowed(membership(t, r.TenantID, uid, false).S("role"), uid, w)), "operation": op}
 }
 
 func insertWorkspace(t *transaction, tid, uid, pid, wid, kind, ref, title string) {
@@ -491,11 +495,13 @@ func createWorkspace(t *transaction, r *PublicRequest, p Object, uid, hash strin
 		require(ref != "HEAD", 400, "default_branch_required")
 	}
 	wid := newID()
-	// The project's durable owner is part of the workspace FK. A different
-	// tenant member may initiate this action, recorded separately as actor.
+	// The project's durable owner stays on the workspace FK. The requester is
+	// the creator, recorded once the create operation row exists.
 	insertWorkspace(t, r.TenantID, p.S("ownerUserId"), p.S("id"), wid, "isolated", ref, title)
 	op := newOperation(t, r, uid, p.S("id"), wid, "create_workspace", "sandbox", hash, Object{})
-	return Object{"resource": workspace(t, r.TenantID, uid, wid, false), "operation": op}
+	bindRuntimeCreator(t, wid, uid, op.S("id"), "create_workspace_operation")
+	w := workspace(t, r.TenantID, uid, wid, false)
+	return Object{"resource": presentRuntime(w, runtimeContentAllowed(membership(t, r.TenantID, uid, false).S("role"), uid, w)), "operation": op}
 }
 
 func newOperation(t *transaction, r *PublicRequest, uid, pid, wid, kind, step, hash string, req Object) Object {
@@ -579,6 +585,7 @@ func ownedOperation(t *transaction, r *PublicRequest, uid string) Object {
 		membership(t, r.TenantID, uid, true)
 		return adminOperation(o)
 	}
+	authorizeOperationUse(t, r.TenantID, uid, o)
 	return o
 }
 
