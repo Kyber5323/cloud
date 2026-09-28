@@ -41,6 +41,7 @@ type RuntimeBinding struct {
 	InputClosed       bool                   `protobuf:"varint,15,opt,name=input_closed,json=inputClosed,proto3" json:"input_closed,omitempty"`
 	IssuedAtMs        int64                  `protobuf:"varint,16,opt,name=issued_at_ms,json=issuedAtMs,proto3" json:"issued_at_ms,omitempty"`
 	ExpiresAtMs       int64                  `protobuf:"varint,17,opt,name=expires_at_ms,json=expiresAtMs,proto3" json:"expires_at_ms,omitempty"`
+	NodeOperationId   string                 `protobuf:"bytes,18,opt,name=node_operation_id,json=nodeOperationId,proto3" json:"node_operation_id,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -192,6 +193,13 @@ func (x *RuntimeBinding) GetExpiresAtMs() int64 {
 		return x.ExpiresAtMs
 	}
 	return 0
+}
+
+func (x *RuntimeBinding) GetNodeOperationId() string {
+	if x != nil {
+		return x.NodeOperationId
+	}
+	return ""
 }
 
 type ListBindingsRequest struct {
@@ -1047,7 +1055,7 @@ var File_ora_cloud_internal_v1_runtime_control_proto protoreflect.FileDescriptor
 
 const file_ora_cloud_internal_v1_runtime_control_proto_rawDesc = "" +
 	"\n" +
-	"+ora/cloud/internal/v1/runtime_control.proto\x12\x15ora.cloud.internal.v1\x1a&ora/cloud/internal/v1/operations.proto\"\xfc\x04\n" +
+	"+ora/cloud/internal/v1/runtime_control.proto\x12\x15ora.cloud.internal.v1\x1a&ora/cloud/internal/v1/operations.proto\"\xa8\x05\n" +
 	"\x0eRuntimeBinding\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12!\n" +
 	"\fworkspace_id\x18\x02 \x01(\tR\vworkspaceId\x12\x1d\n" +
@@ -1069,7 +1077,8 @@ const file_ora_cloud_internal_v1_runtime_control_proto_rawDesc = "" +
 	"\finput_closed\x18\x0f \x01(\bR\vinputClosed\x12 \n" +
 	"\fissued_at_ms\x18\x10 \x01(\x03R\n" +
 	"issuedAtMs\x12\"\n" +
-	"\rexpires_at_ms\x18\x11 \x01(\x03R\vexpiresAtMs\"+\n" +
+	"\rexpires_at_ms\x18\x11 \x01(\x03R\vexpiresAtMs\x12*\n" +
+	"\x11node_operation_id\x18\x12 \x01(\tR\x0fnodeOperationId\"+\n" +
 	"\x13ListBindingsRequest\x12\x14\n" +
 	"\x05epoch\x18\x01 \x01(\x03R\x05epoch\"Y\n" +
 	"\x14ListBindingsResponse\x12A\n" +

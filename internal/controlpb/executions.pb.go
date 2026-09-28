@@ -508,14 +508,16 @@ func (x *WorkItem) GetInput() *ExecutionInput {
 // One registered execution and its durable state. No result means awaiting reconciliation, never
 // failure.
 type ExecutionRecord struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
-	ExecutionId   string                 `protobuf:"bytes,2,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
-	NodeId        string                 `protobuf:"bytes,3,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
-	Input         *ExecutionInput        `protobuf:"bytes,4,opt,name=input,proto3" json:"input,omitempty"`
-	Result        *ExecutionResult       `protobuf:"bytes,5,opt,name=result,proto3,oneof" json:"result,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	OperationId string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	ExecutionId string                 `protobuf:"bytes,2,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	NodeId      string                 `protobuf:"bytes,3,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	Input       *ExecutionInput        `protobuf:"bytes,4,opt,name=input,proto3" json:"input,omitempty"`
+	Result      *ExecutionResult       `protobuf:"bytes,5,opt,name=result,proto3,oneof" json:"result,omitempty"`
+	// Stable Node operation for this execution attempt; distinct from the durable business intent.
+	NodeOperationId string `protobuf:"bytes,6,opt,name=node_operation_id,json=nodeOperationId,proto3" json:"node_operation_id,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ExecutionRecord) Reset() {
@@ -581,6 +583,13 @@ func (x *ExecutionRecord) GetResult() *ExecutionResult {
 		return x.Result
 	}
 	return nil
+}
+
+func (x *ExecutionRecord) GetNodeOperationId() string {
+	if x != nil {
+		return x.NodeOperationId
+	}
+	return ""
 }
 
 type ClaimWorkRequest struct {
@@ -1276,13 +1285,14 @@ const file_ora_cloud_internal_v1_executions_proto_rawDesc = "" +
 	"\aoutcome\"j\n" +
 	"\bWorkItem\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12;\n" +
-	"\x05input\x18\x02 \x01(\v2%.ora.cloud.internal.v1.ExecutionInputR\x05input\"\xfd\x01\n" +
+	"\x05input\x18\x02 \x01(\v2%.ora.cloud.internal.v1.ExecutionInputR\x05input\"\xa9\x02\n" +
 	"\x0fExecutionRecord\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12!\n" +
 	"\fexecution_id\x18\x02 \x01(\tR\vexecutionId\x12\x17\n" +
 	"\anode_id\x18\x03 \x01(\tR\x06nodeId\x12;\n" +
 	"\x05input\x18\x04 \x01(\v2%.ora.cloud.internal.v1.ExecutionInputR\x05input\x12C\n" +
-	"\x06result\x18\x05 \x01(\v2&.ora.cloud.internal.v1.ExecutionResultH\x00R\x06result\x88\x01\x01B\t\n" +
+	"\x06result\x18\x05 \x01(\v2&.ora.cloud.internal.v1.ExecutionResultH\x00R\x06result\x88\x01\x01\x12*\n" +
+	"\x11node_operation_id\x18\x06 \x01(\tR\x0fnodeOperationIdB\t\n" +
 	"\a_result\"M\n" +
 	"\x10ClaimWorkRequest\x12#\n" +
 	"\rsubmission_id\x18\x01 \x01(\tR\fsubmissionId\x12\x14\n" +

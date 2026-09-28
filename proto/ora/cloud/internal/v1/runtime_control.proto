@@ -35,6 +35,7 @@ message RuntimeBinding {
   bool input_closed = 15;
   int64 issued_at_ms = 16;
   int64 expires_at_ms = 17;
+  string node_operation_id = 18;
 }
 
 message ListBindingsRequest { int64 epoch = 1; }
