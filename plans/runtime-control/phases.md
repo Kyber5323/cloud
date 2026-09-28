@@ -29,13 +29,13 @@ Controller、Node、Substrate、cluster Compose、手写前端界面、成员授
 
 ## 当前阶段
 
-下一会话只做第 1 阶段。没有进行中的阶段。
+下一会话只做第 2 阶段。没有进行中的阶段。
 
 ## 已落地
 
-无。创建本文时 Cloud `main` 为 `3123e3e`，最新已发布迁移是 `0017_tenant_membership_and_join.sql`。新迁移从 `0018` 起追加，不改已发布 SQL。
+`0018_runtime_control.sql` 已追加在 `0017_tenant_membership_and_join.sql` 之后。`0001`–`0017` 的已发布 SQL 没有改。创建本文时 Cloud `main` 为 `3123e3e`。再加迁移从 `0019` 起追加。
 
-下列是当时的代码位置，供开工前核对，不是目标规则：
+第 1 阶段只落地了表、列、约束和迁移测试。下列行为仍然和创建本文时一样，不是目标规则：
 
 - `internal/core/store.go` 的 `workspace` 按活动租户成员放行。
 - `internal/core/public.go` 的 `insertWorkspace` 把项目 `owner_user_id` 写入运行时；创建请求者在 operation 的 actor 上。
@@ -51,11 +51,19 @@ Controller、Node、Substrate、cluster Compose、手写前端界面、成员授
 
 ### 1. 迁移
 
-状态：未开始。
+状态：已完成。
 
-只增加表、列和约束，以及新库和从 `0017` 升级的测试。同步 [迁移目录说明](../../internal/core/migrations/README.md) 及其英文版。覆盖创建者回填、独占会话、写活动、强停意图、插件等待、凭据引用分类与冻结。创建者与 `owner_user_id` 分开；无法唯一证明的历史创建者保持未知。强停意图不改变 `administrative_stop`。历史凭据标为未知，不改 owner 外键，不存密钥。
+迁移是 `internal/core/migrations/0018_runtime_control.sql`。目录说明已同步中英文 README。新库与从 `0017` 升级都跑过：`TestMigration0018FreshDatabaseConstrainsRuntimeControl`、`TestMigration0018UpgradeFrom0017BackfillsCreatorsWithoutGuessing`，并复跑 `TestMigrationFullSequenceFreshDB`、`TestMigrationUpstream0007UpgradePath`、`TestMigration0016RetiresStorageAndWorktreeStepsKeepingHistory`、`TestMigrateFromPreviousSpaceSchemaPreservesCompatibleTenant`、`TestMigrateRejectsIncompatiblePreviousSpaceNames`。
 
-必读：六份 ADR 里关于持久化、迁移和状态的段落，加上 [database.md](../../docs/development/agent/database.md)。不要接 HTTP 行为，不要改 desktop 或 cluster。
+已落库的权威状态：
+
+- `workspaces` 的创建者与 `owner_user_id` 分开。孤立运行时只从唯一对应的 `create_workspace` 回填，main 只从唯一对应的 `create_project` 回填；缺失、冲突或无法绑定的历史创建者保持未知。迁移之后新插入的运行时仍是未知，本阶段没有改创建接口。
+- `runtime_control_sessions` 保证同一运行时至多一个未关闭会话，控制代次只增。`runtime_write_activities` 保证同一运行时至多一个未结束的冲突写活动。
+- `runtime_force_stop_intents` 是独立强停意图。`operations.kind` 仍包含 `administrative_stop`，没有 `force_stop`。
+- `plugin_maintenance_waits` 可以在不占用项目唯一 operation 的情况下等待。升级不会改已有插件实例状态，也不会生成等待行。
+- `credential_refs` 增加 `scope_kind`、`authority_basis`、`availability`、`frozen_at`、`freeze_reason`。历史引用是未知且可用。owner 外键未改，没有密钥列。
+
+本阶段不能宣称使用权限、独占获取、强停接口、插件调度或成员停用冻结已经生效。六份 ADR 仍是 `approved`，核心用例证据仍是 `Missing`。HTTP 与 gRPC 行为未改。
 
 ### 2. 使用权限
 

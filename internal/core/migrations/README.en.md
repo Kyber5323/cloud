@@ -49,6 +49,7 @@ Migrations are executed in ascending numerical sequence. The sequence is **appen
 - **`0015_plugins.sql`**: Adds the plugin catalog, per-space selections and runtime installation records.
 - **`0016_workspace_runtime_follows_node.sql`**: Retires storage/worktree provisioning and uses independent Workspace data, Node and clone initialization. Historical records remain readable.
 - **`0017_tenant_membership_and_join.sql`**: Consolidates one space per tenant with tenant membership as the sole authority; restores mandatory project space association, reserves slugs globally even after archiving, and adds durable IDaaS identity association, invitation and join-request records. Incompatible test data with multiple spaces, unscoped projects, reused slugs or divergent tenant and space names must be rebuilt; the migration never silently splits or renames data.
+- **`0018_runtime_control.sql`**: Authoritative runtime-control state. The creator is separate from `owner_user_id` and is backfilled only from the one corresponding create operation; anything that cannot be proved stays unknown. Adds exclusive sessions, conflicting write activities, an independent force-stop intent, and plugin maintenance waits. Historical credential references are marked unknown and gain a freeze state. The owner foreign key is unchanged, no secret is stored, and `administrative_stop` is unchanged.
 
 ## Checksum integrity and immutability
 
