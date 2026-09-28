@@ -22,7 +22,7 @@ func TestKeepalivePingsOnIdleConnectionNeverTriggerGoaway(t *testing.T) {
 		t.Fatalf("listen: %v", e)
 	}
 	// No RPC is ever sent, so the server never reaches the store it was built with.
-	server := New(nil)
+	server := NewDevelopment(nil)
 	served := make(chan error, 1)
 	go func() { served <- server.Serve(listener) }()
 	t.Cleanup(func() {

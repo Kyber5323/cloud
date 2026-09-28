@@ -73,6 +73,11 @@ type databaseFailure struct{ err error }
 type Store struct {
 	Pool *sql.DB
 
+	// PluginExecution is unavailable in production until a fenced real executor is delivered.
+	// The simulation mode exists only for explicitly wired integration fixtures.
+	PluginExecution    PluginExecutionCapability
+	legacyCloneFixture bool
+
 	// Collaboration ports (consuming-side seams; see collaboration.go). Each is nil by default
 	// ("Unavailable"); dev/demo/integration wire the in-memory fixtures, production real adapters.
 	Directory  CollaborationDirectory
@@ -103,6 +108,17 @@ func NewStore(db *gorm.DB) (*Store, error) {
 	return &Store{Pool: pool, Events: NewSpaceHub(), Signals: NewControlHub()}, nil
 }
 
+// NewDevelopmentStore explicitly enables the retired unscoped clone test contract. Production
+// NewStore remains runtime-scoped; this constructor must never be used by the production server.
+func NewDevelopmentStore(db *gorm.DB) (*Store, error) {
+	s, err := NewStore(db)
+	if err != nil {
+		return nil, err
+	}
+	s.legacyCloneFixture = true
+	return s, nil
+}
+
 type transaction struct {
 	tx  *sql.Tx
 	ctx context.Context
@@ -112,7 +128,9 @@ type transaction struct {
 	forms          FormDescriptorProvider
 	assist         InputAssistProvider
 	// queued names operations this transaction made claimable; they are published only after commit.
-	queued []string
+	legacyCloneFixture bool
+	pluginExecution    PluginExecutionCapability
+	queued             []string
 }
 
 func (t *transaction) exec(q string, args ...any) {
@@ -213,7 +231,7 @@ func (s *Store) transact(ctx context.Context, fn func(*transaction) Object) (out
 			}
 		}
 	}()
-	t := &transaction{tx: tx, ctx: ctx, directory: s.Directory, contextBuilder: s.Context, forms: s.Forms, assist: s.Assist}
+	t := &transaction{tx: tx, ctx: ctx, pluginExecution: s.PluginExecution, legacyCloneFixture: s.legacyCloneFixture, directory: s.Directory, contextBuilder: s.Context, forms: s.Forms, assist: s.Assist}
 	t.exec("SELECT pg_advisory_xact_lock(67420911)")
 	out = fn(t)
 	if err = tx.Commit(); err == nil {
@@ -464,20 +482,15 @@ func project(t *transaction, tid, uid, pid string) Object {
 	return p
 }
 
-// workspace loads a live runtime workspace in the tenant. Non-admin access
-// inherits the parent project's tenant membership. The admin form
-// (administrative-stop) requires tenant administration.
+// workspace loads authorized runtime content. Safe summaries use runtimeOverview instead.
 func workspace(t *transaction, tid, uid, wid string, admin bool) Object {
 	require(validID(wid), 404, "not_found")
-	if admin {
-		w := t.one("SELECT * FROM workspaces WHERE id=$1 AND tenant_id=$2 AND deleted_at IS NULL", wid, tid)
-		require(w != nil, 404, "not_found")
-		return w
-	}
 	w := t.one("SELECT * FROM workspaces WHERE id=$1 AND tenant_id=$2 AND deleted_at IS NULL", wid, tid)
 	require(w != nil, 404, "not_found")
-	proj := t.one("SELECT space_id FROM projects WHERE id=$1 AND tenant_id=$2", w.S("projectId"), tid)
-	require(proj != nil && workspaceRole(t, proj.S("spaceId"), uid) != "", 404, "not_found")
+	require(runtimeUsable(t, w, uid), 403, "runtime_use_forbidden")
+	if admin {
+		membership(t, tid, uid, true)
+	}
 	return w
 }
 

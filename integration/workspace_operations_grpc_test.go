@@ -231,13 +231,16 @@ func TestGRPCControllerDrivesWorkspaceThroughNodeAndClone(t *testing.T) {
 	if op.GetState() != controlpb.OperationState_OPERATION_STATE_SUCCEEDED || w.S("observedState") != "ready" || !w.B("admissionOpen") || w.S("baseCommitId") != f.commit {
 		t.Fatalf("clone success must open the Workspace with its baseline: %v %v", op, w)
 	}
-	f.internal("/internal/v1/access", core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "epoch": c.epoch}, 200)
+	f.internal("/internal/v1/access", core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "epoch": c.epoch, "sessionId": f.controlSession(wid)}, 200)
 
 	// Stop: the Controller gives idle evidence for its Node, then terminates the sandbox.
-	f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": w.N("version")}, "grpc-stop", 202)
+	f.call("POST", f.path("/workspaces/"+wid+"/stop"), f.lifecycleBody(wid, w.N("version")), "grpc-stop", 202)
 	snap = c.claim()
 	op = snap.GetOperation()
 	node := snap.GetNodes()[0]
+	_, e = c.nodes.ReportNodeIdle(c.ctx, &controlpb.ReportNodeIdleRequest{SubmissionId: c.sub(), Epoch: c.epoch, NodeInstanceId: node.GetId(), Version: node.GetVersion(), OperationId: op.GetId(), AdmissionEpoch: snap.GetWorkspaces()[0].GetAdmissionEpoch(), Idle: true})
+	expectStatus(t, e, codes.Aborted, controlpb.ErrorCode_ERROR_CODE_CONFLICT)
+	f.acknowledgeSimulatorBindings() // This test supplies Node closure explicitly; it is not physical Node evidence.
 	idle, e := c.nodes.ReportNodeIdle(c.ctx, &controlpb.ReportNodeIdleRequest{SubmissionId: c.sub(), Epoch: c.epoch, NodeInstanceId: node.GetId(), Version: node.GetVersion(), OperationId: op.GetId(), AdmissionEpoch: snap.GetWorkspaces()[0].GetAdmissionEpoch(), Idle: true})
 	must(t, e)
 	if !idle.GetAccepted() || idle.GetNode().GetIdleAdmissionEpoch() != snap.GetWorkspaces()[0].GetAdmissionEpoch() {

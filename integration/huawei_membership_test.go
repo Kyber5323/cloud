@@ -51,10 +51,12 @@ func TestHuaweiGlobalIdentityBindsPreAddedMemberAcrossEmployeeNumberChange(t *te
 	f.drain()
 	controller := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: f.client.Subject}}
 	login := huaweiClaims("idaas-uuid-1", person.GlobalUserID)
+	// A shared project request binds the verified identities without granting runtime content.
+	joinCall(t, f, login, "GET", f.path("/projects/"+project.O("resource").S("id")), "", nil, 200)
 	access, status, err := f.client.Call(context.Background(), "POST", "/internal/v1/access", "controller", controller, &login, "", core.Object{"tenantId": f.tid, "workspaceId": project.O("workspace").S("id"), "action": "read"})
 	must(t, err)
-	if status != 200 || access.S("userId") != added.S("userId") {
-		t.Fatalf("first verified access did not bind the preadded identity: %d %v", status, access)
+	if status != 403 || access.S("code") != "runtime_use_forbidden" {
+		t.Fatalf("membership granted another creator's content: %d %v", status, access)
 	}
 	loggedIn := joinCall(t, f, huaweiClaims("idaas-uuid-1", person.GlobalUserID), "GET", "/api/v1/me", "", nil, 200)
 	if loggedIn.S("id") != added.S("userId") {
@@ -89,7 +91,7 @@ func TestHuaweiMemberAddRechecksDirectoryAfterSearch(t *testing.T) {
 	auth, err := core.NewAuthenticator("ora-cloud", f.client.Credentials.Trust)
 	must(t, err)
 	directory := &changingDirectory{}
-	server := httptest.NewServer(router.New(f.store, auth, zap.NewNop(), directory))
+	server := httptest.NewServer(router.NewDevelopment(f.store, auth, zap.NewNop(), directory))
 	t.Cleanup(server.Close)
 	client := &simulator.Client{URL: server.URL, Credentials: f.client.Credentials, HTTP: f.client.HTTP}
 	gw := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "gateway-a"}}

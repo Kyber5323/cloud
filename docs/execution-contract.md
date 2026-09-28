@@ -41,3 +41,7 @@ Session 仍属于 Workspace，不将 sandboxId/nodeId 作为持久业务身份�
 desktop bootstrap 当前耦合 SQLite、Session JSONL、插件与 Workflow，阶段二拆出接口适配。历史 JSONL 追加顺序不等同展示 position；重复 position 表示修正，迁移必须保留最后修正、Gap、受损尾行和 pending tool 语义，不能直接按 append 顺序赋展示 seq。先定义快照/增量边界、幂等导入键与所有权映射，再导入历史；本次未导入任何桌面数据。
 
 Effect Scope、Desired State/Generation、插件 canonical identity、Workflow 状态与运行结果必须各自有明确 cloud 持久化归属与版本契约；不要把这些塞进阶段一 operations.result 的任意 JSON 中。当前 Task 仅为 isolated Workspace 一对一展示身份，execution_tickets 是并发准入证据，不是完整 Session/Workflow 领域替代品。
+
+## 运行时执行围栏
+
+[多人控制](runtime-control.md) 新增页面控制绑定、独立 Node operation ID、短期许可及独立强停。派发前重新核验许可；Node 在持久接受和真实首次变更前拒绝旧绑定，未知响应仍按稳定 execution ID 核对。Controller 租约到期不能由缓存许可延长。生产旧无 scope 新 clone 准入关闭；历史查询、结果及清理责任保留。

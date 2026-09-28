@@ -39,3 +39,7 @@ stop, configuration and logs belong to the Node runtime plane and stay out of th
   and a 409 shows the inline notice plus a refetch.
 - SSE invalidation branches live in `features/spaces/spaces.test.tsx`; the nav entry lives in the
   app-sidebar tests.
+
+## Runtime control
+
+Current tenant administrators change the space selection; members read it. Mutations carry the resource version (zero for a new row). Each runtime waits for idle maintenance ownership. Counts distinguish affected, completed, occupied, stopped, unavailable and failed targets. The production plugin executor is unavailable: accepting a selection does not prove installation or start a stopped runtime. Server authorization is independent of button state.

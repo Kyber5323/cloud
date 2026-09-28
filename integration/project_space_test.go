@@ -69,6 +69,7 @@ func TestProjectSpaceScopingAndRoleGates(t *testing.T) {
 	if active.S("lifecycle") != "active" {
 		t.Fatalf("project did not reach active: %s", active.S("lifecycle"))
 	}
+	f.acknowledgeSimulatorBindings()
 	deleted := f.call("DELETE", f.path("/projects/"+pid), core.Object{"version": active.N("version")}, "owner-delete", 202)
 	if deleted.O("resource").S("lifecycle") != "deleting" || deleted.O("operation").S("id") == "" {
 		t.Fatal("owner delete did not enter lifecycle state machine")
@@ -95,7 +96,7 @@ func TestDifferentMemberCanCreateRuntimeInSharedProject(t *testing.T) {
 		t.Fatalf("member create runtime in shared project: want 202, got %d (%v)", status, out)
 	}
 	resource := out.O("resource")
-	if resource.S("ownerUserId") != f.uid || out.O("operation").S("actorUserId") != bobID {
+	if resource.S("ownerUserId") != f.uid || resource.S("creatorUserId") != bobID || out.O("operation").S("actorUserId") != bobID {
 		t.Fatalf("runtime owner and operation actor diverged from their durable bindings: %v", out)
 	}
 	opid := out.O("operation").S("id")
@@ -119,8 +120,15 @@ func TestDifferentMemberCanCreateRuntimeInSharedProject(t *testing.T) {
 	}
 	for _, item := range items {
 		w := core.Object(item.(map[string]any))
-		if w.S("observedState") != "ready" || w.S("baseCommitId") != f.commit || w.S("ownerUserId") != f.uid {
+		if w.S("observedState") != "ready" || w.S("ownerUserId") != f.uid {
 			t.Fatalf("shared runtime lost Node clone readiness or project ownership: %v", w)
+		}
+		if w.S("id") == resource.S("id") {
+			if !w.B("canUse") || w.S("baseCommitId") != f.commit {
+				t.Fatalf("own runtime clone content missing: %v", w)
+			}
+		} else if w.B("canUse") || w["baseCommitId"] != nil || w["title"] != nil || w["requestedRef"] != nil {
+			t.Fatalf("other runtime content leaked: %v", w)
 		}
 	}
 	if f.scalar("SELECT count(*) FROM workspace_worktrees") != 0 || f.scalar("SELECT count(*) FROM project_storage") != 0 {

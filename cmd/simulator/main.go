@@ -93,7 +93,7 @@ func run() error {
 		return e
 	}
 	gin.SetMode(gin.ReleaseMode)
-	cloud := httptest.NewServer(router.New(store, auth, zap.NewNop()))
+	cloud := httptest.NewServer(router.NewDevelopment(store, auth, zap.NewNop()))
 	defer cloud.Close()
 	substrate, e := simulator.NewSubstrate(filepath.Join(absolute, "substrate"), map[string]string{"https://example.invalid/repo.git": repo})
 	if e != nil {
@@ -113,7 +113,7 @@ func run() error {
 	if e != nil {
 		return e
 	}
-	control := controlgrpc.New(store)
+	control := controlgrpc.NewDevelopment(store)
 	served := make(chan error, 1)
 	go func() { served <- control.Serve(listener) }()
 	defer func() {

@@ -43,6 +43,16 @@ func (s *Store) Control(ctx context.Context, r *ControlRequest) (Object, error) 
 			return cloneCommand(t, r)
 		}
 		leaseValid(t, r)
+		refreshRuntimeControls(t)
+		if r.Action == "effect_permit" {
+			return effectPermit(t, r)
+		}
+		if strings.HasPrefix(r.Action, "force_") {
+			return submitted(t, r, func() Object { return forceStopCommand(t, r) })
+		}
+		if strings.HasPrefix(r.Action, "runtime_") {
+			return submitted(t, r, func() Object { return runtimeControlCommand(t, r) })
+		}
 		if r.Action == "claim" {
 			return claim(t, r)
 		}
@@ -127,6 +137,7 @@ func leaseValid(t *transaction, r *ControlRequest) {
 }
 
 func claim(t *transaction, r *ControlRequest) Object {
+	schedulePluginMaintenance(t)
 	o := t.one("SELECT * FROM operations WHERE state='queued' OR (state='retry_wait' AND retry_at<=clock_timestamp()) OR state='running' ORDER BY created_at,id LIMIT 1")
 	if o == nil {
 		return Object{"operation": nil}
@@ -190,6 +201,7 @@ func planEffect(t *transaction, r *ControlRequest, o Object, spaceEvents *[]Spac
 		}
 	}
 	require(found, 403, "invalid_effect_scope")
+	requireNoForceStop(t, wid)
 	if existing := effectFor(t, o.S("id"), kind, wid); existing != nil {
 		return Object{"effect": existing, "operation": o}
 	}
@@ -244,6 +256,10 @@ func planPluginEffect(t *transaction, o Object, kind, wid string, spaceEvents *[
 		reject(409, "invalid_step")
 	}
 	require(wid == o.S("workspaceId"), 403, "invalid_effect_scope")
+	c := runtimeControl(t, wid)
+	require(c.S("state") == "maintenance" && c.S("maintenanceOperationId") == o.S("id") && c.B("bindingConfirmed"), 409, "runtime_input_closure_unconfirmed")
+	require(t.pluginExecution == PluginExecutionSimulation, 409, "executor_capability_unavailable")
+	checkActivities(t, t.one("SELECT * FROM workspaces WHERE id=$1", wid))
 	pluginID := o.O("request").S("pluginId")
 	version := o.O("request").S("version")
 	require(pluginID != "", 409, "invalid_plugin_request")
@@ -253,8 +269,8 @@ func planPluginEffect(t *transaction, o Object, kind, wid string, spaceEvents *[
 		pluginInstanceWriteback(t, o, "removing", "", nil, spaceEvents)
 		return request
 	}
-	entry := t.pluginCatalogEntry(pluginID)
-	require(entry != nil, 409, "plugin_not_found")
+	entry := o.O("request").O("release")
+	require(entry.S("id") == pluginID && entry.S("version") == version, 409, "plugin_release_unverified")
 	// Admission: plugin_ensure dispatches only to a ready workspace, mirroring
 	// the node step gate — a provisioning or stopped workspace is not a valid
 	// download target.
@@ -382,10 +398,15 @@ func advance(t *transaction, r *ControlRequest, o Object, spaceEvents *[]SpaceEv
 				t.exec("UPDATE sandbox_instances SET observed_state='terminated',terminated_at=now() WHERE id=$1", live.S("id"))
 			}
 		}
-		if o.S("kind") == "stop" || o.S("kind") == "administrative_stop" {
+		switch o.S("kind") {
+		case "restart":
+			t.exec("UPDATE workspaces SET desired_state='running',observed_state='starting',version=version+1 WHERE id=$1", wid)
+			t.exec("UPDATE runtime_controls SET control_epoch=control_epoch+1,binding_confirmed=false,bound_sandbox_id=NULL,input_closed=false,version=version+1 WHERE workspace_id=$1", wid)
+			next = "sandbox"
+		case "stop", "administrative_stop":
 			t.exec("UPDATE workspaces SET observed_state='stopped',version=version+1 WHERE id=$1", wid)
 			next = "done"
-		} else {
+		default:
 			next = "cleanup"
 		}
 	case "cleanup":
@@ -419,7 +440,8 @@ func advance(t *transaction, r *ControlRequest, o Object, spaceEvents *[]SpaceEv
 		reject(409, "invalid_step")
 	}
 	if next == "done" {
-		t.exec("UPDATE operations SET step='done',state='succeeded',result=jsonb_build_object('resourceId',COALESCE(workspace_id,project_id)),version=version+1,updated_at=now() WHERE id=$1", o.S("id"))
+		t.exec("UPDATE operations SET step='done',state='succeeded',error_code=NULL,retry_at=NULL,result=jsonb_build_object('resourceId',COALESCE(workspace_id,project_id)),version=version+1,updated_at=now() WHERE id=$1", o.S("id"))
+		finishRuntimeMaintenance(t, o.S("id"))
 	} else {
 		t.exec("UPDATE operations SET step=$2,version=version+1,updated_at=now() WHERE id=$1", o.S("id"), next)
 	}

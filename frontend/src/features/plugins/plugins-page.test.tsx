@@ -38,7 +38,7 @@ function installFixtures(
     onRemove?: (identifier: string, version: number) => void
   } = {},
 ) {
-  installCloudSpaceHandlers('owner')
+  installCloudSpaceHandlers('admin')
   server.use(...pluginCloudHandlers({ catalog: FIXTURE_CATALOG, ...options }))
 }
 
@@ -96,8 +96,8 @@ describe('PluginsPage', () => {
     // assertion to the selected section, then pin the badge and button state.
     const selected = screen.getByRole('region', { name: '已选插件' })
     expect(await within(selected).findByText('official/hello-world')).toBeInTheDocument()
-    expect(within(selected).getByText('待安装')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '安装中' })).toBeDisabled()
+    expect(within(selected).getByText('等待执行')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '已选择，等待执行' })).toBeDisabled()
   })
 
   it('shows every observed state badge with its error summary', async () => {
@@ -112,7 +112,7 @@ describe('PluginsPage', () => {
       ],
     })
     renderWithProviders(<PluginsPage slug="cloud-dev" />, { slug: 'cloud-dev' })
-    expect(await screen.findByText('待安装')).toBeInTheDocument()
+    expect(await screen.findByText('等待执行')).toBeInTheDocument()
     expect(screen.getByText('失败')).toBeInTheDocument()
     expect(screen.getByText(/sha256 mismatch/)).toBeInTheDocument()
   })
@@ -149,5 +149,17 @@ describe('PluginsPage', () => {
     // The conflict is surfaced inline and the row stays, refetched fresh.
     expect(await within(selected).findByText(/版本冲突/)).toBeInTheDocument()
     expect(within(selected).getByText('official/hello-world')).toBeInTheDocument()
+  })
+})
+
+describe('plugin selection authority', () => {
+  it('allows members to browse while refusing selection controls', async () => {
+    installFixtures({ plugins: [spacePlugin('official/hello-world')] })
+    installCloudSpaceHandlers('member')
+    renderWithProviders(<PluginsPage slug="cloud-dev" />, { slug: 'cloud-dev' })
+    expect(await screen.findByText('Hello World')).toBeInTheDocument()
+    expect(screen.getByText('成员可查看空间插件，由管理员修改选择。')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '移除' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '安装' })).toBeDisabled()
   })
 })

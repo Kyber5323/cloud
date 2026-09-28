@@ -7,14 +7,19 @@ package controlgrpc
 
 import (
 	"context"
+	"crypto/tls"
+	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
 	"github.com/wanglongan587/cloud/internal/controlpb"
@@ -39,21 +44,83 @@ const keepaliveMinTime = 5 * time.Second
 
 type claimsKey struct{}
 
-// New builds the gRPC server that names the calling Controller on every unary and stream call and
+// NewDevelopment serves in-process simulators only. The production executable always uses NewSecure.
+func NewDevelopment(store *core.Store) *grpc.Server {
+	return newServer(store, unaryHolder, streamHolder)
+}
+
+// NewSecure verifies both certificates and the configured service URI. Metadata may select
+// neither the service role nor another Controller identity.
+func NewSecure(store *core.Store, config *tls.Config, identity string) (*grpc.Server, error) {
+	uri, err := url.Parse(identity)
+	if err != nil || uri.Scheme != "spiffe" || uri.Host == "" || uri.RawQuery != "" || uri.Fragment != "" || !strings.HasPrefix(uri.Path, "/controller/") || strings.Contains(strings.TrimPrefix(uri.Path, "/controller/"), "/") || strings.TrimPrefix(uri.Path, "/controller/") == "" {
+		return nil, fmt.Errorf("control controller_identity must name one spiffe Controller service")
+	}
+	if config == nil || len(config.Certificates) == 0 || config.ClientCAs == nil || config.ClientAuth != tls.RequireAndVerifyClientCert {
+		return nil, fmt.Errorf("control requires mutually authenticated TLS")
+	}
+	verified := func(ctx context.Context) (context.Context, error) {
+		p, ok := peer.FromContext(ctx)
+		if !ok {
+			return nil, status.Error(codes.Unauthenticated, "controller_certificate_required")
+		}
+		info, ok := p.AuthInfo.(credentials.TLSInfo)
+		if !ok || len(info.State.VerifiedChains) == 0 || len(info.State.PeerCertificates) == 0 {
+			return nil, status.Error(codes.Unauthenticated, "controller_certificate_required")
+		}
+		matched := false
+		for _, presented := range info.State.PeerCertificates[0].URIs {
+			if presented.String() == identity {
+				matched = true
+			}
+		}
+		if !matched {
+			return nil, status.Error(codes.PermissionDenied, "controller_certificate_scope")
+		}
+		ctx, err := holder(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if principal(ctx).Subject != strings.TrimPrefix(uri.Path, "/controller/") {
+			return nil, status.Error(codes.PermissionDenied, "controller_identity_mismatch")
+		}
+		return ctx, nil
+	}
+	return newServer(store,
+		func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+			ctx, err := verified(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return handler(ctx, req)
+		},
+		func(srv any, stream grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+			ctx, err := verified(stream.Context())
+			if err != nil {
+				return err
+			}
+			return handler(srv, &authenticatedStream{ServerStream: stream, ctx: ctx})
+		},
+		grpc.Creds(credentials.NewTLS(config.Clone()))), nil
+}
+
+// newServer builds the gRPC server that names the calling Controller on every unary and stream call and
 // accepts its keepalive PINGs, including while no stream is active so a Controller that has lost its
 // Watch can still detect a dead connection before its next call. The caller owns the listener and
 // the stop sequence.
-func New(store *core.Store) *grpc.Server {
-	server := grpc.NewServer(
-		grpc.ChainUnaryInterceptor(unaryHolder),
-		grpc.ChainStreamInterceptor(streamHolder),
+func newServer(store *core.Store, unary grpc.UnaryServerInterceptor, stream grpc.StreamServerInterceptor, options ...grpc.ServerOption) *grpc.Server {
+	options = append(options,
+		grpc.ChainUnaryInterceptor(unary),
+		grpc.ChainStreamInterceptor(stream),
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: keepaliveMinTime, PermitWithoutStream: true}),
 	)
+	server := grpc.NewServer(options...)
 	controlpb.RegisterControllerLeaseServiceServer(server, &leaseService{store: store})
 	controlpb.RegisterExecutionServiceServer(server, &executionService{store: store})
 	controlpb.RegisterControlSignalServiceServer(server, &signalService{store: store})
 	controlpb.RegisterWorkspaceOperationServiceServer(server, &operationService{store: store})
 	controlpb.RegisterNodeReportServiceServer(server, &nodeService{store: store})
+	controlpb.RegisterRuntimeControlServiceServer(server, &runtimeControlService{store: store})
 	return server
 }
 

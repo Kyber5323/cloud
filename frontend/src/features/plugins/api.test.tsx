@@ -51,7 +51,7 @@ function wrapperFor(queryClient: QueryClient) {
 
 describe('usePluginCatalog', () => {
   it('serves the catalog snapshot and keeps it fresh for the sync cadence', async () => {
-    installCloudSpaceHandlers('owner')
+    installCloudSpaceHandlers('admin')
     let catalogReads = 0
     server.use(
       http.get('/api/v1/tenants/:tid/spaces/:spaceId/plugins/catalog', () => {
@@ -79,7 +79,7 @@ describe('usePluginCatalog', () => {
 
 describe('useSpacePlugins', () => {
   it('lists the current space rows', async () => {
-    installCloudSpaceHandlers('owner')
+    installCloudSpaceHandlers('admin')
     server.use(
       ...pluginCloudHandlers({
         catalog: [catalogEntry('official/hello-world')],
@@ -96,7 +96,7 @@ describe('useSpacePlugins', () => {
 
 describe('useInstallPlugin', () => {
   it('posts the install and invalidates the space plugin query', async () => {
-    installCloudSpaceHandlers('owner')
+    installCloudSpaceHandlers('admin')
     const key = [`/api/v1/tenants/${TEST_TENANT_ID}/spaces/${SPACE_ID}/plugins`]
     const posted: string[] = []
     server.use(
@@ -120,7 +120,7 @@ describe('useInstallPlugin', () => {
 
 describe('useRemovePlugin', () => {
   it('deletes with the optimistic version and refetches after a conflict', async () => {
-    installCloudSpaceHandlers('owner')
+    installCloudSpaceHandlers('admin')
     const key = [`/api/v1/tenants/${TEST_TENANT_ID}/spaces/${SPACE_ID}/plugins`]
     let conflict = true
     server.use(

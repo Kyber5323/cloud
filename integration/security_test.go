@@ -229,9 +229,10 @@ func TestTerminationUnknownRetryAndVersionedReplay(t *testing.T) {
 	f.drain()
 	wid := created.O("workspace").S("id")
 	oldVersion := f.ws(wid).N("version")
-	stopped := f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": oldVersion}, "stop", 202)
+	stopped := f.call("POST", f.path("/workspaces/"+wid+"/stop"), f.lifecycleBody(wid, oldVersion), "stop", 202)
 	oid := stopped.O("operation").S("id")
 	f.substrate.SetFault("sandbox_terminate", "unconfirmed")
+	f.acknowledgeSimulatorBindings() // Explicit fixture evidence; termination assertions below remain unchanged.
 	if e := f.controller.Drain(context.Background()); e == nil {
 		t.Fatal("termination must block")
 	}
@@ -243,7 +244,7 @@ func TestTerminationUnknownRetryAndVersionedReplay(t *testing.T) {
 	if deferred.S("state") != "blocked" || deferred.S("errorCode") != "termination_unconfirmed" {
 		t.Fatal("unconfirmed termination was not blocked", deferred)
 	}
-	replay := f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": oldVersion}, "stop", 202)
+	replay := f.call("POST", f.path("/workspaces/"+wid+"/stop"), f.lifecycleBody(wid, oldVersion), "stop", 202)
 	if replay.O("operation").S("id") != oid {
 		t.Fatal("stale-version replay not original operation")
 	}
@@ -302,7 +303,7 @@ func TestWrongWorkspaceNodeCannotRefuseAnotherStop(t *testing.T) {
 	if status != 200 {
 		t.Fatal(out)
 	}
-	stop := f.call("POST", f.path("/workspaces/"+main+"/stop"), core.Object{"version": f.ws(main).N("version")}, "stop-main", 202)
+	stop := f.call("POST", f.path("/workspaces/"+main+"/stop"), f.lifecycleBody(main, f.ws(main).N("version")), "stop-main", 202)
 	_, status, e = f.client.Call(context.Background(), "POST", "/internal/v1/nodes/idle", "node", n, nil, "", core.Object{"version": out.N("version"), "operationId": stop.O("operation").S("id"), "admissionEpoch": f.ws(wid).N("admissionEpoch"), "idle": false})
 	must(t, e)
 	if status != 409 {

@@ -249,7 +249,7 @@ func setupGateway(t *testing.T) *gatewayFixture {
 	must(t, e)
 	gin.SetMode(gin.TestMode)
 	f.log, _ = zap.NewDevelopment()
-	f.cloud = httptest.NewServer(router.New(cloudStore, auth, f.log))
+	f.cloud = httptest.NewServer(router.NewDevelopment(cloudStore, auth, f.log))
 	t.Cleanup(f.cloud.Close)
 	return f
 }
