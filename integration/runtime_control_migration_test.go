@@ -334,7 +334,7 @@ func seedPreControlHistory(t *testing.T, pool *sql.DB) seededHistory {
 			provenIsolated, tenant, owner, provenProject)
 	})
 
-	unknown := func(workspace string, reason string) creatorCase {
+	unknown := func(workspace, reason string) creatorCase {
 		return creatorCase{workspace: workspace, want: creatorFact{resolution: "unknown", reason: reason, owner: owner}}
 	}
 	known := func(workspace, user, operation, source string) creatorCase {
