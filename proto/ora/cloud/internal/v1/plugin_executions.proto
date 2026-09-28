@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package ora.cloud.internal.v1;
+
+// Plugin installs and removals run as Node executions of a Workspace operation's plugin step. Cloud
+// assembles every payload from its catalog snapshot, so a Node never resolves a marketplace itself,
+// and the Controller dispatches the input exactly as the operation snapshot carries it.
+
+// One download a Node may install from; the SHA-256 is always required and checked before anything
+// reaches the plugin root.
+message PluginDownload {
+  string url = 1;
+  // Lowercase hexadecimal SHA-256 of the downloaded package.
+  string sha256 = 2;
+}
+
+message PluginTargetDownload {
+  // Rust target triple the release was built for.
+  string target = 1;
+  PluginDownload download = 2;
+}
+
+// One plugin to install at an exact version. Exactly one of `universal` or a non-empty `targets`
+// is set; the Node picks the target matching its own host.
+message PluginInstall {
+  // Canonical Plugin ID, `<namespace>/<identifier>`.
+  string plugin_id = 1;
+  string version = 2;
+  optional PluginDownload universal = 3;
+  repeated PluginTargetDownload targets = 4;
+}
+
+message PluginRemoval {
+  string plugin_id = 1;
+  string version = 2;
+}
+
+// Installs the plugins into the Workspace's plugin root without starting any of them.
+message InstallPluginsSpec {
+  repeated PluginInstall plugins = 1;
+}
+
+message RemovePluginsSpec {
+  repeated PluginRemoval plugins = 1;
+}
+
+// Bounded per-plugin failure codes; raw diagnostics stay in Node logs.
+enum PluginFailureReason {
+  PLUGIN_FAILURE_REASON_UNSPECIFIED = 0;
+  PLUGIN_FAILURE_REASON_DOWNLOAD_FAILED = 1;
+  PLUGIN_FAILURE_REASON_CHECKSUM_MISMATCH = 2;
+  PLUGIN_FAILURE_REASON_NO_MATCHING_TARGET = 3;
+  PLUGIN_FAILURE_REASON_INVALID_PACKAGE = 4;
+  PLUGIN_FAILURE_REASON_INSTALL_FAILED = 5;
+  // A running Agent session uses the plugin, so it was neither replaced nor removed.
+  PLUGIN_FAILURE_REASON_PLUGIN_IN_USE = 6;
+}
+
+message PluginItemInstalled {
+  // Must equal the planned version; Cloud refuses the whole result otherwise.
+  string version = 1;
+}
+
+message PluginItemRemoved {}
+
+message PluginItemFailed {
+  PluginFailureReason reason = 1;
+}
+
+message PluginItemResult {
+  string plugin_id = 1;
+  oneof outcome {
+    PluginItemInstalled installed = 2;
+    PluginItemRemoved removed = 3;
+    PluginItemFailed failed = 4;
+  }
+}
+
+// Terminal result of a plugin execution: one item per planned plugin. A failed item does not fail
+// the execution; only an execution-level failure (the Node could not run it at all) does.
+message PluginsResult {
+  repeated PluginItemResult items = 1;
+}
+
+enum PluginsFailureReason {
+  PLUGINS_FAILURE_REASON_UNSPECIFIED = 0;
+  // The Workspace's plugin root or the Node ledger could not be used.
+  PLUGINS_FAILURE_REASON_PLUGIN_ROOT_UNAVAILABLE = 1;
+  // Stopped before every item had a result; a new execution may simply retry, since installs are
+  // idempotent.
+  PLUGINS_FAILURE_REASON_INTERRUPTED = 2;
+}
+
+// Terminal result when the execution as a whole could not run; no item is reported.
+message PluginsFailed {
+  PluginsFailureReason reason = 1;
+}

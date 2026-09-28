@@ -31,7 +31,8 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// Durable coordination of Node executions, starting with the clone closed loop. Every call that
+// Durable coordination of Node executions: clones, plugin installs of a Workspace operation, and
+// the Agent session and Revision deliveries of an IssueRun. Every call that
 // changes state returns only after Cloud committed it, and each such call carries a caller-chosen
 // `submission_id`: repeating a submission with identical content returns the original response
 // without reapplying anything; the same identity with different content fails with ABORTED
@@ -130,7 +131,8 @@ func (c *executionServiceClient) ListPendingDispatches(ctx context.Context, in *
 // All implementations must embed UnimplementedExecutionServiceServer
 // for forward compatibility.
 //
-// Durable coordination of Node executions, starting with the clone closed loop. Every call that
+// Durable coordination of Node executions: clones, plugin installs of a Workspace operation, and
+// the Agent session and Revision deliveries of an IssueRun. Every call that
 // changes state returns only after Cloud committed it, and each such call carries a caller-chosen
 // `submission_id`: repeating a submission with identical content returns the original response
 // without reapplying anything; the same identity with different content fails with ABORTED
