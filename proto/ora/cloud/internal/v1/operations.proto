@@ -130,6 +130,8 @@ enum EffectKind {
   EFFECT_KIND_SANDBOX_ENSURE = 1;
   EFFECT_KIND_SANDBOX_TERMINATE = 2;
   EFFECT_KIND_WORKSPACE_DATA_DELETE = 3;
+  // Retired: plugins are installed by a Node execution of the plugin step. Kept only so historical
+  // effects still decode; Cloud no longer plans either kind.
   EFFECT_KIND_PLUGIN_ENSURE = 4;
   EFFECT_KIND_PLUGIN_DELETE = 5;
 }
@@ -250,6 +252,12 @@ message OperationSnapshot {
   repeated Effect effects = 6;
   // Clone executions registered for this operation's clone step.
   repeated ExecutionRecord clones = 7;
+  // Plugin executions registered for this operation's plugin step, oldest first.
+  repeated ExecutionRecord plugin_executions = 8;
+  // The input the plugin step's execution must carry (install_plugins or remove_plugins), fixed when
+  // the operation entered the step. Unset outside the plugin step or when the set is empty, in which
+  // case the step advances without an execution.
+  optional ExecutionInput plugin_input = 9;
 }
 
 message ClaimOperationRequest {
@@ -323,6 +331,11 @@ enum DeferReason {
   // The Node could not tell the clone's outcome; the operation stays blocked and is not retried
   // automatically.
   DEFER_REASON_CLONE_RESULT_UNKNOWN = 6;
+  // The plugin execution as a whole failed; a retry dispatches a new execution. Failed items alone
+  // never defer the step.
+  DEFER_REASON_PLUGIN_EXECUTION_FAILED = 7;
+  // The Node could not tell the plugin execution's outcome; not retried automatically.
+  DEFER_REASON_PLUGIN_RESULT_UNKNOWN = 8;
 }
 
 message DeferOperationRequest {

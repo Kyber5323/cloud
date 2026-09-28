@@ -3,7 +3,7 @@
 [中文](README.md) | [English](README.en.md)
 
 `internal/controlpb` 是 [`proto/`](../../proto/README.md) 下 `ora.cloud.internal.v1` 契约的 Go 生成物：
-消息类型、`ControllerLeaseService`／`ExecutionService`／`ControlSignalService` 的服务端桩与客户端。
+消息类型、`ControllerLeaseService`／`ExecutionService`／`WorkspaceOperationService`／`NodeReportService`／`AgentRunService`／`ControlSignalService` 的服务端桩与客户端。
 Cloud 是这些服务的服务端；客户端类型只供进程内测试与替身使用。
 
 ## 边界与不变量

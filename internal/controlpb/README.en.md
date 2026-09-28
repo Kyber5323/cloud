@@ -4,7 +4,8 @@
 
 `internal/controlpb` is the Go output generated from the `ora.cloud.internal.v1` contract under
 [`proto/`](../../proto/README.en.md): message types plus server stubs and clients of
-`ControllerLeaseService` / `ExecutionService` / `ControlSignalService`. Cloud is the server of these
+`ControllerLeaseService` / `ExecutionService` / `WorkspaceOperationService` / `NodeReportService` /
+`AgentRunService` / `ControlSignalService`. Cloud is the server of these
 services; the client types exist for in-process tests and doubles.
 
 ## Boundaries and invariants
