@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package ora.cloud.internal.v1;
+
+// Mandatory for controlled cloud execution. Legacy participants must refuse execution when this
+// service or the Node runtime_control capability is unavailable, without falling back to raw clone.
+service RuntimeControlService {
+  rpc ListBindings(ListRuntimeBindingsRequest) returns (ListRuntimeBindingsResponse);
+  rpc AcknowledgeBinding(AcknowledgeRuntimeBindingRequest) returns (AcknowledgeRuntimeBindingResponse);
+  // Read-only and intentionally not submission-replayed: every dispatch obtains current authority.
+  rpc GetExecutionPermit(GetRuntimeExecutionPermitRequest) returns (GetRuntimeExecutionPermitResponse);
+}
+
+// Scope allocated by Cloud. Epochs name different authorities; none substitutes for another.
+message RuntimeBinding {
+  string tenant_id = 1;
+  string workspace_id = 2;
+  string sandbox_id = 3;
+  int64 runtime_generation = 4;
+  string node_id = 5;
+  string node_incarnation_id = 6;
+  string node_instance_id = 7;
+  int64 controller_epoch = 8;
+  int64 control_epoch = 9;
+  int64 control_version = 10;
+  string session_id = 11;
+  string actor_user_id = 12;
+  string operation_id = 13;
+  string execution_id = 14;
+  bool input_closed = 15;
+  int64 issued_at_ms = 16;
+  int64 expires_at_ms = 17;
+}
+
+message ListRuntimeBindingsRequest { int64 epoch = 1; }
+message ListRuntimeBindingsResponse { repeated RuntimeBinding bindings = 1; }
+message AcknowledgeRuntimeBindingRequest {
+  string submission_id = 1;
+  int64 epoch = 2;
+  string workspace_id = 3;
+  string node_instance_id = 4;
+  int64 control_epoch = 5;
+  int64 control_version = 6;
+  bool input_closed = 7;
+  repeated string unfinished_execution_ids = 8;
+}
+message AcknowledgeRuntimeBindingResponse {}
+message GetRuntimeExecutionPermitRequest {
+  int64 epoch = 1;
+  string workspace_id = 2;
+  string node_instance_id = 3;
+  int64 control_epoch = 4;
+  string execution_id = 5;
+}
+message GetRuntimeExecutionPermitResponse { RuntimeBinding binding = 1; }
