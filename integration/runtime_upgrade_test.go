@@ -41,6 +41,9 @@ func TestRuntimeUpgradeOnlyBackfillsUniqueCreationEvidenceAndKeepsUnknownReferen
 			kind = "main"
 		}
 		exec("INSERT INTO workspaces(id,tenant_id,owner_user_id,project_id,kind,desired_state,observed_state,requested_ref) VALUES($1,$2,$3,$4,$5,'running','ready','main')", wid, tenant, admin, project, kind)
+		if kind == "isolated" {
+			exec("INSERT INTO tasks(id,workspace_id,title) VALUES($1,$2,'Historical task')", uuid.NewString(), wid)
+		}
 	}
 	operation := uuid.NewString()
 	exec("INSERT INTO operations(id,tenant_id,actor_user_id,project_id,workspace_id,kind,state,step,request,idempotency_key,request_hash) VALUES($1,$2,$3,$4,$5,'create_workspace','succeeded','done','{}','unique-creation-key','historical-input')", operation, tenant, member, project, ids[1])
