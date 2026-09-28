@@ -1441,9 +1441,11 @@ func (x *SandboxEnsured) GetNodeId() string {
 }
 
 type SandboxTerminated struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Durable rejection of the original ensure identity, including late delivery.
+	LateEnsureFenced bool `protobuf:"varint,1,opt,name=late_ensure_fenced,json=lateEnsureFenced,proto3" json:"late_ensure_fenced,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *SandboxTerminated) Reset() {
@@ -1474,6 +1476,13 @@ func (x *SandboxTerminated) ProtoReflect() protoreflect.Message {
 // Deprecated: Use SandboxTerminated.ProtoReflect.Descriptor instead.
 func (*SandboxTerminated) Descriptor() ([]byte, []int) {
 	return file_ora_cloud_internal_v1_operations_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *SandboxTerminated) GetLateEnsureFenced() bool {
+	if x != nil {
+		return x.LateEnsureFenced
+	}
+	return false
 }
 
 type WorkspaceDataDeleted struct {
@@ -2810,8 +2819,9 @@ const file_ora_cloud_internal_v1_operations_proto_rawDesc = "" +
 	"\arequest\"Y\n" +
 	"\x0eSandboxEnsured\x12.\n" +
 	"\x13sandbox_instance_id\x18\x01 \x01(\tR\x11sandboxInstanceId\x12\x17\n" +
-	"\anode_id\x18\x02 \x01(\tR\x06nodeId\"\x13\n" +
-	"\x11SandboxTerminated\"\x16\n" +
+	"\anode_id\x18\x02 \x01(\tR\x06nodeId\"A\n" +
+	"\x11SandboxTerminated\x12,\n" +
+	"\x12late_ensure_fenced\x18\x01 \x01(\bR\x10lateEnsureFenced\"\x16\n" +
 	"\x14WorkspaceDataDeleted\"+\n" +
 	"\x0fPluginInstalled\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\"\x0f\n" +

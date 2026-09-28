@@ -201,7 +201,10 @@ message SandboxEnsured {
   string node_id = 2;
 }
 
-message SandboxTerminated {}
+message SandboxTerminated {
+  // Durable rejection of the original ensure identity, including late delivery.
+  bool late_ensure_fenced = 1;
+}
 
 message WorkspaceDataDeleted {}
 
