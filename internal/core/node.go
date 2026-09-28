@@ -109,6 +109,10 @@ func nodeStatus(t *transaction, r *ControlRequest, n, w Object) {
 	t.exec("UPDATE node_instances SET connection_state=$2,initialized=$3,last_seen_at=clock_timestamp(),idle_admission_epoch=NULL,version=version+1 WHERE id=$1", n.S("id"), state, r.Body.B("initialized"))
 	if state == "disconnected" {
 		closeUnavailable(t, w)
+	} else if r.Body.B("initialized") && w.S("desiredState") == "running" && w.S("observedState") == "unavailable" && w.S("baseCommitId") != "" {
+		// Transport recovery restores availability of the already initialized runtime only.
+		// Its withdrawn page qualification still requires durable closure and a fresh epoch.
+		t.exec("UPDATE workspaces SET observed_state='ready',admission_open=true,version=version+1 WHERE id=$1", w.S("id"))
 	}
 }
 

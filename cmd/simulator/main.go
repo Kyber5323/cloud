@@ -51,7 +51,7 @@ func run() error {
 	if e != nil {
 		return e
 	}
-	store, e := core.NewStore(db)
+	store, e := core.NewDevelopmentStore(db)
 	if e != nil {
 		return e
 	}
@@ -157,8 +157,8 @@ func run() error {
 }
 
 // demoPlugins syncs the local marketplace fixture, installs hello-world into
-// the demo space, and drains the fan-out so the simulated Node completes the
-// install; it returns the space-level plugin rows for the demo report.
+// the demo space. The absent production plugin executor leaves durable pending intent;
+// this demo never interprets a simulated installation as real runtime evidence.
 func demoPlugins(ctx context.Context, root string, store *core.Store, substrate *simulator.Substrate, client *simulator.Client, controller *simulator.Controller, gateway, user *core.Claims, tenant core.Object) (core.Object, error) {
 	market := filepath.Join(root, "marketplace")
 	artifactPath := filepath.Join(root, "hello-demo.orax")

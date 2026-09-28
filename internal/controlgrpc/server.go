@@ -26,8 +26,8 @@ import (
 	"github.com/wanglongan587/cloud/internal/core"
 )
 
-// HolderMetadata names the Controller on every call. Controllers are not authenticated at this
-// stage: the value is the ControllerId Cloud records as lease and submission holder, nothing more.
+// HolderMetadata names the Controller on every call. Production verifies that this identifier
+// matches the trusted Controller service certificate; it never grants runtime user authority.
 const HolderMetadata = "x-ora-controller-id"
 
 // maxHolder bounds the self-declared identity like any other untrusted identifier.

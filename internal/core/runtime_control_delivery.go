@@ -16,6 +16,13 @@ func runtimeControlCommand(t *transaction, r *ControlRequest) Object {
 			v, ok := id.(string)
 			require(ok && v != "" && len(v) <= 256, 400, "invalid_runtime_evidence")
 		}
+		if closed && (c.S("state") == "held" || c.S("state") == "acquiring") {
+			// Node expiry is conservative. Observed closed input cannot be reopened by a late renew,
+			// even if the PostgreSQL deadline has not elapsed yet.
+			t.exec("UPDATE runtime_controls SET state='draining',binding_confirmed=false,version=version+1,updated_at=clock_timestamp() WHERE workspace_id=$1", c.S("workspaceId"))
+			c = runtimeControl(t, c.S("workspaceId"))
+			auditRuntimeControl(t, c, "node_input_closed", "")
+		}
 		if c.S("state") == "draining" || c.S("state") == "reconciling" {
 			require(closed, 409, "input_closure_required")
 			t.exec("UPDATE runtime_controls SET input_closed=$2,binding_confirmed=false,bound_sandbox_id=$3 WHERE workspace_id=$1", c.S("workspaceId"), len(unfinished) == 0, n.S("sandboxInstanceId"))
@@ -80,6 +87,6 @@ func runtimeBinding(t *transaction, c, n Object) Object {
 	if c.S("maintenanceOperationId") != "" {
 		actor = t.one("SELECT actor_user_id FROM operations WHERE id=$1", c.S("maintenanceOperationId")).S("actorUserId")
 	}
-	clock := t.one("SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint AS issued_at_ms,floor(extract(epoch FROM LEAST(COALESCE($1::timestamptz,clock_timestamp()+interval '60 seconds'),(SELECT expires_at FROM controller_leases WHERE name='global')))*1000)::bigint AS expires_at_ms", c["expiresAt"])
+	clock := t.one("SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint AS issued_at_ms,floor(extract(epoch FROM LEAST(CASE WHEN $2::boolean THEN clock_timestamp()+interval '60 seconds' ELSE COALESCE($1::timestamptz,clock_timestamp()+interval '60 seconds') END,(SELECT expires_at FROM controller_leases WHERE name='global')))*1000)::bigint AS expires_at_ms", c["expiresAt"], c.S("state") == "draining" || c.S("state") == "reconciling")
 	return Object{"workspaceId": w.S("id"), "tenantId": w.S("tenantId"), "controlEpoch": c.N("controlEpoch"), "controlVersion": c.N("version"), "sessionId": c.S("sessionId"), "actorUserId": actor, "operationId": c.S("maintenanceOperationId"), "inputClosed": c.S("state") == "draining" || c.S("state") == "reconciling", "sandboxId": s.S("id"), "runtimeGeneration": s.N("generation"), "nodeInstanceId": n.S("id"), "nodeId": n.S("nodeId"), "nodeIncarnationId": n.S("nodeIncarnationId"), "issuedAtMs": clock.N("issuedAtMs"), "expiresAtMs": clock.N("expiresAtMs")}
 }

@@ -141,3 +141,5 @@ npm run build          # tsc -b && vite build
 ## 多人运行时控制
 
 参见 [运行时控制](docs/runtime-control.md) / [English](docs/runtime-control.en.md)：创建者使用权限、页面独占、持久重启和目标强停。部署必须配置管理双向 TLS；旧无 scope 新执行关闭。真实插件执行器、项目凭据提供方与云端文件/终端/Agent 执行尚未开放。
+
+进程内模拟器显式使用仅供开发的旧 clone 测试夹具；插件选择因缺少真实执行器保留持久 pending（待执行）。它不证明运行时独占、管理认证或工作负载隔离；这些保障须通过 cluster Compose 和真实验收脚本验证。

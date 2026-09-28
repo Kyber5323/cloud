@@ -8,10 +8,10 @@
 
 ## 调用方身份
 
-- 当前阶段不认证 Controller：每次调用以 `x-ora-controller-id` metadata 声明 ControllerId，缺失、为空或超过
-  256 字节时返回 `INVALID_ARGUMENT`。
-- 该值只作为租约与提交记录的持有者进入 `Store.Control`（以 `role=controller` 的 principal 表示），不能由请求字段指定。
-- unary 与 stream 拦截器共用同一读取；后续的服务端流沿用。因为没有认证，`control.grpc_addr` 只应监听回环或私网。
+生产入口要求 TLS 1.3 双向认证，即连接两端均验证可信证书。Controller 证书须包含配置的服务 URI，
+且 ControllerId 必须与 `x-ora-controller-id` 一致；metadata 不能选择另一个服务身份。
+证书缺失或范围不匹配即拒绝，生产没有明文回退。`NewDevelopment` 仅用于显式的进程内测试夹具，
+不进入生产监听器。服务身份也不能替代运行时使用权限、操作会话或代次校验。
 
 ## 错误映射
 
@@ -59,4 +59,11 @@
   干净结束当作 `Drain`；`Drain` 只表示本实例即将停止，不要求持有者释放租约。监听接受间隔不短于 5 秒的
   客户端 HTTP/2 PING（连接上没有活动流时也接受），使 Controller 的保活不会被 `GOAWAY(too_many_pings)`
   断开；服务端自身不发起 PING。监听地址由 `control.grpc_addr` 配置，
-在 TLS 落地前只应绑定回环或私网地址。
+生产监听始终使用经过认证的 TLS。
+
+## 运行时控制
+
+`RuntimeControlService` 交付精确的租户、Workspace、沙盒、运行时代次、Node 宿主代次、用户控制代次
+和 Controller 租约代次。控制确认用于核对入口关闭及未完成责任；派发前还须取得新鲜执行许可。
+迟到快照返回 `ABORTED stale_runtime_control`，不能续期或复活已撤回的会话。
+业务权威与证据边界见 [运行时控制](../../docs/runtime-control.md)。
