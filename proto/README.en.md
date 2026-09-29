@@ -19,6 +19,7 @@ their own clients; they never copy the `.proto` files.
 | `operations.proto` | `WorkspaceOperationService`: claim, plan effects, record effect results, advance and defer Workspace lifecycle operations |
 | `nodes.proto` | `NodeReportService`: the Controller registers the desktop Nodes it holds sessions with (`node_id` + `node_incarnation_id`) and reports their status, end and idle |
 | `signals.proto` | `ControlSignalService.Watch`: a Controller-opened server stream carrying `WorkAvailable` / `OperationAvailable` / `ThreadCommandAvailable` / `Drain` / `NodeAssignment` |
+| `runtime_control.proto` | `RuntimeControlDeliveryService`: protocol generation 2 runtime-control dispatch. A self-declared ControllerId is not authentication; until mutual TLS binds the service identity the capability stays closed and no dispatch is recorded |
 
 ## Semantics
 

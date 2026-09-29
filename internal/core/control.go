@@ -42,6 +42,12 @@ func (s *Store) Control(ctx context.Context, r *ControlRequest) (Object, error) 
 		if r.Action == "clone_get" || r.Action == "clone_pending" {
 			return cloneCommand(t, r)
 		}
+		// Checked before the lease so an old protocol or an unauthenticated
+		// caller cannot replay a stored dispatch, and so a stale lease is not
+		// mistaken for permission to use the new capability.
+		if r.Action == "control_dispatch" {
+			return controlDispatch(t, r)
+		}
 		leaseValid(t, r)
 		if r.Action == "claim" {
 			return claim(t, r)

@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package ora.cloud.internal.v1;
+
+import "ora/cloud/internal/v1/executions.proto";
+
+// Runtime-control delivery. Protocol generation 2 is required. A caller that
+// omits it, or sends any other generation, is the old protocol and is refused.
+// Declaring a ControllerId does not authenticate this service. Until deployment
+// mutual TLS binds a service identity to the controller and the target runtime,
+// Cloud keeps the capability closed and records no dispatch.
+service RuntimeControlDeliveryService {
+  // Records one execution before anything is sent onward. The same submission
+  // and the same execution identity with the same input return the original
+  // record. Cloud does not start a Node, install a plugin, or mark a runtime
+  // stopped.
+  rpc RecordControlDispatch(RecordControlDispatchRequest) returns (RecordControlDispatchResponse);
+}
+
+message RecordControlDispatchRequest {
+  // Caller-chosen retry identity. The same id with different content conflicts.
+  string submission_id = 1;
+  // Controller lease epoch. It fences the coordinator, not the user session.
+  int64 epoch = 2;
+  // Stable execution identity. A retry must reuse it and must not mint another.
+  string execution_id = 3;
+  // Runtime the execution is bound to. Cloud loads the tenant from this row.
+  string workspace_id = 4;
+  // Runtime control epoch of the held session. Not the controller lease epoch.
+  int64 control_epoch = 5;
+  // Runtime generation the execution is pinned to.
+  int64 runtime_generation = 6;
+  // Fixed input. Only a clone spec is accepted; other kinds stay closed.
+  ExecutionInput input = 7;
+  // Must be 2. Zero is the old protocol and is refused.
+  uint32 protocol_generation = 8;
+}
+
+// The durable dispatch record. It carries no user id and no secret.
+message ControlDispatch {
+  string execution_id = 1;
+  string workspace_id = 2;
+  int64 control_epoch = 3;
+  int64 runtime_generation = 4;
+  ExecutionInput input = 5;
+}
+
+message RecordControlDispatchResponse {
+  ControlDispatch dispatch = 1;
+}

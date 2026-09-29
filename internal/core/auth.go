@@ -23,6 +23,13 @@ type Claims struct {
 	WorkspaceID  string `json:"workspaceId,omitempty"`
 	SandboxID    string `json:"sandboxId,omitempty"`
 	Generation   int64  `json:"generation,omitempty"`
+	// DeliveryAuthenticated is set only after a deployment verifier has bound a
+	// service identity to this controller and the target runtime. JWT payloads
+	// cannot set it (json:"-"), and the gRPC metadata interceptor must not set
+	// it either: a self-declared ControllerId is not that binding. Mutual TLS
+	// is not wired, so production callers leave it false and runtime-control
+	// dispatch stays closed.
+	DeliveryAuthenticated bool `json:"-"`
 }
 
 // TrustedKey pins issuer, purpose, and service role as well as the signing key.

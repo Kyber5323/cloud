@@ -54,11 +54,14 @@ func New(store *core.Store) *grpc.Server {
 	controlpb.RegisterControlSignalServiceServer(server, &signalService{store: store})
 	controlpb.RegisterWorkspaceOperationServiceServer(server, &operationService{store: store})
 	controlpb.RegisterNodeReportServiceServer(server, &nodeService{store: store})
+	controlpb.RegisterRuntimeControlDeliveryServiceServer(server, &deliveryService{store: store})
 	return server
 }
 
 // holder turns the declared ControllerId into the controller principal Store.Control expects, so
 // lease ownership and submission replay keep their meaning without any credential.
+// DeliveryAuthenticated stays false: this metadata is not a deployment service identity,
+// and runtime-control dispatch must not treat it as one.
 func holder(ctx context.Context) (context.Context, error) {
 	md, _ := metadata.FromIncomingContext(ctx)
 	values := md.Get(HolderMetadata)

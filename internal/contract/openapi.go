@@ -275,6 +275,13 @@ func Document() map[string]any {
 		"version":        number(),
 	}, "workspaceId", "controlState", "leaseExpired", "observedState", "callerHolds", "allowedActions")
 	s["IdleRefusal"] = object(obj{"accepted": boolean(), "errorCode": enumeration("resource_in_use")}, "accepted", "errorCode")
+	s["ControlDispatch"] = object(obj{
+		"executionId":       str(),
+		"workspaceId":       uuid(),
+		"controlEpoch":      number(),
+		"runtimeGeneration": number(),
+		"input":             obj{"type": "object", "additionalProperties": true},
+	}, "executionId", "workspaceId", "controlEpoch", "runtimeGeneration", "input")
 	// Clone requests mirror the transitional Controller DTO: the tagged state carries the terminal
 	// fact, and identities assigned at dispatch are null until a Controller records it.
 	s["CloneState"] = object(obj{"kind": enumeration("pending", "succeeded", "failed"), "path": str(), "commit": str(), "reason": enumeration("sourceUnavailable", "branchNotFound", "destinationConflict", "operationFailed", "interrupted", "unspecified"), "retainedPath": str()}, "kind")
@@ -421,6 +428,8 @@ func responseSchema(r router.Route) (schema obj, status string) {
 			return ref("Snapshot"), "200"
 		case "plan", "effect_result":
 			return object(obj{"effect": ref("Effect"), "operation": ref("Operation")}, "effect", "operation"), "200"
+		case "control_dispatch":
+			return ref("ControlDispatch"), "200"
 		default:
 			return ref("Operation"), "200"
 		}
@@ -642,6 +651,9 @@ func responseSchema(r router.Route) (schema obj, status string) {
 }
 
 func optionalField(name string, r router.Route) bool {
+	if r.Action == "control_dispatch" {
+		return false
+	}
 	if strings.Contains(r.Path, "/issues") {
 		switch name {
 		case "title":
@@ -667,6 +679,10 @@ func inputSchema(name string, r router.Route) obj {
 	switch name {
 	case "version", "epoch", "admissionEpoch":
 		return obj{"type": "integer", "format": "int64", "minimum": 0}
+	case "controlEpoch", "runtimeGeneration":
+		return obj{"type": "integer", "format": "int64", "minimum": 1}
+	case "protocolGeneration":
+		return obj{"type": "integer", "enum": []int{2}}
 	case "reason":
 		return obj{"type": "string", "minLength": 1, "maxLength": 2000}
 	case "retrySeconds":
@@ -782,6 +798,8 @@ func description(r router.Route) string {
 		return base + "Derives the next step server-side. Requires current-epoch successful effects. Create goes sandbox, node, clone; start goes sandbox, node. quiesce requires all tickets finished and fresh exact-epoch idle proof from each live Node. The clone step requires the operation's latest clone execution (registered over gRPC) to have succeeded on the current Node; it records the baseline commit and commits Workspace Ready/admission with operation success, re-checking the fresh initialized current Node. start commits the same readiness at its node step. Workspace data deletion is planned and completed only after termination confirmation."
 	case "defer":
 		return base + "Preserves operation/effect/resource references and current step; sets blocked or retry_wait with bounded retry delay. Never reports cleanup success on timeout."
+	case "control_dispatch":
+		return "Records one fenced execution after rechecking the held session, use permission, runtime generation, write exclusion and credential availability. The body cannot name the actor. Protocol generation must be 2. A self-declared ControllerId is not authentication, and until mutual TLS binds the service identity this route stays closed with 403 control_capability_unavailable. The same execution and input return the original record. Nothing is sent to a Node, and the runtime is not marked stopped."
 	case "node_register", "node_status", "node_idle", "node_finish":
 		return "Kept for the Go simulator's Node: desktop Nodes hold no Cloud credential and are reported by their Controller over gRPC NodeReportService. Requires node service credential whose sub is a process UUID equal to the sandbox's ensured nodeId and whose workspaceId/sandboxId/generation match the current unterminated instance. Node identity cannot be replaced while live. Status/idle use Node version; ticket finish uses Ticket version and a completed replay is idempotent. initialized cannot regress. Idle is scoped to operationId and exact Workspace admissionEpoch; true requires no active tickets. false fails that quiesce operation with resource_in_use and restores original admission. Registration requires protocolVersion=1; Pod Running alone cannot make Ready."
 	}

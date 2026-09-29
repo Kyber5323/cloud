@@ -18,6 +18,7 @@
 | `operations.proto` | `WorkspaceOperationService`：领取、计划 effect、登记 effect 结果、推进与延期 Workspace 生命周期操作 |
 | `nodes.proto` | `NodeReportService`：Controller 登记它持有会话的 desktop Node（`node_id` + `node_incarnation_id`），并报告状态、结束与 idle |
 | `signals.proto` | `ControlSignalService.Watch`：Controller 发起的服务端流，下发 `WorkAvailable`／`OperationAvailable`／`ThreadCommandAvailable`／`Drain`／`NodeAssignment` |
+| `runtime_control.proto` | `RuntimeControlDeliveryService`：协议代次 2 的运行时控制派发。自报 ControllerId 不是认证；双向 TLS 未绑定时该能力关闭，不登记派发 |
 
 ## 语义要点
 

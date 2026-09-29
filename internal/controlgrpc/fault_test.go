@@ -25,6 +25,7 @@ func TestFaultMapping(t *testing.T) {
 		{"other conflict", &core.Fault{Code: "reconcile_required", Status: 409}, codes.Aborted, controlpb.ErrorCode_ERROR_CODE_CONFLICT},
 		{"invalid input", &core.Fault{Code: "invalid_effect_state", Status: 400}, codes.InvalidArgument, controlpb.ErrorCode_ERROR_CODE_INVALID_INPUT},
 		{"forbidden", &core.Fault{Code: "service_forbidden", Status: 403}, codes.PermissionDenied, controlpb.ErrorCode_ERROR_CODE_SERVICE_FORBIDDEN},
+		{"control capability closed", &core.Fault{Code: "control_capability_unavailable", Status: 403}, codes.FailedPrecondition, controlpb.ErrorCode_ERROR_CODE_CONTROL_CAPABILITY_UNAVAILABLE},
 		{"missing", &core.Fault{Code: "not_found", Status: 404}, codes.NotFound, controlpb.ErrorCode_ERROR_CODE_NOT_FOUND},
 		{"database", errors.New("connection reset"), codes.Unavailable, controlpb.ErrorCode_ERROR_CODE_UNAVAILABLE},
 	}

@@ -13,6 +13,9 @@ API, and maps the resulting `Fault` to a gRPC status. No business rule, cache or
   `x-ora-controller-id` metadata; a missing, blank or longer than 256-byte value is `INVALID_ARGUMENT`.
 - The value only becomes the lease and submission holder in `Store.Control` (as a `role=controller`
   principal), never a request field.
+- `RuntimeControlDeliveryService` does not treat that declaration as authentication. A protocol
+  generation other than 2, or a caller without a deployment-bound service identity, is refused and
+  records nothing. Mutual TLS is not wired, so the capability stays closed.
 - Unary and stream interceptors share one reading; later server streams inherit it. Without
   authentication, `control.grpc_addr` should listen on loopback or a private network only.
 
@@ -23,6 +26,7 @@ The status code is the primary classification and `ErrorDetail{ErrorCode}` is at
 
 | `Fault` | gRPC status | `ErrorCode` |
 |---|---|---|
+| `control_capability_unavailable` | `FAILED_PRECONDITION` | `CONTROL_CAPABILITY_UNAVAILABLE` |
 | `lease_held` | `FAILED_PRECONDITION` | `LEASE_HELD` |
 | `stale_controller`, `stale_operation` | `FAILED_PRECONDITION` | `STALE_CONTROLLER` |
 | other 409 | `ABORTED` | `CONFLICT` |
@@ -62,6 +66,8 @@ The status code is the primary classification and `ErrorDetail{ErrorCode}` is at
   other than the one sandbox_ensure returned; a new incarnation is accepted only after the previous
   one ended. `ReportNodeStatus` / `EndNode` / `ReportNodeIdle` share the Node-credential routes'
   transactions and fencing.
+
+- `RuntimeControlDeliveryService.RecordControlDispatch`: protocol generation 2 runtime-control dispatch. A self-declared ControllerId is not a service identity; until mutual TLS binds one, the RPC stays closed and a refusal writes no `runtime_control_dispatches` row. When the caller is authenticated and permission still holds, one short transaction rechecks the exclusive session, use permission, runtime generation, write exclusion and credential availability, then stores the execution identity, fixed input and control epoch. The same execution and input return the original record. It does not dispatch to a Node and does not mark the runtime stopped.
 
 - `ControlSignalService.Watch`: the Controller-opened server stream. Opening verifies the epoch with
   `lease_check` (read-only, no renewal); afterwards it forwards signals from the in-process

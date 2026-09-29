@@ -11,6 +11,7 @@
 - 当前阶段不认证 Controller：每次调用以 `x-ora-controller-id` metadata 声明 ControllerId，缺失、为空或超过
   256 字节时返回 `INVALID_ARGUMENT`。
 - 该值只作为租约与提交记录的持有者进入 `Store.Control`（以 `role=controller` 的 principal 表示），不能由请求字段指定。
+- `RuntimeControlDeliveryService` 不把这个自报身份当成认证。协议代次不是 2，或调用方没有部署绑定的服务身份时，派发被拒绝且不落库。双向 TLS 未接入，所以该能力保持关闭。
 - unary 与 stream 拦截器共用同一读取；后续的服务端流沿用。因为没有认证，`control.grpc_addr` 只应监听回环或私网。
 
 ## 错误映射
@@ -19,6 +20,7 @@
 
 | `Fault` | gRPC 状态 | `ErrorCode` |
 |---|---|---|
+| `control_capability_unavailable` | `FAILED_PRECONDITION` | `CONTROL_CAPABILITY_UNAVAILABLE` |
 | `lease_held` | `FAILED_PRECONDITION` | `LEASE_HELD` |
 | `stale_controller`、`stale_operation` | `FAILED_PRECONDITION` | `STALE_CONTROLLER` |
 | 其他 409 | `ABORTED` | `CONFLICT` |
@@ -51,6 +53,8 @@
 - `NodeReportService`：Controller 报告它持有会话的 desktop Node。`RegisterNode` 按（sandbox 实例、
   `node_incarnation_id`）幂等，`node_id` 必须等于 sandbox_ensure 返回值；上一个 incarnation 结束后才接受新的。
   `ReportNodeStatus`／`EndNode`／`ReportNodeIdle` 与 Node 凭据路由共享事务与 fencing。
+
+- `RuntimeControlDeliveryService.RecordControlDispatch`：协议代次 2 的运行时控制派发。调用方自报的 ControllerId 不是服务身份；双向 TLS 未绑定前该 RPC 保持关闭，拒绝时不写 `runtime_control_dispatches`。已认证且许可仍有效时，短事务核验独占会话、使用权限、运行代次、写活动互斥和凭据可用性，并保存执行身份、固定输入和控制代次。同一次执行同输入返回原记录。它不向 Node 派发，也不把运行时标成已停止。
 
 - `ControlSignalService.Watch`：Controller 发起的服务端流。打开时以 `lease_check` 校验 epoch（只读，不续期）；
   之后从进程内 `core.ControlHub` 转发信号：`clone_requests` 提交后的 `WorkAvailable{operation_id}`、Workspace operation 创建或重试后的 `OperationAvailable{operation_id}`、

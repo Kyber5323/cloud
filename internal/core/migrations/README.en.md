@@ -52,6 +52,7 @@ Migrations are executed in ascending numerical sequence. The sequence is **appen
 - **`0018_runtime_control.sql`**: Authoritative runtime-control state. The creator is separate from `owner_user_id` and is backfilled only from the one corresponding create operation; anything that cannot be proved stays unknown. Adds exclusive sessions, conflicting write activities, an independent force-stop intent, and plugin maintenance waits. Historical credential references are marked unknown and gain a freeze state. The owner foreign key is unchanged, no secret is stored, and `administrative_stop` is unchanged.
 - **`0019_runtime_use_actor.sql`**: Execution tickets record the verified initiator and no longer require that initiator to be the runtime `owner_user_id`. Use permission is the creator or a current administrator, checked on each access.
 - **`0020_plugin_maintenance_and_credentials.sql`**: Plugin maintenance waits fan out per runtime, so one request can record more than one runtime. Adds credential candidate verification intents. A project binding does not switch before verification succeeds. No secret is stored, and historical credential classification is not rewritten.
+- **`0021_runtime_control_dispatch.sql`**: Adds the runtime-control dispatch record. A row is inserted only after the same transaction rechecks the current permission, and it stores the execution identity, fixed input and control epoch. Historical executions are not backfilled, no secret is stored, and the row does not mean a Node has started.
 
 ## Checksum integrity and immutability
 

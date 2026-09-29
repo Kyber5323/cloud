@@ -33,4 +33,7 @@ enum ErrorCode {
   ERROR_CODE_LEASE_HELD = 6;
   // The service principal is not allowed to perform this call. Carried with PERMISSION_DENIED.
   ERROR_CODE_SERVICE_FORBIDDEN = 7;
+  // Runtime-control dispatch is closed: the caller has no deployment service
+  // identity, or only named itself. Carried with FAILED_PRECONDITION.
+  ERROR_CODE_CONTROL_CAPABILITY_UNAVAILABLE = 8;
 }

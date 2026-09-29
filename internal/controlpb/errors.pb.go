@@ -47,6 +47,9 @@ const (
 	ErrorCode_ERROR_CODE_LEASE_HELD ErrorCode = 6
 	// The service principal is not allowed to perform this call. Carried with PERMISSION_DENIED.
 	ErrorCode_ERROR_CODE_SERVICE_FORBIDDEN ErrorCode = 7
+	// Runtime-control dispatch is closed: the caller has no deployment service
+	// identity, or only named itself. Carried with FAILED_PRECONDITION.
+	ErrorCode_ERROR_CODE_CONTROL_CAPABILITY_UNAVAILABLE ErrorCode = 8
 )
 
 // Enum value maps for ErrorCode.
@@ -60,16 +63,18 @@ var (
 		5: "ERROR_CODE_STALE_CONTROLLER",
 		6: "ERROR_CODE_LEASE_HELD",
 		7: "ERROR_CODE_SERVICE_FORBIDDEN",
+		8: "ERROR_CODE_CONTROL_CAPABILITY_UNAVAILABLE",
 	}
 	ErrorCode_value = map[string]int32{
-		"ERROR_CODE_UNSPECIFIED":       0,
-		"ERROR_CODE_CONFLICT":          1,
-		"ERROR_CODE_INVALID_INPUT":     2,
-		"ERROR_CODE_UNAVAILABLE":       3,
-		"ERROR_CODE_NOT_FOUND":         4,
-		"ERROR_CODE_STALE_CONTROLLER":  5,
-		"ERROR_CODE_LEASE_HELD":        6,
-		"ERROR_CODE_SERVICE_FORBIDDEN": 7,
+		"ERROR_CODE_UNSPECIFIED":                    0,
+		"ERROR_CODE_CONFLICT":                       1,
+		"ERROR_CODE_INVALID_INPUT":                  2,
+		"ERROR_CODE_UNAVAILABLE":                    3,
+		"ERROR_CODE_NOT_FOUND":                      4,
+		"ERROR_CODE_STALE_CONTROLLER":               5,
+		"ERROR_CODE_LEASE_HELD":                     6,
+		"ERROR_CODE_SERVICE_FORBIDDEN":              7,
+		"ERROR_CODE_CONTROL_CAPABILITY_UNAVAILABLE": 8,
 	}
 )
 
@@ -154,7 +159,7 @@ const file_ora_cloud_internal_v1_errors_proto_rawDesc = "" +
 	"\n" +
 	"\"ora/cloud/internal/v1/errors.proto\x12\x15ora.cloud.internal.v1\"C\n" +
 	"\vErrorDetail\x124\n" +
-	"\x04code\x18\x01 \x01(\x0e2 .ora.cloud.internal.v1.ErrorCodeR\x04code*\xf2\x01\n" +
+	"\x04code\x18\x01 \x01(\x0e2 .ora.cloud.internal.v1.ErrorCodeR\x04code*\xa1\x02\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13ERROR_CODE_CONFLICT\x10\x01\x12\x1c\n" +
@@ -163,7 +168,8 @@ const file_ora_cloud_internal_v1_errors_proto_rawDesc = "" +
 	"\x14ERROR_CODE_NOT_FOUND\x10\x04\x12\x1f\n" +
 	"\x1bERROR_CODE_STALE_CONTROLLER\x10\x05\x12\x19\n" +
 	"\x15ERROR_CODE_LEASE_HELD\x10\x06\x12 \n" +
-	"\x1cERROR_CODE_SERVICE_FORBIDDEN\x10\aB\xdc\x01\n" +
+	"\x1cERROR_CODE_SERVICE_FORBIDDEN\x10\a\x12-\n" +
+	")ERROR_CODE_CONTROL_CAPABILITY_UNAVAILABLE\x10\bB\xdc\x01\n" +
 	"\x19com.ora.cloud.internal.v1B\vErrorsProtoP\x01Z;github.com/wanglongan587/cloud/internal/controlpb;controlpb\xa2\x02\x03OCI\xaa\x02\x15Ora.Cloud.Internal.V1\xca\x02\x15Ora\\Cloud\\Internal\\V1\xe2\x02!Ora\\Cloud\\Internal\\V1\\GPBMetadata\xea\x02\x18Ora::Cloud::Internal::V1b\x06proto3"
 
 var (

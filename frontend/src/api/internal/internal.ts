@@ -17,6 +17,7 @@ import type {
 
 import type {
   Access,
+  ControlDispatch,
   EmptyClaim,
   Error,
   IdleRefusal,
@@ -40,6 +41,7 @@ import type {
   PostInternalV1OperationsOidEffectsEidResult200,
   PostInternalV1OperationsOidEffectsEidResultBody,
   PostInternalV1OperationsOidSnapshotBody,
+  PostInternalV1RuntimeControlDispatchesBody,
   Snapshot,
   Ticket
 } from '../generated.schemas';
@@ -1078,4 +1080,72 @@ export const usePostInternalV1OperationsOidSnapshot = <TError = ErrorType<Error>
         TContext
       > => {
       return useMutation(getPostInternalV1OperationsOidSnapshotMutationOptions(options), queryClient);
+    }
+    /**
+ * Records one fenced execution after rechecking the held session, use permission, runtime generation, write exclusion and credential availability. The body cannot name the actor. Protocol generation must be 2. A self-declared ControllerId is not authentication, and until mutual TLS binds the service identity this route stays closed with 403 control_capability_unavailable. The same execution and input return the original record. Nothing is sent to a Node, and the runtime is not marked stopped.
+ * @summary control dispatch
+ */
+export const postInternalV1RuntimeControlDispatches = (
+    postInternalV1RuntimeControlDispatchesBody: PostInternalV1RuntimeControlDispatchesBody,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<ControlDispatch>(
+      {url: `/internal/v1/runtime-control/dispatches`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: postInternalV1RuntimeControlDispatchesBody, signal
+    },
+      options);
+    }
+
+
+
+
+export const getPostInternalV1RuntimeControlDispatchesMutationKey = () => ['postInternalV1RuntimeControlDispatches'] as const;
+
+export const getPostInternalV1RuntimeControlDispatchesMutationOptions = <TError = ErrorType<Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postInternalV1RuntimeControlDispatches>>, TError,PostInternalV1RuntimeControlDispatchesMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof postInternalV1RuntimeControlDispatches>>, TError,PostInternalV1RuntimeControlDispatchesMutationVariables, TContext> => {
+
+const mutationKey = getPostInternalV1RuntimeControlDispatchesMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postInternalV1RuntimeControlDispatches>>, PostInternalV1RuntimeControlDispatchesMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  postInternalV1RuntimeControlDispatches(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PostInternalV1RuntimeControlDispatchesMutationResult = NonNullable<Awaited<ReturnType<typeof postInternalV1RuntimeControlDispatches>>>
+    export type PostInternalV1RuntimeControlDispatchesMutationBody = PostInternalV1RuntimeControlDispatchesBody
+    export type PostInternalV1RuntimeControlDispatchesMutationError = ErrorType<Error>
+    export type PostInternalV1RuntimeControlDispatchesMutationVariables = {data: PostInternalV1RuntimeControlDispatchesBody}
+
+    /**
+ * @summary control dispatch
+ */
+export const usePostInternalV1RuntimeControlDispatches = <TError = ErrorType<Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postInternalV1RuntimeControlDispatches>>, TError,PostInternalV1RuntimeControlDispatchesMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof postInternalV1RuntimeControlDispatches>>,
+        TError,
+        PostInternalV1RuntimeControlDispatchesMutationVariables,
+        TContext
+      > => {
+      return useMutation(getPostInternalV1RuntimeControlDispatchesMutationOptions(options), queryClient);
     }

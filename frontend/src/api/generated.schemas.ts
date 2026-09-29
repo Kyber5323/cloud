@@ -252,6 +252,16 @@ export interface ContextRef {
   tenantId: string;
 }
 
+export type ControlDispatchInput = { [key: string]: unknown };
+
+export interface ControlDispatch {
+  controlEpoch: number;
+  executionId: string;
+  input: ControlDispatchInput;
+  runtimeGeneration: number;
+  workspaceId: string;
+}
+
 export interface ControllerProject {
   createdAt: string;
   /** @nullable */
@@ -2694,5 +2704,27 @@ export type PostInternalV1OperationsOidSnapshotBody = {
   epoch: number;
   /** @minimum 0 */
   version: number;
+};
+
+export type PostInternalV1RuntimeControlDispatchesBodyInput = { [key: string]: unknown };
+
+export type PostInternalV1RuntimeControlDispatchesBodyProtocolGeneration = typeof PostInternalV1RuntimeControlDispatchesBodyProtocolGeneration[keyof typeof PostInternalV1RuntimeControlDispatchesBodyProtocolGeneration];
+
+
+export const PostInternalV1RuntimeControlDispatchesBodyProtocolGeneration = {
+  NUMBER_2: 2,
+} as const;
+
+export type PostInternalV1RuntimeControlDispatchesBody = {
+  /** @minimum 1 */
+  controlEpoch: number;
+  /** @minimum 0 */
+  epoch: number;
+  executionId: string;
+  input: PostInternalV1RuntimeControlDispatchesBodyInput;
+  protocolGeneration: PostInternalV1RuntimeControlDispatchesBodyProtocolGeneration;
+  /** @minimum 1 */
+  runtimeGeneration: number;
+  workspaceId: string;
 };
 

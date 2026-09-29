@@ -137,6 +137,7 @@ func Routes() []Route {
 		{"POST", "/internal/v1/nodes/status", "node_status", []string{"version", "connectionState", "initialized"}},
 		{"POST", "/internal/v1/nodes/idle", "node_idle", []string{"version", "admissionEpoch", "idle", "operationId"}},
 		{"POST", "/internal/v1/nodes/tickets/:ticket/finish", "node_finish", []string{"version"}},
+		{"POST", "/internal/v1/runtime-control/dispatches", "control_dispatch", []string{"epoch", "executionId", "workspaceId", "controlEpoch", "runtimeGeneration", "protocolGeneration", "input"}},
 	}
 }
 
@@ -397,7 +398,7 @@ func bearerToken(header string) (string, bool) {
 
 func validField(name string, value any) bool {
 	switch name {
-	case "version", "epoch", "admissionEpoch", "protocolVersion", "retrySeconds", "position":
+	case "version", "epoch", "admissionEpoch", "protocolVersion", "protocolGeneration", "controlEpoch", "runtimeGeneration", "retrySeconds", "position":
 		n, ok := value.(json.Number)
 		if !ok {
 			return false

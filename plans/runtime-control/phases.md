@@ -29,11 +29,11 @@ Controller、Node、Substrate、cluster Compose、手写前端界面、成员授
 
 ## 当前阶段
 
-下一会话只做第 6 阶段。没有进行中的阶段。
+六个实现阶段都已完成。没有进行中的阶段。下一提交只删除 `plans/runtime-control/`，不再改行为。
 
 ## 已落地
 
-`0018_runtime_control.sql` 已追加在 `0017_tenant_membership_and_join.sql` 之后，`0019_runtime_use_actor.sql` 接在 `0018` 之后，`0020_plugin_maintenance_and_credentials.sql` 接在 `0019` 之后。`0001`–`0017` 的已发布 SQL 没有改。创建本文时 Cloud `main` 为 `3123e3e`。再加迁移从 `0021` 起追加。
+`0018_runtime_control.sql` 已追加在 `0017_tenant_membership_and_join.sql` 之后，`0019_runtime_use_actor.sql` 接在 `0018` 之后，`0020_plugin_maintenance_and_credentials.sql` 接在 `0019` 之后，`0021_runtime_control_dispatch.sql` 接在 `0020` 之后。`0001`–`0017` 的已发布 SQL 没有改。创建本文时 Cloud `main` 为 `3123e3e`。再加迁移从 `0022` 起追加。
 
 第 1 阶段只落地了表、列、约束和迁移测试。第 2 阶段接上了使用权限。第 3 阶段接上了独占会话。第 4 阶段接上了独立强停意图。下一阶段不要退回这些事实：
 
@@ -41,7 +41,8 @@ Controller、Node、Substrate、cluster Compose、手写前端界面、成员授
 - 项目删除在改任何运行时之前检查全部运行时：别人的未关闭会话、活动票据或未结束写返回冲突，不部分删除，也不自动强停。未确认的强停同样挡住项目删除和数据删除。
 - 插件安装、移除和版本变更只接受当前管理员。忙、被占用或已停止时保存期望并等待，不整单失败，也不为装插件启动沙盒。派发前取得系统维护独占。Cloud 的计划或 effect 成功不能把插件标成已安装或已移除。
 - 凭据引用区分团队、个人和未知。成员停用冻结其个人和未知引用的新远程操作；团队引用不因 owner 外键被停。恢复成员不解除冻结。管理员验证意图在结果的版本和能力匹配前不切换绑定。`credential_refs` 的 owner 外键未改，没有密钥列。Cloud 不连接 Git 远端。
-- `internal/controlgrpc/server.go` 使用调用者自报的 `x-ora-controller-id`。
+- `internal/controlgrpc/server.go` 仍用调用者自报的 `x-ora-controller-id` 作为旧租约和提交持有者。该自报身份不是服务认证。`RuntimeControlDeliveryService` 只接受协议代次 2；未认证或旧协议不能登记新的控制派发。双向 TLS 未接入，所以这条新能力在 gRPC 和 `/internal/v1/runtime-control/dispatches` 上保持关闭。
+- 新派发在短事务中核验当前许可后，才把执行身份、固定输入和控制代次写入 `runtime_control_dispatches`。旧的领取、计划 effect 和 clone 登记不写这张表。Cloud 记下的派发不表示 Node 已经执行。
 - 准入和执行票据仍不要求控制会话。没有活动执行票据不等于空闲，租约到期也不表示进程已停止。获取中、收尾中和待对账不能被读成空闲。
 
 ## 阶段
@@ -114,11 +115,15 @@ Controller、Node、Substrate、cluster Compose、手写前端界面、成员授
 
 ### 6. 内部契约
 
-状态：未开始。
+状态：已完成。
 
-新派发在短事务中核验当前许可，并持久化执行身份、固定输入和控制代次。未认证或旧协议不能使用新控制能力。旧内部入口复用同一授权，或关闭。同步 proto、OpenAPI 和 `frontend/src/api` 生成物，不手改生成文件，不交付手写界面。
+迁移是 `internal/core/migrations/0021_runtime_control_dispatch.sql`。契约是 `proto/ora/cloud/internal/v1/runtime_control.proto` 的 `RuntimeControlDeliveryService.RecordControlDispatch`，旧 JSON 入口是 `POST /internal/v1/runtime-control/dispatches`，两者进入 `internal/core/fenced_dispatch.go`。OpenAPI 与 `frontend/src/api` 由生成器更新，没有手改生成文件，也没有手写界面。
 
-必读：跨进程交付 ADR 与其核心用例。Controller 和 Node 的执行点不在本阶段实现。
+协议代次必须是 2。自报的 `x-ora-controller-id` 和已验证的 controller 服务 JWT 都不会把 `DeliveryAuthenticated` 设为真，因此 gRPC 和旧 HTTP 入口现在都拒绝新派发，并且不插入行。测试里的已认证调用者会在同一短事务中核验持有中的会话、使用权限、运行代次、写活动互斥、未确认强停和凭据可用性，然后保存执行身份、固定输入和控制代次。同执行同输入返回原记录。获取中不会被当成持有。旧的 claim、plan 和 clone 登记不写这张表。成功的记录不改变 `observed_state`，也不向 Node 派发。
+
+跑过 `TestFencedDispatchPersistsIdentityInputAndEpoch`、`TestFencedDispatchRejectsUnauthenticatedOldProtocolAndStalePermission`、`TestMigration0021DispatchTableStartsEmpty`、`TestFaultMapping` 和 `TestPublishedOpenAPIIsValidAndCurrent`。
+
+本阶段不能宣称双向 TLS 已接入、Controller 或 Node 已在执行入口核验控制代次、真实插件已经安装、或文件、终端、Agent 和 Substrate 确认已经交付。六份 ADR 仍是 `approved`。specs 未改，核心用例证据仍是 `Missing`。
 
 ## 阶段结束时改本文
 

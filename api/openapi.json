@@ -513,6 +513,38 @@
         ],
         "type": "object"
       },
+      "ControlDispatch": {
+        "additionalProperties": false,
+        "properties": {
+          "controlEpoch": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "executionId": {
+            "type": "string"
+          },
+          "input": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "runtimeGeneration": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "workspaceId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "executionId",
+          "workspaceId",
+          "controlEpoch",
+          "runtimeGeneration",
+          "input"
+        ],
+        "type": "object"
+      },
       "ControllerProject": {
         "additionalProperties": false,
         "properties": {
@@ -20990,6 +21022,167 @@
           }
         ],
         "summary": "snapshot",
+        "tags": [
+          "internal"
+        ]
+      }
+    },
+    "/internal/v1/runtime-control/dispatches": {
+      "post": {
+        "description": "Records one fenced execution after rechecking the held session, use permission, runtime generation, write exclusion and credential availability. The body cannot name the actor. Protocol generation must be 2. A self-declared ControllerId is not authentication, and until mutual TLS binds the service identity this route stays closed with 403 control_capability_unavailable. The same execution and input return the original record. Nothing is sent to a Node, and the runtime is not marked stopped.",
+        "operationId": "post_internal_v1_runtime-control_dispatches",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "controlEpoch": {
+                    "format": "int64",
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "epoch": {
+                    "format": "int64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "executionId": {
+                    "type": "string"
+                  },
+                  "input": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "protocolGeneration": {
+                    "enum": [
+                      2
+                    ],
+                    "type": "integer"
+                  },
+                  "runtimeGeneration": {
+                    "format": "int64",
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "workspaceId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "epoch",
+                  "executionId",
+                  "workspaceId",
+                  "controlEpoch",
+                  "runtimeGeneration",
+                  "protocolGeneration",
+                  "input"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlDispatch"
+                }
+              }
+            },
+            "description": "Successful command or resource response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid JSON/field/input, missing idempotency key, invalid pagination or evidence"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource absent or outside authorized tenant/owner scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version/idempotency conflict, resource_in_use, control_required, control_not_held, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version precondition required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal error; no SQL or secret details are exposed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "External capability not wired in this deployment (a port is Unavailable), e.g. form_descriptor_unavailable or assist_unavailable"
+          }
+        },
+        "security": [
+          {
+            "serviceCredential": []
+          }
+        ],
+        "summary": "control dispatch",
         "tags": [
           "internal"
         ]
