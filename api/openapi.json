@@ -703,6 +703,94 @@
         ],
         "type": "object"
       },
+      "CredentialVerification": {
+        "additionalProperties": false,
+        "properties": {
+          "candidateRefId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "candidateVersion": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "capability": {
+            "enum": [
+              "read",
+              "write"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "initiatorUserId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "projectId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "projectVersion": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "repositoryUrl": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "succeeded",
+              "failed",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "verifiedCapability": {
+            "enum": [
+              "read",
+              "write"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "projectId",
+          "initiatorUserId",
+          "candidateRefId",
+          "repositoryUrl",
+          "capability",
+          "state",
+          "projectVersion",
+          "candidateVersion",
+          "version",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
       "DirectoryPerson": {
         "additionalProperties": false,
         "properties": {
@@ -2424,6 +2512,39 @@
         ],
         "type": "object"
       },
+      "PluginMaintenanceSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "affected": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "completed": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "failed": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "waitingForOccupancy": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "waitingForStart": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "affected",
+          "completed",
+          "waitingForOccupancy",
+          "waitingForStart",
+          "failed"
+        ],
+        "type": "object"
+      },
       "PluginReleaseTarget": {
         "additionalProperties": false,
         "properties": {
@@ -2947,10 +3068,14 @@
               "$ref": "#/components/schemas/SpacePlugin"
             },
             "type": "array"
+          },
+          "maintenance": {
+            "$ref": "#/components/schemas/PluginMaintenanceSummary"
           }
         },
         "required": [
-          "items"
+          "items",
+          "maintenance"
         ],
         "type": "object"
       },
@@ -14734,6 +14859,187 @@
         ]
       }
     },
+    "/api/v1/tenants/{tid}/projects/{pid}/credential-verifications": {
+      "post": {
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Only a current tenant administrator can submit one team credential candidate already configured for this tenant. Cloud stores the project's repository and the requested read or write capability. It does not accept a secret and does not contact a Git remote. The project binding stays unchanged until a matching scoped result is recorded. Read success is not push permission. A failed, unknown, or no-longer-matching result does not switch the binding, and replaying the idempotency key returns the original intent.",
+        "operationId": "post_api_v1_tenants_tid_projects_pid_credential-verifications",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Scoped to tenant and user. Same key and canonical method/path/body returns the original response before version validation; changed request is 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "capability": {
+                    "enum": [
+                      "read",
+                      "write"
+                    ],
+                    "type": "string"
+                  },
+                  "credentialRefId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "version": {
+                    "format": "int64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "capability",
+                  "version"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "resource": {
+                      "$ref": "#/components/schemas/CredentialVerification"
+                    }
+                  },
+                  "required": [
+                    "resource"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful command or resource response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid JSON/field/input, missing idempotency key, invalid pagination or evidence"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource absent or outside authorized tenant/owner scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version/idempotency conflict, resource_in_use, control_required, control_not_held, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version precondition required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal error; no SQL or secret details are exposed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "External capability not wired in this deployment (a port is Unavailable), e.g. form_descriptor_unavailable or assist_unavailable"
+          }
+        },
+        "security": [
+          {
+            "serviceCredential": [],
+            "userCredential": []
+          }
+        ],
+        "summary": "POST /api/v1/tenants/:tid/projects/:pid/credential-verifications",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/api/v1/tenants/{tid}/projects/{pid}/workspaces": {
       "get": {
         "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. scope=own lists runtimes the caller created. The default scope=all lists every runtime. requestedRef and baseCommitId are omitted unless the caller is the creator or a current administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
@@ -15752,7 +16058,7 @@
     },
     "/api/v1/tenants/{tid}/spaces/{spaceId}/plugins": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Only a current tenant administrator can install, remove or change a plugin version. Acceptance stores the desired selection. A busy, stopped or occupied runtime waits instead of failing the whole request. Acceptance does not mark the plugin installed. A member is refused and creates no desired row, operation or effect. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_spaces_spaceId_plugins",
         "parameters": [
           {
@@ -15817,12 +16123,16 @@
                 "schema": {
                   "additionalProperties": false,
                   "properties": {
+                    "maintenance": {
+                      "$ref": "#/components/schemas/PluginMaintenanceSummary"
+                    },
                     "resource": {
                       "$ref": "#/components/schemas/SpacePlugin"
                     }
                   },
                   "required": [
-                    "resource"
+                    "resource",
+                    "maintenance"
                   ],
                   "type": "object"
                 }
@@ -15923,7 +16233,7 @@
         ]
       },
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Active members can read the space selection. The maintenance summary counts affected, waiting, failed and completed runtimes and does not include execution logs. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_spaces_spaceId_plugins",
         "parameters": [
           {
@@ -16049,7 +16359,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Only a current tenant administrator can install, remove or change a plugin version. Acceptance stores the desired selection. A busy, stopped or occupied runtime waits instead of failing the whole request. Acceptance does not mark the plugin installed. A member is refused and creates no desired row, operation or effect. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_spaces_spaceId_plugins",
         "parameters": [
           {
@@ -16111,12 +16421,16 @@
                 "schema": {
                   "additionalProperties": false,
                   "properties": {
+                    "maintenance": {
+                      "$ref": "#/components/schemas/PluginMaintenanceSummary"
+                    },
                     "resource": {
                       "$ref": "#/components/schemas/SpacePlugin"
                     }
                   },
                   "required": [
-                    "resource"
+                    "resource",
+                    "maintenance"
                   ],
                   "type": "object"
                 }

@@ -439,14 +439,9 @@ func (s *Store) RegisterIdentity(ctx context.Context, tid, source, subject, name
 }
 
 // ConfigureCredential is deliberately a deployment-only management path, never a public secret API.
+// An unclassified reference stays unknown; it is not guessed to be a team credential.
 func (s *Store) ConfigureCredential(ctx context.Context, tid, owner, ref string) (Object, error) {
-	return s.transact(ctx, func(t *transaction) Object {
-		membership(t, tid, owner, false)
-		require(strings.TrimSpace(ref) != "" && len(ref) <= 1024, 400, "invalid_secret_ref")
-		id := newID()
-		t.exec("INSERT INTO credential_refs(id,tenant_id,owner_user_id,purpose,secret_ref) VALUES($1,$2,$3,'git',$4)", id, tid, owner, ref)
-		return Object{"id": id, "tenantId": tid, "ownerUserId": owner, "purpose": "git"}
-	})
+	return s.ConfigureClassifiedCredential(ctx, tid, owner, ref, "unknown", "")
 }
 
 func membership(t *transaction, tid, uid string, admin bool) Object {

@@ -154,8 +154,8 @@ func TestPluginEffectChainAndEvidence(t *testing.T) {
 	op = succeeded.O("operation")
 	f.controlStep(t, op, "/advance", core.Object{}, 200)
 	row = f.spacePlugin(sid, "official/hello-world")
-	if row.S("observedState") != "installed" || row.S("observedVersion") != "1.0.0" {
-		t.Fatalf("successful install must converge the row: %v", row)
+	if row.S("observedState") == "installed" {
+		t.Fatalf("cloud effect success must not mark the plugin installed: %v", row)
 	}
 
 	// IT-4.6: success evidence is validated strictly — an installed flag
@@ -187,10 +187,12 @@ func TestPluginEffectAdmissionGate(t *testing.T) {
 	f.drain()
 
 	f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/hello-world"}, "install-admission", 200)
-	op := f.claimPluginOp(t, "install_plugin")
-	refused := f.controlStep(t, op, "/effects", core.Object{"kind": "plugin_ensure", "workspaceId": wid}, 409)
-	if refused.S("code") != "workspace_not_ready" {
-		t.Fatalf("plan on a stopped workspace = %v", refused)
+	var waiting, starts int
+	must(t, f.store.Pool.QueryRow(`SELECT count(*) FROM plugin_maintenance_waits WHERE workspace_id=$1 AND state='waiting_for_start'`, wid).Scan(&waiting))
+	must(t, f.store.Pool.QueryRow(`SELECT count(*) FROM operations WHERE workspace_id=$1 AND kind='start' AND state IN ('queued','running','retry_wait','blocked')`, wid).Scan(&starts))
+	stopped := f.ws(wid)
+	if waiting != 1 || starts != 0 || stopped.S("desiredState") != "stopped" || stopped.S("observedState") != "stopped" {
+		t.Fatalf("stopped runtime was started or dispatched: waiting %d starts %d workspace %v", waiting, starts, stopped)
 	}
 }
 
@@ -237,15 +239,16 @@ func TestPluginAggregationMatrix(t *testing.T) {
 	op = planned.O("operation")
 	result = f.controlStep(t, op, "/effects/"+effect.S("id")+"/result", core.Object{"state": "succeeded", "externalId": external.S("externalId"), "result": external.O("result")}, 200)
 	f.controlStep(t, result.O("operation"), "/advance", core.Object{}, 200)
-	if f.spacePlugin(sid, "official/hello-world").S("observedState") != "installed" {
-		t.Fatal("all instances installed must aggregate to installed")
+	if f.spacePlugin(sid, "official/hello-world").S("observedState") == "installed" {
+		t.Fatal("cloud effect success must not aggregate to installed")
 	}
 
-	// A space without live runtime workspaces converges immediately.
+	// A space without live runtime workspaces saves the desire and does not
+	// report it installed.
 	other := f.createPluginTenant("Empty", "empty-space", "space-empty")
 	o := f.call("POST", f.pluginSpacePath(other.S("id"))+"/plugins", core.Object{"identifier": "official/hello-world"}, "install-empty", 200)
-	if o.O("resource").S("observedState") != "installed" {
-		t.Fatalf("no live workspaces means nothing to do: %v", o)
+	if o.O("resource").S("desiredState") != "installed" || o.O("resource").S("observedState") == "installed" {
+		t.Fatalf("acceptance is not installation: %v", o)
 	}
 }
 
@@ -264,9 +267,9 @@ func TestPluginIsolationSerializationAndRecovery(t *testing.T) {
 	// IT-5.2: an in-flight install serializes the project; a second install
 	// while the first operation is queued is refused.
 	f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/hello-world"}, "install-serial", 200)
-	o := f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/native-tool"}, "install-serial-2", 409)
-	if o.S("code") != "operation_in_progress" {
-		t.Fatalf("second install on a busy project = %v", o)
+	o := f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/native-tool"}, "install-serial-2", 200)
+	if o.O("resource").S("desiredState") != "installed" || o.O("resource").S("observedState") == "installed" || f.scalar("SELECT count(*) FROM operations WHERE kind='install_plugin' AND request->>'pluginId'='official/native-tool'") != 0 {
+		t.Fatalf("busy project must save the second desire without dispatching it: %v", o)
 	}
 	f.drain()
 
@@ -284,7 +287,10 @@ func TestPluginIsolationSerializationAndRecovery(t *testing.T) {
 
 	// IT-5.4: controller takeover — the first controller plans the effect and
 	// is lost before dispatch; a second controller reconciles by stable id.
-	f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/native-tool"}, "install-recover", 200)
+	// A fresh runtime avoids the maintenance session still reconciling the
+	// first space's cloud plan.
+	f.spaceProject(t, other.S("id"), "recover-project")
+	f.call("POST", f.pluginSpacePath(other.S("id"))+"/plugins", core.Object{"identifier": "official/native-tool"}, "install-recover", 200)
 	op := f.claimPluginOp(t, "install_plugin")
 	_ = f.controlStep(t, op, "/effects", core.Object{"kind": "plugin_ensure", "workspaceId": op.S("workspaceId")}, 200)
 	if _, e := f.client.Control(context.Background(), "/internal/v1/controller-lease/release", core.Object{"epoch": f.controller.Epoch}); e != nil {
@@ -299,9 +305,9 @@ func TestPluginIsolationSerializationAndRecovery(t *testing.T) {
 	if e := replacement.Drain(context.Background()); e != nil {
 		t.Fatal(e)
 	}
-	row := f.spacePlugin(sid, "official/native-tool")
-	if row.S("observedState") != "installed" {
-		t.Fatalf("takeover recovery must converge the install: %v", row)
+	row := f.spacePlugin(other.S("id"), "official/native-tool")
+	if row.S("observedState") == "installed" || f.scalar("SELECT count(*) FROM external_effects WHERE operation_id=$1", op.S("id")) != 1 {
+		t.Fatalf("takeover must reconcile the original effect without reporting installed: %v", row)
 	}
 }
 
@@ -341,8 +347,9 @@ func TestPluginConcurrentInstallsAcrossSpaces(t *testing.T) {
 	}
 	f.drain()
 	for _, sid := range []string{spaceA, spaceB.S("id")} {
-		if f.spacePlugin(sid, "official/hello-world").S("observedState") != "installed" {
-			t.Fatalf("space %s must converge to installed", sid)
+		row := f.spacePlugin(sid, "official/hello-world")
+		if row.S("desiredState") != "installed" || row.S("observedState") == "installed" {
+			t.Fatalf("space %s must stay uninstalled after the cloud plan: %v", sid, row)
 		}
 	}
 }

@@ -334,6 +334,53 @@ export interface ControllerWorkspace {
   version: number;
 }
 
+export type CredentialVerificationCapability = typeof CredentialVerificationCapability[keyof typeof CredentialVerificationCapability];
+
+
+export const CredentialVerificationCapability = {
+  read: 'read',
+  write: 'write',
+} as const;
+
+export type CredentialVerificationState = typeof CredentialVerificationState[keyof typeof CredentialVerificationState];
+
+
+export const CredentialVerificationState = {
+  pending: 'pending',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  unknown: 'unknown',
+} as const;
+
+/**
+ * @nullable
+ */
+export type CredentialVerificationVerifiedCapability = typeof CredentialVerificationVerifiedCapability[keyof typeof CredentialVerificationVerifiedCapability] | null;
+
+
+export const CredentialVerificationVerifiedCapability = {
+  read: 'read',
+  write: 'write',
+} as const;
+
+export interface CredentialVerification {
+  candidateRefId: string;
+  candidateVersion: number;
+  capability: CredentialVerificationCapability;
+  createdAt: string;
+  id: string;
+  initiatorUserId: string;
+  projectId: string;
+  projectVersion: number;
+  repositoryUrl: string;
+  state: CredentialVerificationState;
+  tenantId: string;
+  updatedAt: string;
+  /** @nullable */
+  verifiedCapability?: CredentialVerificationVerifiedCapability;
+  version: number;
+}
+
 export interface DirectoryPerson {
   departmentName: string;
   employeeNumber: string;
@@ -1079,6 +1126,14 @@ export interface PluginCatalog {
   syncedAt?: string | null;
 }
 
+export interface PluginMaintenanceSummary {
+  affected: number;
+  completed: number;
+  failed: number;
+  waitingForOccupancy: number;
+  waitingForStart: number;
+}
+
 export interface Project {
   createdAt: string;
   /** @nullable */
@@ -1264,6 +1319,7 @@ export interface SpacePlugin {
 
 export interface SpacePluginList {
   items: SpacePlugin[];
+  maintenance: PluginMaintenanceSummary;
 }
 
 export interface Tenant {
@@ -2214,6 +2270,25 @@ export type PatchApiV1TenantsTidProjectsPidBody = {
   version: number;
 };
 
+export type PostApiV1TenantsTidProjectsPidCredentialVerificationsBodyCapability = typeof PostApiV1TenantsTidProjectsPidCredentialVerificationsBodyCapability[keyof typeof PostApiV1TenantsTidProjectsPidCredentialVerificationsBodyCapability];
+
+
+export const PostApiV1TenantsTidProjectsPidCredentialVerificationsBodyCapability = {
+  read: 'read',
+  write: 'write',
+} as const;
+
+export type PostApiV1TenantsTidProjectsPidCredentialVerificationsBody = {
+  capability: PostApiV1TenantsTidProjectsPidCredentialVerificationsBodyCapability;
+  credentialRefId?: string;
+  /** @minimum 0 */
+  version: number;
+};
+
+export type PostApiV1TenantsTidProjectsPidCredentialVerifications200 = {
+  resource: CredentialVerification;
+};
+
 export type GetApiV1TenantsTidProjectsPidWorkspacesParams = {
 /**
  * @minimum 1
@@ -2301,6 +2376,7 @@ export type DeleteApiV1TenantsTidSpacesSpaceIdPluginsBody = {
 };
 
 export type DeleteApiV1TenantsTidSpacesSpaceIdPlugins200 = {
+  maintenance: PluginMaintenanceSummary;
   resource: SpacePlugin;
 };
 
@@ -2310,6 +2386,7 @@ export type PostApiV1TenantsTidSpacesSpaceIdPluginsBody = {
 };
 
 export type PostApiV1TenantsTidSpacesSpaceIdPlugins200 = {
+  maintenance: PluginMaintenanceSummary;
   resource: SpacePlugin;
 };
 

@@ -127,6 +127,9 @@ func leaseValid(t *transaction, r *ControlRequest) {
 }
 
 func claim(t *transaction, r *ControlRequest) Object {
+	// A restarted controller has to see waits that were saved while it was
+	// down. The scan is database work and does not itself install a plugin.
+	continuePluginMaintenance(t)
 	o := t.one("SELECT * FROM operations WHERE state='queued' OR (state='retry_wait' AND retry_at<=clock_timestamp()) OR state='running' ORDER BY created_at,id LIMIT 1")
 	if o == nil {
 		return Object{"operation": nil}
@@ -322,6 +325,7 @@ func effectResult(t *transaction, r *ControlRequest, o Object, spaceEvents *[]Sp
 			message = "external_failure"
 		}
 		pluginInstanceWriteback(t, o, "failed", "", &message, spaceEvents)
+		failPluginMaintenance(t, o)
 	}
 	t.exec("UPDATE external_effects SET state=$2,external_id=COALESCE($3,external_id),result=$4,reconciled_epoch=$5 WHERE id=$1", e.S("id"), state, nullable(external), jsonText(result), o.N("controllerEpoch"))
 	t.exec("UPDATE operations SET version=version+1,updated_at=now() WHERE id=$1", o.S("id"))
@@ -416,16 +420,15 @@ func advance(t *transaction, r *ControlRequest, o Object, spaceEvents *[]SpaceEv
 		}
 		next = "done"
 	case "plugin":
-		// The plugin step completes the install/remove for exactly the
-		// operation's bound workspace; the space-level aggregate is recomputed
-		// from the fan-out rows in the same transaction.
-		kind := "plugin_ensure"
-		state, version := "installed", o.O("request").S("version")
+		// The effect's own success is the Cloud plan, not a real plugin
+		// executor. Keep the instance in progress and let maintenance
+		// reconcile that effect instead of marking the plugin installed.
+		kind, progress := "plugin_ensure", "installing"
 		if o.S("kind") == "remove_plugin" {
-			kind, state, version = "plugin_delete", "removed", ""
+			kind, progress = "plugin_delete", "removing"
 		}
 		completedEffect(t, o, kind, wid)
-		pluginInstanceWriteback(t, o, state, version, nil, spaceEvents)
+		pluginInstanceWriteback(t, o, progress, "", nil, spaceEvents)
 		next = "done"
 	default:
 		reject(409, "invalid_step")
@@ -435,6 +438,7 @@ func advance(t *transaction, r *ControlRequest, o Object, spaceEvents *[]SpaceEv
 	} else {
 		t.exec("UPDATE operations SET step=$2,version=version+1,updated_at=now() WHERE id=$1", o.S("id"), next)
 	}
+	continuePluginMaintenance(t)
 	return t.one("SELECT * FROM operations WHERE id=$1", o.S("id"))
 }
 
@@ -456,9 +460,11 @@ func openWorkspace(t *transaction, o Object, wid string) {
 	requireNoOpenForceStop(t, wid)
 	t.exec("UPDATE workspaces SET observed_state='ready',admission_open=true,version=version+1 WHERE id=$1", wid)
 	t.exec("UPDATE projects SET lifecycle='active',version=version+1 WHERE id=$1 AND lifecycle='provisioning'", o.S("projectId"))
+	continuePluginMaintenance(t)
 }
 
 func deleteWorkspace(t *transaction, wid string) {
 	t.exec("UPDATE workspaces SET observed_state='deleted',admission_open=false,deleted_at=now(),version=version+1 WHERE id=$1", wid)
 	t.exec("UPDATE tasks SET deleted_at=now(),version=version+1 WHERE workspace_id=$1", wid)
+	continuePluginMaintenance(t)
 }

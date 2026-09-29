@@ -113,13 +113,6 @@ func (t *transaction) spacePluginRow(spaceID, namespace, identifier string) Obje
 	return t.one(`SELECT *,(source_namespace||'/'||identifier) AS id FROM space_plugins WHERE space_id=$1 AND source_namespace=$2 AND identifier=$3`, spaceID, namespace, identifier)
 }
 
-// spacePluginList returns the space's selected plugins with their aggregate
-// observed state. Desired/observed split makes the UI able to show "installing"
-// while the fan-out effects are still running.
-func spacePluginList(t *transaction, spaceID string) Object {
-	return Object{"items": t.list(`SELECT space_id,tenant_id,source_namespace,identifier,desired_state,desired_version,observed_state,observed_version,install_error,version,created_at,updated_at,(source_namespace||'/'||identifier) AS id FROM space_plugins WHERE space_id=$1 ORDER BY source_namespace,identifier`, spaceID)}
-}
-
 // pluginIdentity splits a canonical plugin id into its namespace and identifier
 // segments; the catalog rows are the authority that such an id exists.
 func pluginIdentity(id string) (namespace, identifier string, ok bool) {
@@ -136,113 +129,6 @@ func pluginIdentity(id string) (namespace, identifier string, ok bool) {
 // actual dispatch).
 func livePluginWorkspaces(t *transaction, spaceID string) []Object {
 	return t.list(`SELECT w.* FROM workspaces w JOIN projects p ON p.id=w.project_id WHERE p.space_id=$1 AND w.deleted_at IS NULL ORDER BY w.id`, spaceID)
-}
-
-// installSpacePlugin records the member's install intent and fans it out:
-// one workspace_plugin_instances row per live runtime workspace plus one
-// install_plugin operation per target workspace. The one_project_operation
-// constraint serializes projects: a project with an in-flight operation makes
-// the whole install 409, and one install never creates two operations for the
-// same project (a second live workspace of a busy project is covered by the
-// next install, which re-fans-out pending instances).
-func installSpacePlugin(t *transaction, r *PublicRequest, uid string) Object {
-	spaceMember(t, r.SpaceID, uid)
-	namespace, identifier, ok := pluginIdentity(r.Body.S("identifier"))
-	require(ok, 400, "invalid_plugin_id")
-	entry := t.pluginCatalogEntry(namespace + "/" + identifier)
-	require(entry != nil, 404, "plugin_not_found")
-	// Packs are orchestration entries; v1 does not expand them (plan Q4).
-	require(entry.S("kind") != "pack", 400, "plugin_kind_not_installable")
-	desiredVersion := r.Body.S("pluginVersion")
-	if desiredVersion == "" {
-		desiredVersion = entry.S("version")
-	}
-	// Versions are pinned at install time; the catalog only lists its current
-	// version, so anything else cannot be installed from it (decision D2).
-	require(desiredVersion == entry.S("version"), 400, "plugin_version_unavailable")
-
-	// The already-pinned case short-circuits before any fan-out admission:
-	// re-installing the same version is an idempotent success that must not
-	// depend on the projects being idle.
-	old := t.spacePluginRow(r.SpaceID, namespace, identifier)
-	if old != nil && old.S("desiredState") == "installed" && old.S("desiredVersion") == desiredVersion {
-		return Object{"resource": old}
-	}
-
-	workspaces := livePluginWorkspaces(t, r.SpaceID)
-	// Fail before any write when a target project is busy; the unique index
-	// one_project_operation remains the final integrity guard.
-	for _, w := range workspaces {
-		idleProject(t, w.S("projectId"))
-	}
-
-	if old == nil {
-		t.exec(`INSERT INTO space_plugins(space_id,tenant_id,source_namespace,identifier,desired_state,desired_version,observed_state) VALUES($1,$2,$3,$4,'installed',$5,'pending')`,
-			r.SpaceID, r.TenantID, namespace, identifier, desiredVersion)
-	} else {
-		t.exec(`UPDATE space_plugins SET desired_state='installed',desired_version=$4,observed_state='pending',observed_version=NULL,install_error=NULL,version=version+1,updated_at=now() WHERE space_id=$1 AND source_namespace=$2 AND identifier=$3`,
-			r.SpaceID, namespace, identifier, desiredVersion)
-	}
-
-	// Fan-out: reset every live workspace's instance to pending and create the
-	// install operation where the project admits one. A space without live
-	// runtime workspaces has nothing to execute: the aggregate is already
-	// terminal (plan aggregation rule), so the row converges immediately.
-	projectOps := map[string]bool{}
-	hash := requestHash(r.Method, r.Path, r.Body)
-	for _, w := range workspaces {
-		t.exec(`INSERT INTO workspace_plugin_instances(workspace_id,tenant_id,owner_user_id,project_id,source_namespace,identifier,observed_state) VALUES($1,$2,$3,$4,$5,$6,'pending')
-			ON CONFLICT (workspace_id,source_namespace,identifier) DO UPDATE SET observed_state='pending',observed_version=NULL,install_error=NULL,version=workspace_plugin_instances.version+1,updated_at=now()`,
-			w.S("id"), w.S("tenantId"), w.S("ownerUserId"), w.S("projectId"), namespace, identifier)
-		if projectOps[w.S("projectId")] {
-			continue
-		}
-		req := Object{"pluginId": namespace + "/" + identifier, "version": desiredVersion}
-		newOperation(t, r, uid, w.S("projectId"), w.S("id"), "install_plugin", "plugin", hash, req)
-		projectOps[w.S("projectId")] = true
-	}
-	if len(workspaces) == 0 {
-		t.exec(`UPDATE space_plugins SET observed_state='installed',observed_version=$4,install_error=NULL,version=version+1,updated_at=now() WHERE space_id=$1 AND source_namespace=$2 AND identifier=$3`,
-			r.SpaceID, namespace, identifier, desiredVersion)
-	}
-	return Object{"resource": t.spacePluginRow(r.SpaceID, namespace, identifier)}
-}
-
-// removeSpacePlugin records the removal intent and fans a remove_plugin
-// operation out to the same workspace set an install would target.
-func removeSpacePlugin(t *transaction, r *PublicRequest, uid string) Object {
-	spaceMember(t, r.SpaceID, uid)
-	namespace, identifier, ok := pluginIdentity(r.Body.S("identifier"))
-	require(ok, 400, "invalid_plugin_id")
-	old := t.spacePluginRow(r.SpaceID, namespace, identifier)
-	require(old != nil, 404, "plugin_not_installed")
-	version(old, r.Body.N("version"))
-
-	workspaces := livePluginWorkspaces(t, r.SpaceID)
-	for _, w := range workspaces {
-		idleProject(t, w.S("projectId"))
-	}
-
-	t.exec(`UPDATE space_plugins SET desired_state='removed',observed_state='removing',observed_version=NULL,install_error=NULL,version=version+1,updated_at=now() WHERE space_id=$1 AND source_namespace=$2 AND identifier=$3`,
-		r.SpaceID, namespace, identifier)
-	projectOps := map[string]bool{}
-	hash := requestHash(r.Method, r.Path, r.Body)
-	for _, w := range workspaces {
-		t.exec(`UPDATE workspace_plugin_instances SET observed_state='removing',observed_version=NULL,install_error=NULL,version=version+1,updated_at=now() WHERE workspace_id=$1 AND source_namespace=$2 AND identifier=$3`,
-			w.S("id"), namespace, identifier)
-		if projectOps[w.S("projectId")] {
-			continue
-		}
-		req := Object{"pluginId": namespace + "/" + identifier, "version": old.S("desiredVersion")}
-		newOperation(t, r, uid, w.S("projectId"), w.S("id"), "remove_plugin", "plugin", hash, req)
-		projectOps[w.S("projectId")] = true
-	}
-	if len(workspaces) == 0 {
-		// Nothing to remove on the execution plane: converge immediately.
-		t.exec(`UPDATE space_plugins SET observed_state='removed',observed_version=NULL,install_error=NULL,version=version+1,updated_at=now() WHERE space_id=$1 AND source_namespace=$2 AND identifier=$3`,
-			r.SpaceID, namespace, identifier)
-	}
-	return Object{"resource": t.spacePluginRow(r.SpaceID, namespace, identifier)}
 }
 
 // pluginAggregate folds the fan-out instance states into the space-level

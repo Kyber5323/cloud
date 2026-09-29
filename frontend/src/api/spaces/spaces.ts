@@ -438,7 +438,7 @@ export function useGetSpaceEvents<TData = Awaited<ReturnType<typeof getSpaceEven
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Only a current tenant administrator can install, remove or change a plugin version. Acceptance stores the desired selection. A busy, stopped or occupied runtime waits instead of failing the whole request. Acceptance does not mark the plugin installed. A member is refused and creates no desired row, operation or effect. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary DELETE /api/v1/tenants/:tid/spaces/:spaceId/plugins
  */
 export const deleteApiV1TenantsTidSpacesSpaceIdPlugins = (
@@ -508,7 +508,7 @@ export const useDeleteApiV1TenantsTidSpacesSpaceIdPlugins = <TError = ErrorType<
       return useMutation(getDeleteApiV1TenantsTidSpacesSpaceIdPluginsMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Active members can read the space selection. The maintenance summary counts affected, waiting, failed and completed runtimes and does not include execution logs. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/tenants/:tid/spaces/:spaceId/plugins
  */
 export const getApiV1TenantsTidSpacesSpaceIdPlugins = (
@@ -608,7 +608,7 @@ export function useGetApiV1TenantsTidSpacesSpaceIdPlugins<TData = Awaited<Return
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Only a current tenant administrator can install, remove or change a plugin version. Acceptance stores the desired selection. A busy, stopped or occupied runtime waits instead of failing the whole request. Acceptance does not mark the plugin installed. A member is refused and creates no desired row, operation or effect. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/spaces/:spaceId/plugins
  */
 export const postApiV1TenantsTidSpacesSpaceIdPlugins = (

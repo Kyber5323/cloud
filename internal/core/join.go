@@ -69,6 +69,8 @@ AND tn.status='active' AND tn.deleted_at IS NULL`, joinTokenDigest(token))
 
 // addMembership preserves durable references by reactivating an existing row
 // instead of deleting or replacing it. Caller authorization is checked above.
+// Reactivation does not unfreeze repository credentials. A personal or unknown
+// reference stays frozen until an administrator's team candidate is verified.
 func addMembership(t *transaction, tid, uid, role string) Object {
 	old := t.one("SELECT * FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2", tid, uid)
 	if old == nil {

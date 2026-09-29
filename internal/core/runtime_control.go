@@ -88,6 +88,7 @@ func releaseRuntimeControl(t *transaction, r *PublicRequest, uid string) Object 
 	default:
 		closeRuntimeControl(t, session, "release")
 	}
+	continuePluginMaintenance(t)
 	return presentRuntimeControl(t, r, uid, w)
 }
 
@@ -267,7 +268,7 @@ func settleRuntimeControl(t *transaction, w Object) Object {
 		closeRuntimeControl(t, session, "handoff")
 		return nil
 	case "reconciling":
-		if blocks || unknown {
+		if blocks || unknown || (session.S("holderKind") == "system_maintenance" && openPluginMaintenance(t, session.S("workspaceId"))) {
 			return session
 		}
 		closeRuntimeControl(t, session, "handoff")

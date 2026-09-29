@@ -25,6 +25,10 @@ func workspaceCloneDispatch(t *transaction, r *ControlRequest, operation, execut
 	}
 	require(o.S("step") == "clone" && o.S("state") == "running", 409, "dispatch_conflict")
 	require(o.N("controllerEpoch") == r.Body.N("epoch"), 409, "stale_operation")
+	// An accepted create can still be waiting to clone. Membership may have
+	// frozen the reference after acceptance, so dispatch checks again. An
+	// execution that already exists returned above and keeps its original scope.
+	require(!projectCredentialFrozen(t, o.S("projectId")), 409, "credential_unavailable")
 	wid := o.S("workspaceId")
 	w := t.one("SELECT w.requested_ref,p.repository_url FROM workspaces w JOIN projects p ON p.id=w.project_id WHERE w.id=$1", wid)
 	require(input.S("repositoryUrl") == w.S("repositoryUrl") && input.S("branch") == w.S("requestedRef"), 409, "dispatch_conflict")

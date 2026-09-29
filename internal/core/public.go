@@ -57,7 +57,7 @@ func (s *Store) Public(ctx context.Context, r *PublicRequest) (Object, int, erro
 			out, status = createTenant(t, r, uid)
 			return out
 		}
-		isAdmin := r.SpaceID == "" && (strings.HasSuffix(r.Path, "/resource-status") || strings.HasSuffix(r.Path, "/administrative-stop") || strings.HasSuffix(r.Path, "/force-stop") || (r.UserID != "" && r.Method == "PUT") || strings.Contains(r.Path, "/invitations") || strings.Contains(r.Path, "/join-links") || strings.Contains(r.Path, "/join-requests") || strings.HasSuffix(r.Path, "/members/huawei"))
+		isAdmin := r.SpaceID == "" && (strings.HasSuffix(r.Path, "/resource-status") || strings.HasSuffix(r.Path, "/administrative-stop") || strings.HasSuffix(r.Path, "/force-stop") || strings.HasSuffix(r.Path, "/credential-verifications") || (r.UserID != "" && r.Method == "PUT") || strings.Contains(r.Path, "/invitations") || strings.Contains(r.Path, "/join-links") || strings.Contains(r.Path, "/join-requests") || strings.HasSuffix(r.Path, "/members/huawei"))
 		membership(t, r.TenantID, uid, isAdmin)
 		if r.Method == "GET" {
 			return readPublic(t, r, uid)
@@ -126,6 +126,11 @@ func (s *Store) Public(ctx context.Context, r *PublicRequest) (Object, int, erro
 			out = workspaceAction(t, r, uid, hash, isAdmin)
 			status = 202
 		case r.ProjectID != "":
+			if strings.HasSuffix(r.Path, "/credential-verifications") {
+				require(r.Method == "POST", 404, "not_found")
+				out = submitCredentialVerification(t, r, uid, hash)
+				break
+			}
 			p, m := projectInSpace(t, r.TenantID, uid, r.ProjectID)
 			switch {
 			case strings.HasSuffix(r.Path, "/workspaces"):
@@ -432,6 +437,9 @@ func putMember(t *transaction, r *PublicRequest, uid string) Object {
 	t.exec("UPDATE tenant_memberships SET role=$3,status=$4,version=version+1 WHERE tenant_id=$1 AND user_id=$2", r.TenantID, r.UserID, role, status)
 	// The same transaction drops operation rights the new role or status no longer grants.
 	revokeLostRuntimeControl(t, r.TenantID, r.UserID)
+	if status == "disabled" {
+		freezeMemberCredentials(t, r.TenantID, r.UserID)
+	}
 	return t.one("SELECT * FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2", r.TenantID, r.UserID)
 }
 
@@ -472,7 +480,9 @@ func createProject(t *transaction, r *PublicRequest, uid, hash string) Object {
 	var cred any
 	if id := r.Body.S("credentialRefId"); id != "" {
 		require(validID(id), 400, "invalid_credential_ref")
-		require(t.one("SELECT id FROM credential_refs WHERE id=$1 AND tenant_id=$2 AND owner_user_id=$3 AND purpose='git' AND deleted_at IS NULL", id, r.TenantID, uid) != nil, 404, "credential_ref_not_found")
+		ref := t.one("SELECT availability FROM credential_refs WHERE id=$1 AND tenant_id=$2 AND owner_user_id=$3 AND purpose='git' AND deleted_at IS NULL", id, r.TenantID, uid)
+		require(ref != nil, 404, "credential_ref_not_found")
+		require(ref.S("availability") != "frozen", 409, "credential_unavailable")
 		cred = id
 	}
 	pid, wid := newID(), newID()
@@ -496,6 +506,7 @@ func insertWorkspace(t *transaction, tid, uid, pid, wid, kind, ref, title string
 
 func createWorkspace(t *transaction, r *PublicRequest, p Object, uid, hash string) Object {
 	require(p.S("lifecycle") == "active", 409, "resource_unavailable")
+	require(!projectCredentialFrozen(t, p.S("id")), 409, "credential_unavailable")
 	idleProject(t, p.S("id"))
 	title := validText(r.Body.S("title"), 200)
 	ref := validRef(r.Body.S("baseRef"))

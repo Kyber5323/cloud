@@ -29,18 +29,18 @@ Controller、Node、Substrate、cluster Compose、手写前端界面、成员授
 
 ## 当前阶段
 
-下一会话只做第 5 阶段。没有进行中的阶段。
+下一会话只做第 6 阶段。没有进行中的阶段。
 
 ## 已落地
 
-`0018_runtime_control.sql` 已追加在 `0017_tenant_membership_and_join.sql` 之后，`0019_runtime_use_actor.sql` 接在 `0018` 之后。`0001`–`0017` 的已发布 SQL 没有改。创建本文时 Cloud `main` 为 `3123e3e`。再加迁移从 `0020` 起追加。
+`0018_runtime_control.sql` 已追加在 `0017_tenant_membership_and_join.sql` 之后，`0019_runtime_use_actor.sql` 接在 `0018` 之后，`0020_plugin_maintenance_and_credentials.sql` 接在 `0019` 之后。`0001`–`0017` 的已发布 SQL 没有改。创建本文时 Cloud `main` 为 `3123e3e`。再加迁移从 `0021` 起追加。
 
 第 1 阶段只落地了表、列、约束和迁移测试。第 2 阶段接上了使用权限。第 3 阶段接上了独占会话。第 4 阶段接上了独立强停意图。下一阶段不要退回这些事实：
 
 - 普通启动、停止、重启和删除已经要求使用权限和调用者当前持有的会话。`administrative_stop` 仍是管理员的活动保护停止。独立强停可以登记，但没有执行端终止确认，不能把运行时标成已停止。
 - 项目删除在改任何运行时之前检查全部运行时：别人的未关闭会话、活动票据或未结束写返回冲突，不部分删除，也不自动强停。未确认的强停同样挡住项目删除和数据删除。
-- `internal/core/plugins.go` 允许成员安装和移除；项目忙时整单冲突。
-- `internal/core/migrations/0001_core.sql` 的 `credential_refs` 只有 owner 外键。冻结和新远程操作还没生效。
+- 插件安装、移除和版本变更只接受当前管理员。忙、被占用或已停止时保存期望并等待，不整单失败，也不为装插件启动沙盒。派发前取得系统维护独占。Cloud 的计划或 effect 成功不能把插件标成已安装或已移除。
+- 凭据引用区分团队、个人和未知。成员停用冻结其个人和未知引用的新远程操作；团队引用不因 owner 外键被停。恢复成员不解除冻结。管理员验证意图在结果的版本和能力匹配前不切换绑定。`credential_refs` 的 owner 外键未改，没有密钥列。Cloud 不连接 Git 远端。
 - `internal/controlgrpc/server.go` 使用调用者自报的 `x-ora-controller-id`。
 - 准入和执行票据仍不要求控制会话。没有活动执行票据不等于空闲，租约到期也不表示进程已停止。获取中、收尾中和待对账不能被读成空闲。
 
@@ -100,11 +100,17 @@ Controller、Node、Substrate、cluster Compose、手写前端界面、成员授
 
 ### 5. 插件与凭据
 
-状态：未开始。
+状态：已完成。
 
-插件安装、移除和版本变更仅当前管理员可写；忙或被占用时保存期望并等待，不整单失败。维护派发前取得系统维护独占。Cloud 里的计划成功不能标成插件已安装。凭据引用增加团队、个人、未知和冻结状态。成员停用时冻结其个人和未知引用的新远程操作，团队引用不因 owner 外键被误停。管理员验证意图在结果匹配前不切换绑定。Cloud 不接收密钥，也不连接 Git 远端。
+迁移是 `internal/core/migrations/0020_plugin_maintenance_and_credentials.sql`：同一请求的维护等待可以按运行时展开，并新增 `credential_verification_intents`。实现在 `internal/core/plugin_maintenance.go` 和 `internal/core/credential_continuity.go`。
 
-必读：插件维护 ADR、凭据连续性 ADR，以及两份核心用例。
+安装、移除和版本变更只接受当前租户管理员。成员被拒绝时不产生期望、operation 或 effect。忙、被人类会话占用或已停止时保存期望并等待，不整单失败，也不为装插件自行启动沙盒。人类释放、运行时启动或控制器再次认领后，调度继续处理原来的等待。派发前取得系统维护独占；维护持有时用户获取返回占用。Cloud 记录的 effect 成功只把实例留在进行中，不把空间插件标成已安装或已移除。真实执行器未接线，等待停在待对账，不新建第二条安装。
+
+凭据引用使用已有的团队、个人、未知和冻结列。成员停用冻结其个人和未知引用，团队引用保持可用。恢复成员关系不解除冻结。尚未派发的 clone 在派发前重新检查；已开始的执行按原范围收尾。本地停止和重新启动不因远程凭据冻结被阻断。管理员只能提交已配置的团队引用作为候选，声明读或写能力。Cloud 不接收密钥，也不连接 Git 远端。只验证读取不能切换成可推送。候选、项目版本或冻结状态不再匹配时不切换绑定，也不改写 owner、创建者或任务发起者。结果写回还没有接到旧的控制器协议上。
+
+跑过 `TestPluginSelectionIsAdminOnlyAndDoesNotReportInstalled`、`TestPluginMaintenanceWaitsForHumanRelease`、`TestPluginWaitLeavesADeletedRuntime`、`TestMemberDepartureFreezesPersonalCredentialsAndRejoinDoesNot`、`TestInFlightCloneRechecksFrozenCredential`、`TestCredentialVerificationDoesNotSwitchUntilTheResultMatches`、`TestMigration0020FanoutWaitAndVerificationIntent`，并复跑插件安装、生命周期、effect、并发安装、`TestForceStopDuringPluginInstallDoesNotFinishThePlugin` 和 `TestMigration0018UpgradeFrom0017BackfillsCreatorsWithoutGuessing`。
+
+本阶段不能宣称真实插件已经安装、Node 已按引用解析凭据、执行端会拒绝静态回退，或内部契约已经认证控制代次。文件、终端、Agent 和 Substrate 确认仍未交付。六份 ADR 仍是 `approved`。specs 未改，核心用例证据仍是 `Missing`。
 
 ### 6. 内部契约
 

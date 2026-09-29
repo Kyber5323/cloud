@@ -178,7 +178,30 @@ func Document() map[string]any {
 	spacePluginProps["observedState"] = enumeration("pending", "installing", "installed", "failed", "removing", "removed")
 	spacePluginProps["observedVersion"] = optional(str())
 	spacePluginProps["installError"] = optional(str())
-	s["SpacePluginList"] = object(obj{"items": array(ref("SpacePlugin"))}, "items")
+	s["PluginMaintenanceSummary"] = object(obj{
+		"affected":            number(),
+		"completed":           number(),
+		"waitingForOccupancy": number(),
+		"waitingForStart":     number(),
+		"failed":              number(),
+	}, "affected", "completed", "waitingForOccupancy", "waitingForStart", "failed")
+	s["SpacePluginList"] = object(obj{"items": array(ref("SpacePlugin")), "maintenance": ref("PluginMaintenanceSummary")}, "items", "maintenance")
+	s["CredentialVerification"] = object(obj{
+		"id":                 uuid(),
+		"tenantId":           uuid(),
+		"projectId":          uuid(),
+		"initiatorUserId":    uuid(),
+		"candidateRefId":     uuid(),
+		"repositoryUrl":      str(),
+		"capability":         enumeration("read", "write"),
+		"state":              enumeration("pending", "succeeded", "failed", "unknown"),
+		"verifiedCapability": optional(enumeration("read", "write")),
+		"projectVersion":     number(),
+		"candidateVersion":   number(),
+		"version":            number(),
+		"createdAt":          timestamp(),
+		"updatedAt":          timestamp(),
+	}, "id", "tenantId", "projectId", "initiatorUserId", "candidateRefId", "repositoryUrl", "capability", "state", "projectVersion", "candidateVersion", "version", "createdAt", "updatedAt")
 	s["PluginUniversalRelease"] = object(obj{"url": str(), "sha256": str()}, "url", "sha256")
 	s["PluginReleaseTarget"] = object(obj{"target": str(), "url": str(), "sha256": str()}, "target", "url", "sha256")
 	s["PluginLogoCandidate"] = object(obj{"role": enumeration("universal", "light", "dark"), "extension": enumeration("svg", "png", "webp", "jpg", "jpeg")}, "role", "extension")
@@ -408,6 +431,9 @@ func responseSchema(r router.Route) (schema obj, status string) {
 	if strings.HasSuffix(r.Path, "/force-stop") {
 		return ref("ForceStopIntent"), "202"
 	}
+	if strings.HasSuffix(r.Path, "/credential-verifications") {
+		return object(obj{"resource": ref("CredentialVerification")}, "resource"), "200"
+	}
 	if r.Path == "/api/v1/tenants/:tid/people" {
 		return object(obj{"items": array(ref("DirectoryPerson"))}, "items"), "200"
 	}
@@ -457,7 +483,7 @@ func responseSchema(r router.Route) (schema obj, status string) {
 			if r.Method == "GET" {
 				return ref("SpacePluginList"), "200"
 			}
-			return object(obj{"resource": ref("SpacePlugin")}, "resource"), "200"
+			return object(obj{"resource": ref("SpacePlugin"), "maintenance": ref("PluginMaintenanceSummary")}, "resource", "maintenance"), "200"
 		case strings.Contains(r.Path, "/projects"):
 			if r.Method == "GET" {
 				return object(obj{"items": array(ref("Project")), "nextCursor": str()}, "items", "nextCursor"), "200"
@@ -653,6 +679,8 @@ func inputSchema(name string, r router.Route) obj {
 		return ref("EffectResult")
 	case "action":
 		return enumeration("read", "execute")
+	case "capability":
+		return enumeration("read", "write")
 	case "role":
 		return enumeration("admin", "member")
 	case "status":
@@ -756,6 +784,16 @@ func description(r router.Route) string {
 		return base + "Preserves operation/effect/resource references and current step; sets blocked or retry_wait with bounded retry delay. Never reports cleanup success on timeout."
 	case "node_register", "node_status", "node_idle", "node_finish":
 		return "Kept for the Go simulator's Node: desktop Nodes hold no Cloud credential and are reported by their Controller over gRPC NodeReportService. Requires node service credential whose sub is a process UUID equal to the sandbox's ensured nodeId and whose workspaceId/sandboxId/generation match the current unterminated instance. Node identity cannot be replaced while live. Status/idle use Node version; ticket finish uses Ticket version and a completed replay is idempotent. initialized cannot regress. Idle is scoped to operationId and exact Workspace admissionEpoch; true requires no active tickets. false fails that quiesce operation with resource_in_use and restores original admission. Registration requires protocolVersion=1; Pod Running alone cannot make Ready."
+	}
+	if strings.HasSuffix(r.Path, "/credential-verifications") {
+		return base + "Only a current tenant administrator can submit one team credential candidate already configured for this tenant. Cloud stores the project's repository and the requested read or write capability. It does not accept a secret and does not contact a Git remote. The project binding stays unchanged until a matching scoped result is recorded. Read success is not push permission. A failed, unknown, or no-longer-matching result does not switch the binding, and replaying the idempotency key returns the original intent."
+	}
+	if strings.Contains(r.Path, "/plugins") && !strings.HasSuffix(r.Path, "/plugins/catalog") {
+		if r.Method == "GET" {
+			base += "Active members can read the space selection. The maintenance summary counts affected, waiting, failed and completed runtimes and does not include execution logs. "
+		} else {
+			base += "Only a current tenant administrator can install, remove or change a plugin version. Acceptance stores the desired selection. A busy, stopped or occupied runtime waits instead of failing the whole request. Acceptance does not mark the plugin installed. A member is refused and creates no desired row, operation or effect. "
+		}
 	}
 	if strings.Contains(r.Path, "/spaces") {
 		switch {
