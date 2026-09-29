@@ -117,6 +117,8 @@ func (s *Store) Public(ctx context.Context, r *PublicRequest) (Object, int, erro
 		case r.OperationID != "":
 			out = retryOperation(t, r, uid)
 			status = 202
+		case r.WorkspaceID != "" && strings.Contains(r.Path, "/control"):
+			out = mutateRuntimeControl(t, r, uid)
 		case r.WorkspaceID != "":
 			out = workspaceAction(t, r, uid, hash, isAdmin)
 			status = 202
@@ -394,6 +396,8 @@ func readPublic(t *transaction, r *PublicRequest, uid string) Object {
 		return page(t, "SELECT w.id,w.project_id,w.owner_user_id,w.kind,w.desired_state,w.observed_state,w.runtime_generation,w.version FROM workspaces w WHERE w.tenant_id=$1 AND w.deleted_at IS NULL", []any{r.TenantID}, "w.id", r)
 	case r.OperationID != "":
 		return ownedOperation(t, r, uid)
+	case strings.Contains(r.Path, "/control"):
+		return readRuntimeControl(t, r, uid)
 	case r.WorkspaceID != "":
 		w := workspace(t, r.TenantID, uid, r.WorkspaceID, false)
 		return presentRuntime(w, runtimeContentAllowed(membership(t, r.TenantID, uid, false).S("role"), uid, w))
@@ -421,6 +425,8 @@ func putMember(t *transaction, r *PublicRequest, uid string) Object {
 		require(t.one("SELECT m.user_id FROM tenant_memberships m JOIN users u ON u.id=m.user_id WHERE m.tenant_id=$1 AND m.user_id<>$2 AND m.role='admin' AND m.status='active' AND u.status='active' AND u.deleted_at IS NULL", r.TenantID, r.UserID) != nil, 409, "last_admin")
 	}
 	t.exec("UPDATE tenant_memberships SET role=$3,status=$4,version=version+1 WHERE tenant_id=$1 AND user_id=$2", r.TenantID, r.UserID, role, status)
+	// The same transaction drops operation rights the new role or status no longer grants.
+	revokeLostRuntimeControl(t, r.TenantID, r.UserID)
 	return t.one("SELECT * FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2", r.TenantID, r.UserID)
 }
 
@@ -549,6 +555,12 @@ func workspaceAction(t *transaction, r *PublicRequest, uid, hash string, admin b
 	require(p.S("lifecycle") == "active", 409, "resource_unavailable")
 	version(w, r.Body.N("version"))
 	idleProject(t, p.S("id"))
+	// administrative-stop keeps its existing administrator path. Ordinary start,
+	// stop, restart and delete need use permission and the caller's held session.
+	if !admin {
+		requireRuntimeUse(t, r.TenantID, uid, w)
+		requireHeldRuntimeControl(t, r, uid, w)
+	}
 	kind, step := "stop", "quiesce"
 	req := Object{"previous": Object{w.S("id"): w}}
 	if strings.HasSuffix(r.Path, "/start") {

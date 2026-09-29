@@ -234,6 +234,19 @@ func Document() map[string]any {
 	s["Snapshot"] = object(obj{"operation": ref("Operation"), "project": ref("ControllerProject"), "workspaces": array(ref("ControllerWorkspace")), "sandboxes": array(ref("Sandbox")), "nodes": array(ref("Node")), "effects": array(ref("Effect")), "clones": array(ref("CloneExecution"))}, "operation", "project", "workspaces", "sandboxes", "nodes", "effects", "clones")
 	s["EmptyClaim"] = object(obj{"operation": obj{"type": "object", "nullable": true, "enum": []any{nil}}}, "operation")
 	s["Access"] = object(obj{"userId": uuid(), "tenantId": uuid(), "workspaceId": uuid(), "allowedAction": enumeration("read", "execute"), "executable": boolean(), "runtimeGeneration": number()}, "userId", "tenantId", "workspaceId", "allowedAction", "executable", "runtimeGeneration")
+	s["RuntimeControl"] = object(obj{
+		"workspaceId":    uuid(),
+		"controlState":   enumeration("idle", "acquiring", "held", "winding_down", "reconciling"),
+		"leaseExpired":   boolean(),
+		"observedState":  enumeration("provisioning", "starting", "ready", "stopping", "stopped", "unavailable", "deleting", "deleted"),
+		"callerHolds":    boolean(),
+		"allowedActions": array(enumeration("acquire", "renew", "release", "start", "stop", "delete", "write")),
+		"sessionId":      optional(uuid()),
+		"holderUserId":   optional(uuid()),
+		"controlEpoch":   number(),
+		"expiresAt":      optional(timestamp()),
+		"version":        number(),
+	}, "workspaceId", "controlState", "leaseExpired", "observedState", "callerHolds", "allowedActions")
 	s["IdleRefusal"] = object(obj{"accepted": boolean(), "errorCode": enumeration("resource_in_use")}, "accepted", "errorCode")
 	// Clone requests mirror the transitional Controller DTO: the tagged state carries the terminal
 	// fact, and identities assigned at dispatch are null until a Controller records it.
@@ -384,6 +397,9 @@ func responseSchema(r router.Route) (schema obj, status string) {
 		default:
 			return ref("Operation"), "200"
 		}
+	}
+	if strings.Contains(r.Path, "/control") {
+		return ref("RuntimeControl"), "200"
 	}
 	if r.Path == "/api/v1/tenants/:tid/people" {
 		return object(obj{"items": array(ref("DirectoryPerson"))}, "items"), "200"
@@ -657,7 +673,7 @@ func inputSchema(name string, r router.Route) obj {
 		return enumeration("sandbox_ensure", "sandbox_terminate", "workspace_data_delete", "plugin_ensure", "plugin_delete")
 	case "errorCode":
 		return enumeration("substrate_timeout", "termination_unconfirmed", "git_cleanup_failed", "node_unavailable", "external_failure", "clone_failed", "clone_result_unknown")
-	case "tenantId", "operationId", "ticketId", "credentialRefId":
+	case "tenantId", "operationId", "ticketId", "credentialRefId", "sessionId":
 		return uuid()
 	case "category":
 		return enumeration("unstarted", "started", "done", "closed")
@@ -756,8 +772,14 @@ func description(r router.Route) string {
 	if strings.Contains(r.Path, "resource-status") || strings.Contains(r.Path, "administrative-stop") {
 		base += "Administrator response explicitly excludes repository URL, worktree details, credentials, execution output and operation request/result/error details. Administrative stop still requires idle evidence. "
 	}
+	if strings.Contains(r.Path, "/control") {
+		return base + "Exclusive operation lease for one runtime. The lease lasts 60 seconds from PostgreSQL clock_timestamp and the client renews it every 20 seconds; both use the database clock. One open session is reserved atomically. Replaying an idempotency key returns the stored result and does not restore or extend an expired lease. Acquiring, winding down and reconciling are not idle, and lease expiry does not mean the process has stopped. A second conflicting write returns 409 resource_in_use without a file, Git or process effect. A caller without use permission receives 403 runtime_use_forbidden."
+	}
 	if strings.Contains(r.Path, "operations") {
 		base += "Operation detail and retry follow the target runtime's creator or a current administrator, not the historical actor. administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. "
+	}
+	if strings.Contains(r.Path, "/workspaces/") && (strings.HasSuffix(r.Path, "/start") || strings.HasSuffix(r.Path, "/stop") || r.Method == "DELETE") && !strings.Contains(r.Path, "/administrative-stop") {
+		base += "Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. "
 	}
 	if r.Method == "PATCH" && !strings.Contains(r.Path, "/spaces") {
 		base += "Only project name may change; version must match. "
@@ -794,7 +816,7 @@ func errorDescription(code string) string {
 	case "404":
 		return "Resource absent or outside authorized tenant/owner scope"
 	case "409":
-		return "Version/idempotency conflict, resource_in_use, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+		return "Version/idempotency conflict, resource_in_use, control_required, control_not_held, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
 	case "428":
 		return "Version precondition required"
 	case "503":

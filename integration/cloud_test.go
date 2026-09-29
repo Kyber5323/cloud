@@ -335,11 +335,16 @@ func TestHTTPProjectLifecycleAndDurableRecovery(t *testing.T) {
 	if f.scalar("SELECT count(*) FROM tasks WHERE workspace_id=$1", iwid) != 1 {
 		t.Fatal("task display identity missing")
 	}
-	f.call("DELETE", f.path("/workspaces/"+wid), core.Object{"version": f.ws(wid).N("version")}, "main-delete", 409)
+	mainSession := f.hold(wid, "hold-main")
+	mainDelete := f.call("DELETE", f.path("/workspaces/"+wid), core.Object{"version": f.ws(wid).N("version"), "sessionId": mainSession}, "main-delete", 409)
+	if mainDelete.S("code") != "main_workspace_required" {
+		t.Fatal(mainDelete)
+	}
 	data := filepath.Join(f.substrate.WorkspaceData(iwid), "home", "state.txt")
 	must(t, os.WriteFile(data, []byte("persistent"), 0o600))
 	oldNode := f.node(iwid)
-	stop := f.call("POST", f.path("/workspaces/"+iwid+"/stop"), core.Object{"version": f.ws(iwid).N("version")}, "stop", 202)
+	isoSession := f.hold(iwid, "hold-isolated")
+	stop := f.call("POST", f.path("/workspaces/"+iwid+"/stop"), core.Object{"version": f.ws(iwid).N("version"), "sessionId": isoSession}, "stop", 202)
 	f.drain()
 	if f.ws(iwid).S("observedState") != "stopped" {
 		t.Fatal("not stopped")
@@ -348,12 +353,12 @@ func TestHTTPProjectLifecycleAndDurableRecovery(t *testing.T) {
 		t.Fatal("stop deleted persistent data")
 	}
 	// Same key is checked before the now-stale version.
-	retryStop := f.call("POST", f.path("/workspaces/"+iwid+"/stop"), core.Object{"version": isolated.O("resource").N("version") + 3}, "different-stop", 409)
+	retryStop := f.call("POST", f.path("/workspaces/"+iwid+"/stop"), core.Object{"version": isolated.O("resource").N("version") + 3, "sessionId": isoSession}, "different-stop", 409)
 	_ = retryStop
 	if stop.O("operation").S("id") == "" {
 		t.Fatal(stop)
 	}
-	f.call("POST", f.path("/workspaces/"+iwid+"/start"), core.Object{"version": f.ws(iwid).N("version")}, "restart", 202)
+	f.call("POST", f.path("/workspaces/"+iwid+"/start"), core.Object{"version": f.ws(iwid).N("version"), "sessionId": isoSession}, "restart", 202)
 	f.drain()
 	if f.ws(iwid).N("runtimeGeneration") != 2 {
 		t.Fatal("generation not advanced")
@@ -369,7 +374,7 @@ func TestHTTPProjectLifecycleAndDurableRecovery(t *testing.T) {
 	if status != 409 {
 		t.Fatal("late old Node accepted", status)
 	}
-	del := f.call("DELETE", f.path("/workspaces/"+iwid), core.Object{"version": f.ws(iwid).N("version")}, "delete-isolated", 202)
+	del := f.call("DELETE", f.path("/workspaces/"+iwid), core.Object{"version": f.ws(iwid).N("version"), "sessionId": isoSession}, "delete-isolated", 202)
 	f.substrate.SetFault("workspace_data_delete", "fail")
 	if e = f.controller.Drain(context.Background()); e == nil {
 		t.Fatal("expected cleanup failure")
@@ -492,9 +497,10 @@ func TestStopAdmissionRaceAndIdleEvidence(t *testing.T) {
 	node := f.node(wid)
 	ticketID := uuid.NewString()
 	body := core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "kind": "interaction", "ticketId": ticketID, "epoch": f.controller.Epoch}
+	busySession := f.hold(wid, "hold-busy")
 	f.internal("/internal/v1/access", core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "epoch": f.controller.Epoch}, 200)
 	ticket := f.internal("/internal/v1/admissions", body, 200)
-	f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": f.ws(wid).N("version")}, "busy-stop", 409)
+	f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": f.ws(wid).N("version"), "sessionId": busySession}, "busy-stop", 409)
 	if !f.ws(wid).B("admissionOpen") {
 		t.Fatal("rejected stop closed admission")
 	}
@@ -515,7 +521,7 @@ func TestStopAdmissionRaceAndIdleEvidence(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		_, stopStatus, _ = f.client.Call(context.Background(), "POST", f.path("/workspaces/"+wid+"/stop"), "gateway", core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "gateway-a"}}, &f.user, "race-stop", core.Object{"version": version})
+		_, stopStatus, _ = f.client.Call(context.Background(), "POST", f.path("/workspaces/"+wid+"/stop"), "gateway", core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "gateway-a"}}, &f.user, "race-stop", core.Object{"version": version, "sessionId": busySession})
 	}()
 	body["ticketId"] = uuid.NewString()
 	go func() {
@@ -528,7 +534,7 @@ func TestStopAdmissionRaceAndIdleEvidence(t *testing.T) {
 	}
 	if admitStatus == 200 {
 		f.finishTicket(body.S("ticketId"), node)
-		f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": f.ws(wid).N("version")}, "final-stop", 202)
+		f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": f.ws(wid).N("version"), "sessionId": busySession}, "final-stop", 202)
 	}
 	claimed := f.internal("/internal/v1/operations/claim", core.Object{"epoch": f.controller.Epoch}, 200).O("operation")
 	f.internal("/internal/v1/operations/"+claimed.S("id")+"/advance", core.Object{"epoch": f.controller.Epoch, "version": claimed.N("version")}, 409)

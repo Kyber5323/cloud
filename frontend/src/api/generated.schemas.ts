@@ -1081,6 +1081,61 @@ export interface Project {
   version: number;
 }
 
+export type RuntimeControlAllowedActionsItem = typeof RuntimeControlAllowedActionsItem[keyof typeof RuntimeControlAllowedActionsItem];
+
+
+export const RuntimeControlAllowedActionsItem = {
+  acquire: 'acquire',
+  renew: 'renew',
+  release: 'release',
+  start: 'start',
+  stop: 'stop',
+  delete: 'delete',
+  write: 'write',
+} as const;
+
+export type RuntimeControlControlState = typeof RuntimeControlControlState[keyof typeof RuntimeControlControlState];
+
+
+export const RuntimeControlControlState = {
+  idle: 'idle',
+  acquiring: 'acquiring',
+  held: 'held',
+  winding_down: 'winding_down',
+  reconciling: 'reconciling',
+} as const;
+
+export type RuntimeControlObservedState = typeof RuntimeControlObservedState[keyof typeof RuntimeControlObservedState];
+
+
+export const RuntimeControlObservedState = {
+  provisioning: 'provisioning',
+  starting: 'starting',
+  ready: 'ready',
+  stopping: 'stopping',
+  stopped: 'stopped',
+  unavailable: 'unavailable',
+  deleting: 'deleting',
+  deleted: 'deleted',
+} as const;
+
+export interface RuntimeControl {
+  allowedActions: RuntimeControlAllowedActionsItem[];
+  callerHolds: boolean;
+  controlEpoch?: number;
+  controlState: RuntimeControlControlState;
+  /** @nullable */
+  expiresAt?: string | null;
+  /** @nullable */
+  holderUserId?: string | null;
+  leaseExpired: boolean;
+  observedState: RuntimeControlObservedState;
+  /** @nullable */
+  sessionId?: string | null;
+  version?: number;
+  workspaceId: string;
+}
+
 export interface Sandbox {
   createdAt: string;
   generation: number;
@@ -2274,6 +2329,7 @@ export type PostApiV1TenantsTidSpacesSpaceIdProjects202 = {
 };
 
 export type DeleteApiV1TenantsTidWorkspacesWidBody = {
+  sessionId: string;
   /** @minimum 0 */
   version: number;
 };
@@ -2293,7 +2349,22 @@ export type PostApiV1TenantsTidWorkspacesWidAdministrativeStop202 = {
   resource: AdminResource;
 };
 
+export type PostApiV1TenantsTidWorkspacesWidControlBody = { [key: string]: unknown };
+
+export type PostApiV1TenantsTidWorkspacesWidControlActivitiesBody = {
+  sessionId: string;
+};
+
+export type PostApiV1TenantsTidWorkspacesWidControlReleaseBody = {
+  sessionId: string;
+};
+
+export type PostApiV1TenantsTidWorkspacesWidControlRenewBody = {
+  sessionId: string;
+};
+
 export type PostApiV1TenantsTidWorkspacesWidStartBody = {
+  sessionId: string;
   /** @minimum 0 */
   version: number;
 };
@@ -2304,6 +2375,7 @@ export type PostApiV1TenantsTidWorkspacesWidStart202 = {
 };
 
 export type PostApiV1TenantsTidWorkspacesWidStopBody = {
+  sessionId: string;
   /** @minimum 0 */
   version: number;
 };

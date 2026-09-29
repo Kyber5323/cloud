@@ -51,9 +51,10 @@ func TestWorkspaceStepsPlanOnlyRetainedEffects(t *testing.T) {
 	isolated := f.call("POST", f.path("/projects/"+pid+"/workspaces"), core.Object{"title": "Steps", "baseRef": "main"}, "steps-isolated", 202)
 	f.drain()
 	iwid := isolated.O("resource").S("id")
-	stop := f.call("POST", f.path("/workspaces/"+iwid+"/stop"), core.Object{"version": f.ws(iwid).N("version")}, "steps-stop", 202)
+	session := f.hold(iwid, "hold-steps")
+	stop := f.call("POST", f.path("/workspaces/"+iwid+"/stop"), core.Object{"version": f.ws(iwid).N("version"), "sessionId": session}, "steps-stop", 202)
 	f.drain()
-	start := f.call("POST", f.path("/workspaces/"+iwid+"/start"), core.Object{"version": f.ws(iwid).N("version")}, "steps-start", 202)
+	start := f.call("POST", f.path("/workspaces/"+iwid+"/start"), core.Object{"version": f.ws(iwid).N("version"), "sessionId": session}, "steps-start", 202)
 	f.drain()
 	cases := []struct {
 		name, operation, kinds string
@@ -168,7 +169,8 @@ func TestWorkspaceDataDeleteWaitsForTermination(t *testing.T) {
 	isolated := f.call("POST", f.path("/projects/"+created.O("resource").S("id")+"/workspaces"), core.Object{"title": "Doomed", "baseRef": "main"}, "data-delete-isolated", 202)
 	f.drain()
 	iwid := isolated.O("resource").S("id")
-	del := f.call("DELETE", f.path("/workspaces/"+iwid), core.Object{"version": f.ws(iwid).N("version")}, "data-delete-delete", 202)
+	session := f.hold(iwid, "hold-delete")
+	del := f.call("DELETE", f.path("/workspaces/"+iwid), core.Object{"version": f.ws(iwid).N("version"), "sessionId": session}, "data-delete-delete", 202)
 	// Test-only: move the operation past quiesce/terminate while the sandbox is still live.
 	_, e := f.store.Pool.Exec("UPDATE operations SET step='cleanup' WHERE id=$1", del.O("operation").S("id"))
 	must(t, e)

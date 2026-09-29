@@ -182,7 +182,8 @@ func TestPluginEffectAdmissionGate(t *testing.T) {
 	// Stop the workspace: it stays live (fan-out still targets it) but is no
 	// longer ready, so the effect plan must refuse dispatch.
 	ws := f.ws(wid)
-	f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": ws.N("version")}, "stop-1", 202)
+	session := f.hold(wid, "hold-stop")
+	f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": ws.N("version"), "sessionId": session}, "stop-1", 202)
 	f.drain()
 
 	f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/hello-world"}, "install-admission", 200)

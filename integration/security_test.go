@@ -229,7 +229,8 @@ func TestTerminationUnknownRetryAndVersionedReplay(t *testing.T) {
 	f.drain()
 	wid := created.O("workspace").S("id")
 	oldVersion := f.ws(wid).N("version")
-	stopped := f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": oldVersion}, "stop", 202)
+	session := f.hold(wid, "hold-stop")
+	stopped := f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": oldVersion, "sessionId": session}, "stop", 202)
 	oid := stopped.O("operation").S("id")
 	f.substrate.SetFault("sandbox_terminate", "unconfirmed")
 	if e := f.controller.Drain(context.Background()); e == nil {
@@ -238,12 +239,12 @@ func TestTerminationUnknownRetryAndVersionedReplay(t *testing.T) {
 	if f.scalar("SELECT count(*) FROM sandbox_instances WHERE workspace_id=$1 AND terminated_at IS NULL", wid) != 1 {
 		t.Fatal("unconfirmed sandbox forgotten")
 	}
-	f.call("POST", f.path("/workspaces/"+wid+"/start"), core.Object{"version": f.ws(wid).N("version")}, "premature-start", 409)
+	f.call("POST", f.path("/workspaces/"+wid+"/start"), core.Object{"version": f.ws(wid).N("version"), "sessionId": session}, "premature-start", 409)
 	deferred := f.call("GET", f.path("/operations/"+oid), nil, "", 200)
 	if deferred.S("state") != "blocked" || deferred.S("errorCode") != "termination_unconfirmed" {
 		t.Fatal("unconfirmed termination was not blocked", deferred)
 	}
-	replay := f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": oldVersion}, "stop", 202)
+	replay := f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": oldVersion, "sessionId": session}, "stop", 202)
 	if replay.O("operation").S("id") != oid {
 		t.Fatal("stale-version replay not original operation")
 	}
@@ -302,7 +303,8 @@ func TestWrongWorkspaceNodeCannotRefuseAnotherStop(t *testing.T) {
 	if status != 200 {
 		t.Fatal(out)
 	}
-	stop := f.call("POST", f.path("/workspaces/"+main+"/stop"), core.Object{"version": f.ws(main).N("version")}, "stop-main", 202)
+	mainSession := f.hold(main, "hold-main")
+	stop := f.call("POST", f.path("/workspaces/"+main+"/stop"), core.Object{"version": f.ws(main).N("version"), "sessionId": mainSession}, "stop-main", 202)
 	_, status, e = f.client.Call(context.Background(), "POST", "/internal/v1/nodes/idle", "node", n, nil, "", core.Object{"version": out.N("version"), "operationId": stop.O("operation").S("id"), "admissionEpoch": f.ws(wid).N("admissionEpoch"), "idle": false})
 	must(t, e)
 	if status != 409 {

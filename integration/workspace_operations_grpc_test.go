@@ -234,7 +234,8 @@ func TestGRPCControllerDrivesWorkspaceThroughNodeAndClone(t *testing.T) {
 	f.internal("/internal/v1/access", core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "epoch": c.epoch}, 200)
 
 	// Stop: the Controller gives idle evidence for its Node, then terminates the sandbox.
-	f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": w.N("version")}, "grpc-stop", 202)
+	grpcSession := f.hold(wid, "hold-grpc-stop")
+	f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": w.N("version"), "sessionId": grpcSession}, "grpc-stop", 202)
 	snap = c.claim()
 	op = snap.GetOperation()
 	node := snap.GetNodes()[0]

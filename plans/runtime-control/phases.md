@@ -29,19 +29,19 @@ Controller、Node、Substrate、cluster Compose、手写前端界面、成员授
 
 ## 当前阶段
 
-下一会话只做第 3 阶段。没有进行中的阶段。
+下一会话只做第 4 阶段。没有进行中的阶段。
 
 ## 已落地
 
 `0018_runtime_control.sql` 已追加在 `0017_tenant_membership_and_join.sql` 之后，`0019_runtime_use_actor.sql` 接在 `0018` 之后。`0001`–`0017` 的已发布 SQL 没有改。创建本文时 Cloud `main` 为 `3123e3e`。再加迁移从 `0020` 起追加。
 
-第 1 阶段只落地了表、列、约束和迁移测试。第 2 阶段接上了使用权限。下列行为仍然不是目标规则：
+第 1 阶段只落地了表、列、约束和迁移测试。第 2 阶段接上了使用权限。第 3 阶段接上了独占会话。下列行为仍然不是目标规则：
 
-- `internal/core/public.go` 的 `workspaceAction` 仍按活动租户成员启动、停止、重启和删除，并把带活动保护的停止记成 `administrative_stop`。使用权限和当前会话还没接到这些动作上。
+- 普通启动、停止、重启和删除已经要求使用权限和调用者当前持有的会话。`administrative_stop` 仍是管理员的活动保护停止，没有独立强停意图接口。
 - `internal/core/plugins.go` 允许成员安装和移除；项目忙时整单冲突。
 - `internal/core/migrations/0001_core.sql` 的 `credential_refs` 只有 owner 外键。冻结和新远程操作还没生效。
 - `internal/controlgrpc/server.go` 使用调用者自报的 `x-ora-controller-id`。
-- 没有 `runtime_control_sessions` 的获取、续期或释放。没有活动执行票据不等于空闲，也不表示进程已停止。
+- 准入和执行票据仍不要求控制会话。没有活动执行票据不等于空闲，租约到期也不表示进程已停止。获取中、收尾中和待对账不能被读成空闲。
 
 ## 阶段
 
@@ -77,11 +77,15 @@ Controller、Node、Substrate、cluster Compose、手写前端界面、成员授
 
 ### 3. 独占
 
-状态：未开始。
+状态：已完成。
 
-实现获取、续期、释放和只读控制状态。有效期 60 秒，续期间隔 20 秒，时间用数据库时钟。同一运行时至多一个有效操作会话，同一会话至多一个冲突写活动。普通启动、停止、重启、删除接到使用权限和当前会话。获取中、收尾中、待对账不能被读成空闲。到期不是进程已停止。
+没有新迁移，会话和写活动表仍是 `0018_runtime_control.sql`。实现在 `internal/core/runtime_control.go`。获取、续期、释放和只读控制状态使用数据库时钟：租约 60 秒，成功的续期重置为 60 秒，约定的客户端续期间隔是 20 秒。同一运行时至多一个未关闭会话，代次只增。重复幂等键返回原结果，不恢复或延长已经失效的租约。同一会话至多一个未结束的冲突写活动，第二个是 `409 resource_in_use`，不产生文件、Git 或进程副作用。
 
-必读：独占准入 ADR 与其核心用例。
+普通启动、停止、重启和删除要求创建者或当前管理员，以及该调用者当前持有且未过期的会话。重启仍是停止后的 `start`，没有单独路由。缺少会话是 `409 control_required`，他人持有是 `409 resource_in_use`，无使用权限仍是 `403 runtime_use_forbidden`。成员停用会在同一事务里撤回其操作会话。已确认没有活动票据或未结束写活动时，获取成为持有；仍有活动票据时保持获取中，确认后才持有，代次不变。获取中、收尾中、待对账不会被读成空闲。租约到期不修改运行时的 `observed_state`。
+
+跑过 `TestRuntimeControlLeaseIsExclusiveAndDatabaseTimed`、`TestControlStatesStayDistinctFromIdle`、`TestOneConflictingWriteAndLifecycleUseTheHeldSession`，并复跑 `go test ./integration`。
+
+本阶段不能宣称强停、插件调度、凭据冻结或内部契约已经生效。文件、终端、Agent 和执行端确认控制绑定仍未交付。`administrative_stop` 语义未改。准入仍不要求控制会话。六份 ADR 仍是 `approved`。specs 未改，核心用例证据仍是 `Missing`。
 
 ### 4. 强停
 
