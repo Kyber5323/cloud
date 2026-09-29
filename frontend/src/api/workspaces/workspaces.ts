@@ -28,18 +28,18 @@ import type {
   DeleteApiV1TenantsTidWorkspacesWid202,
   DeleteApiV1TenantsTidWorkspacesWidBody,
   Error,
-  ForceStopIntent,
   GetApiV1TenantsTidProjectsPidWorkspaces200,
   GetApiV1TenantsTidProjectsPidWorkspacesParams,
+  GetApiV1TenantsTidWorkspacesWidForceStop200,
   PostApiV1TenantsTidProjectsPidWorkspaces202,
   PostApiV1TenantsTidProjectsPidWorkspacesBody,
-  PostApiV1TenantsTidWorkspacesWidAdministrativeStop202,
-  PostApiV1TenantsTidWorkspacesWidAdministrativeStopBody,
-  PostApiV1TenantsTidWorkspacesWidControlActivitiesBody,
-  PostApiV1TenantsTidWorkspacesWidControlBody,
+  PostApiV1TenantsTidWorkspacesWidControlAcquireBody,
   PostApiV1TenantsTidWorkspacesWidControlReleaseBody,
   PostApiV1TenantsTidWorkspacesWidControlRenewBody,
+  PostApiV1TenantsTidWorkspacesWidForceStop202,
   PostApiV1TenantsTidWorkspacesWidForceStopBody,
+  PostApiV1TenantsTidWorkspacesWidRestart202,
+  PostApiV1TenantsTidWorkspacesWidRestartBody,
   PostApiV1TenantsTidWorkspacesWidStart202,
   PostApiV1TenantsTidWorkspacesWidStartBody,
   PostApiV1TenantsTidWorkspacesWidStop202,
@@ -72,7 +72,7 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
 };
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. scope=own lists runtimes the caller created. The default scope=all lists every runtime. requestedRef and baseCommitId are omitted unless the caller is the creator or a current administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/tenants/:tid/projects/:pid/workspaces
  */
 export const getApiV1TenantsTidProjectsPidWorkspaces = (
@@ -180,7 +180,7 @@ export function useGetApiV1TenantsTidProjectsPidWorkspaces<TData = Awaited<Retur
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Creates one isolated Workspace and Task display identity. title/baseRef required; baseRef becomes the Workspace's requestedRef, which its Node clones; HEAD means the Project's defaultBranch. The requester is the creator; the project owner is unchanged. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Creates one isolated Workspace and Task display identity. title/baseRef required; baseRef becomes the Workspace's requestedRef, which its Node clones; HEAD means the Project's defaultBranch. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/projects/:pid/workspaces
  */
 export const postApiV1TenantsTidProjectsPidWorkspaces = (
@@ -250,7 +250,7 @@ export const usePostApiV1TenantsTidProjectsPidWorkspaces = <TError = ErrorType<E
       return useMutation(getPostApiV1TenantsTidProjectsPidWorkspacesMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. An open force-stop on that runtime is 409 termination_unconfirmed until the intent itself is stopped. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary DELETE /api/v1/tenants/:tid/workspaces/:wid
  */
 export const deleteApiV1TenantsTidWorkspacesWid = (
@@ -320,7 +320,7 @@ export const useDeleteApiV1TenantsTidWorkspacesWid = <TError = ErrorType<Error>,
       return useMutation(getDeleteApiV1TenantsTidWorkspacesWidMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/tenants/:tid/workspaces/:wid
  */
 export const getApiV1TenantsTidWorkspacesWid = (
@@ -420,77 +420,7 @@ export function useGetApiV1TenantsTidWorkspacesWid<TData = Awaited<ReturnType<ty
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Administrator response explicitly excludes repository URL, worktree details, credentials, execution output and operation request/result/error details. Administrative stop still requires idle evidence. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
- * @summary POST /api/v1/tenants/:tid/workspaces/:wid/administrative-stop
- */
-export const postApiV1TenantsTidWorkspacesWidAdministrativeStop = (
-    tid: string,
-    wid: string,
-    postApiV1TenantsTidWorkspacesWidAdministrativeStopBody: PostApiV1TenantsTidWorkspacesWidAdministrativeStopBody,
- options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
-) => {
-
-
-      return customInstance<PostApiV1TenantsTidWorkspacesWidAdministrativeStop202>(
-      {url: `/api/v1/tenants/${tid}/workspaces/${wid}/administrative-stop`, method: 'POST',
-      headers: {'Content-Type': 'application/json', },
-      data: postApiV1TenantsTidWorkspacesWidAdministrativeStopBody, signal
-    },
-      options);
-    }
-
-
-
-
-export const getPostApiV1TenantsTidWorkspacesWidAdministrativeStopMutationKey = () => ['postApiV1TenantsTidWorkspacesWidAdministrativeStop'] as const;
-
-export const getPostApiV1TenantsTidWorkspacesWidAdministrativeStopMutationOptions = <TError = ErrorType<Error>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidAdministrativeStop>>, TError,PostApiV1TenantsTidWorkspacesWidAdministrativeStopMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
-): UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidAdministrativeStop>>, TError,PostApiV1TenantsTidWorkspacesWidAdministrativeStopMutationVariables, TContext> => {
-
-const mutationKey = getPostApiV1TenantsTidWorkspacesWidAdministrativeStopMutationKey();
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidAdministrativeStop>>, PostApiV1TenantsTidWorkspacesWidAdministrativeStopMutationVariables> = (props) => {
-          const {tid,wid,data} = props ?? {};
-
-          return  postApiV1TenantsTidWorkspacesWidAdministrativeStop(tid,wid,data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type PostApiV1TenantsTidWorkspacesWidAdministrativeStopMutationResult = NonNullable<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidAdministrativeStop>>>
-    export type PostApiV1TenantsTidWorkspacesWidAdministrativeStopMutationBody = PostApiV1TenantsTidWorkspacesWidAdministrativeStopBody
-    export type PostApiV1TenantsTidWorkspacesWidAdministrativeStopMutationError = ErrorType<Error>
-    export type PostApiV1TenantsTidWorkspacesWidAdministrativeStopMutationVariables = {tid: string;wid: string;data: PostApiV1TenantsTidWorkspacesWidAdministrativeStopBody}
-
-    /**
- * @summary POST /api/v1/tenants/:tid/workspaces/:wid/administrative-stop
- */
-export const usePostApiV1TenantsTidWorkspacesWidAdministrativeStop = <TError = ErrorType<Error>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidAdministrativeStop>>, TError,PostApiV1TenantsTidWorkspacesWidAdministrativeStopMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidAdministrativeStop>>,
-        TError,
-        PostApiV1TenantsTidWorkspacesWidAdministrativeStopMutationVariables,
-        TContext
-      > => {
-      return useMutation(getPostApiV1TenantsTidWorkspacesWidAdministrativeStopMutationOptions(options), queryClient);
-    }
-    /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Exclusive operation lease for one runtime. The lease lasts 60 seconds from PostgreSQL clock_timestamp and the client renews it every 20 seconds; both use the database clock. One open session is reserved atomically. Replaying an idempotency key returns the stored result and does not restore or extend an expired lease. Acquiring, winding down and reconciling are not idle, and lease expiry does not mean the process has stopped. A second conflicting write returns 409 resource_in_use without a file, Git or process effect. A caller without use permission receives 403 runtime_use_forbidden.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/tenants/:tid/workspaces/:wid/control
  */
 export const getApiV1TenantsTidWorkspacesWidControl = (
@@ -590,21 +520,21 @@ export function useGetApiV1TenantsTidWorkspacesWidControl<TData = Awaited<Return
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Exclusive operation lease for one runtime. The lease lasts 60 seconds from PostgreSQL clock_timestamp and the client renews it every 20 seconds; both use the database clock. One open session is reserved atomically. Replaying an idempotency key returns the stored result and does not restore or extend an expired lease. Acquiring, winding down and reconciling are not idle, and lease expiry does not mean the process has stopped. A second conflicting write returns 409 resource_in_use without a file, Git or process effect. A caller without use permission receives 403 runtime_use_forbidden.
- * @summary POST /api/v1/tenants/:tid/workspaces/:wid/control
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * @summary POST /api/v1/tenants/:tid/workspaces/:wid/control/acquire
  */
-export const postApiV1TenantsTidWorkspacesWidControl = (
+export const postApiV1TenantsTidWorkspacesWidControlAcquire = (
     tid: string,
     wid: string,
-    postApiV1TenantsTidWorkspacesWidControlBody: PostApiV1TenantsTidWorkspacesWidControlBody,
+    postApiV1TenantsTidWorkspacesWidControlAcquireBody: PostApiV1TenantsTidWorkspacesWidControlAcquireBody,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
 
 
       return customInstance<RuntimeControl>(
-      {url: `/api/v1/tenants/${tid}/workspaces/${wid}/control`, method: 'POST',
+      {url: `/api/v1/tenants/${tid}/workspaces/${wid}/control/acquire`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
-      data: postApiV1TenantsTidWorkspacesWidControlBody, signal
+      data: postApiV1TenantsTidWorkspacesWidControlAcquireBody, signal
     },
       options);
     }
@@ -612,13 +542,13 @@ export const postApiV1TenantsTidWorkspacesWidControl = (
 
 
 
-export const getPostApiV1TenantsTidWorkspacesWidControlMutationKey = () => ['postApiV1TenantsTidWorkspacesWidControl'] as const;
+export const getPostApiV1TenantsTidWorkspacesWidControlAcquireMutationKey = () => ['postApiV1TenantsTidWorkspacesWidControlAcquire'] as const;
 
-export const getPostApiV1TenantsTidWorkspacesWidControlMutationOptions = <TError = ErrorType<Error>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControl>>, TError,PostApiV1TenantsTidWorkspacesWidControlMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
-): UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControl>>, TError,PostApiV1TenantsTidWorkspacesWidControlMutationVariables, TContext> => {
+export const getPostApiV1TenantsTidWorkspacesWidControlAcquireMutationOptions = <TError = ErrorType<Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControlAcquire>>, TError,PostApiV1TenantsTidWorkspacesWidControlAcquireMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControlAcquire>>, TError,PostApiV1TenantsTidWorkspacesWidControlAcquireMutationVariables, TContext> => {
 
-const mutationKey = getPostApiV1TenantsTidWorkspacesWidControlMutationKey();
+const mutationKey = getPostApiV1TenantsTidWorkspacesWidControlAcquireMutationKey();
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -628,10 +558,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControl>>, PostApiV1TenantsTidWorkspacesWidControlMutationVariables> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControlAcquire>>, PostApiV1TenantsTidWorkspacesWidControlAcquireMutationVariables> = (props) => {
           const {tid,wid,data} = props ?? {};
 
-          return  postApiV1TenantsTidWorkspacesWidControl(tid,wid,data,requestOptions)
+          return  postApiV1TenantsTidWorkspacesWidControlAcquire(tid,wid,data,requestOptions)
         }
 
 
@@ -641,96 +571,26 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type PostApiV1TenantsTidWorkspacesWidControlMutationResult = NonNullable<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControl>>>
-    export type PostApiV1TenantsTidWorkspacesWidControlMutationBody = PostApiV1TenantsTidWorkspacesWidControlBody
-    export type PostApiV1TenantsTidWorkspacesWidControlMutationError = ErrorType<Error>
-    export type PostApiV1TenantsTidWorkspacesWidControlMutationVariables = {tid: string;wid: string;data: PostApiV1TenantsTidWorkspacesWidControlBody}
+    export type PostApiV1TenantsTidWorkspacesWidControlAcquireMutationResult = NonNullable<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControlAcquire>>>
+    export type PostApiV1TenantsTidWorkspacesWidControlAcquireMutationBody = PostApiV1TenantsTidWorkspacesWidControlAcquireBody
+    export type PostApiV1TenantsTidWorkspacesWidControlAcquireMutationError = ErrorType<Error>
+    export type PostApiV1TenantsTidWorkspacesWidControlAcquireMutationVariables = {tid: string;wid: string;data: PostApiV1TenantsTidWorkspacesWidControlAcquireBody}
 
     /**
- * @summary POST /api/v1/tenants/:tid/workspaces/:wid/control
+ * @summary POST /api/v1/tenants/:tid/workspaces/:wid/control/acquire
  */
-export const usePostApiV1TenantsTidWorkspacesWidControl = <TError = ErrorType<Error>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControl>>, TError,PostApiV1TenantsTidWorkspacesWidControlMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+export const usePostApiV1TenantsTidWorkspacesWidControlAcquire = <TError = ErrorType<Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControlAcquire>>, TError,PostApiV1TenantsTidWorkspacesWidControlAcquireMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControl>>,
+        Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControlAcquire>>,
         TError,
-        PostApiV1TenantsTidWorkspacesWidControlMutationVariables,
+        PostApiV1TenantsTidWorkspacesWidControlAcquireMutationVariables,
         TContext
       > => {
-      return useMutation(getPostApiV1TenantsTidWorkspacesWidControlMutationOptions(options), queryClient);
+      return useMutation(getPostApiV1TenantsTidWorkspacesWidControlAcquireMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Exclusive operation lease for one runtime. The lease lasts 60 seconds from PostgreSQL clock_timestamp and the client renews it every 20 seconds; both use the database clock. One open session is reserved atomically. Replaying an idempotency key returns the stored result and does not restore or extend an expired lease. Acquiring, winding down and reconciling are not idle, and lease expiry does not mean the process has stopped. A second conflicting write returns 409 resource_in_use without a file, Git or process effect. A caller without use permission receives 403 runtime_use_forbidden.
- * @summary POST /api/v1/tenants/:tid/workspaces/:wid/control/activities
- */
-export const postApiV1TenantsTidWorkspacesWidControlActivities = (
-    tid: string,
-    wid: string,
-    postApiV1TenantsTidWorkspacesWidControlActivitiesBody: PostApiV1TenantsTidWorkspacesWidControlActivitiesBody,
- options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
-) => {
-
-
-      return customInstance<RuntimeControl>(
-      {url: `/api/v1/tenants/${tid}/workspaces/${wid}/control/activities`, method: 'POST',
-      headers: {'Content-Type': 'application/json', },
-      data: postApiV1TenantsTidWorkspacesWidControlActivitiesBody, signal
-    },
-      options);
-    }
-
-
-
-
-export const getPostApiV1TenantsTidWorkspacesWidControlActivitiesMutationKey = () => ['postApiV1TenantsTidWorkspacesWidControlActivities'] as const;
-
-export const getPostApiV1TenantsTidWorkspacesWidControlActivitiesMutationOptions = <TError = ErrorType<Error>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControlActivities>>, TError,PostApiV1TenantsTidWorkspacesWidControlActivitiesMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
-): UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControlActivities>>, TError,PostApiV1TenantsTidWorkspacesWidControlActivitiesMutationVariables, TContext> => {
-
-const mutationKey = getPostApiV1TenantsTidWorkspacesWidControlActivitiesMutationKey();
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControlActivities>>, PostApiV1TenantsTidWorkspacesWidControlActivitiesMutationVariables> = (props) => {
-          const {tid,wid,data} = props ?? {};
-
-          return  postApiV1TenantsTidWorkspacesWidControlActivities(tid,wid,data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type PostApiV1TenantsTidWorkspacesWidControlActivitiesMutationResult = NonNullable<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControlActivities>>>
-    export type PostApiV1TenantsTidWorkspacesWidControlActivitiesMutationBody = PostApiV1TenantsTidWorkspacesWidControlActivitiesBody
-    export type PostApiV1TenantsTidWorkspacesWidControlActivitiesMutationError = ErrorType<Error>
-    export type PostApiV1TenantsTidWorkspacesWidControlActivitiesMutationVariables = {tid: string;wid: string;data: PostApiV1TenantsTidWorkspacesWidControlActivitiesBody}
-
-    /**
- * @summary POST /api/v1/tenants/:tid/workspaces/:wid/control/activities
- */
-export const usePostApiV1TenantsTidWorkspacesWidControlActivities = <TError = ErrorType<Error>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControlActivities>>, TError,PostApiV1TenantsTidWorkspacesWidControlActivitiesMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidControlActivities>>,
-        TError,
-        PostApiV1TenantsTidWorkspacesWidControlActivitiesMutationVariables,
-        TContext
-      > => {
-      return useMutation(getPostApiV1TenantsTidWorkspacesWidControlActivitiesMutationOptions(options), queryClient);
-    }
-    /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Exclusive operation lease for one runtime. The lease lasts 60 seconds from PostgreSQL clock_timestamp and the client renews it every 20 seconds; both use the database clock. One open session is reserved atomically. Replaying an idempotency key returns the stored result and does not restore or extend an expired lease. Acquiring, winding down and reconciling are not idle, and lease expiry does not mean the process has stopped. A second conflicting write returns 409 resource_in_use without a file, Git or process effect. A caller without use permission receives 403 runtime_use_forbidden.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/workspaces/:wid/control/release
  */
 export const postApiV1TenantsTidWorkspacesWidControlRelease = (
@@ -800,7 +660,7 @@ export const usePostApiV1TenantsTidWorkspacesWidControlRelease = <TError = Error
       return useMutation(getPostApiV1TenantsTidWorkspacesWidControlReleaseMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Exclusive operation lease for one runtime. The lease lasts 60 seconds from PostgreSQL clock_timestamp and the client renews it every 20 seconds; both use the database clock. One open session is reserved atomically. Replaying an idempotency key returns the stored result and does not restore or extend an expired lease. Acquiring, winding down and reconciling are not idle, and lease expiry does not mean the process has stopped. A second conflicting write returns 409 resource_in_use without a file, Git or process effect. A caller without use permission receives 403 runtime_use_forbidden.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/workspaces/:wid/control/renew
  */
 export const postApiV1TenantsTidWorkspacesWidControlRenew = (
@@ -870,7 +730,107 @@ export const usePostApiV1TenantsTidWorkspacesWidControlRenew = <TError = ErrorTy
       return useMutation(getPostApiV1TenantsTidWorkspacesWidControlRenewMutationOptions(options), queryClient);
     }
     /**
- * Accepts one independent force-stop intent. Only a current tenant administrator may accept it. The body carries the target runtime version and a non-empty reason; the idempotency key is the retry identity. The same key and body return the original intent, and a different reason or target is 409 idempotency_conflict. A second open intent for that runtime is 409 resource_in_use. Acceptance persists the intent, closes new admission, withdraws ordinary control sessions, and links this runtime's in-flight operations, tickets and effects without deleting or rewriting them. It does not create an operation, does not change administrative_stop, does not mark the runtime stopped, and does not delete data. Until the intent is stopped, acquire, restart and data deletion return 409 termination_unconfirmed. Another runtime is left untouched.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * @summary GET /api/v1/tenants/:tid/workspaces/:wid/force-stop
+ */
+export const getApiV1TenantsTidWorkspacesWidForceStop = (
+    tid: string,
+    wid: string,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<GetApiV1TenantsTidWorkspacesWidForceStop200>(
+      {url: `/api/v1/tenants/${tid}/workspaces/${wid}/force-stop`, method: 'GET', signal
+    },
+      options);
+    }
+
+
+
+
+export const getGetApiV1TenantsTidWorkspacesWidForceStopQueryKey = (tid: string,
+    wid: string,) => {
+    return [
+    `/api/v1/tenants/${tid}/workspaces/${wid}/force-stop`
+    ] as const;
+    }
+
+
+export const getGetApiV1TenantsTidWorkspacesWidForceStopQueryOptions = <TData = Awaited<ReturnType<typeof getApiV1TenantsTidWorkspacesWidForceStop>>, TError = ErrorType<Error>>(tid: string,
+    wid: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidWorkspacesWidForceStop>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetApiV1TenantsTidWorkspacesWidForceStopQueryKey(tid,wid);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiV1TenantsTidWorkspacesWidForceStop>>> = ({ signal }) => getApiV1TenantsTidWorkspacesWidForceStop(tid,wid, requestOptions, signal);
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: tid !== null && tid !== undefined && wid !== null && wid !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidWorkspacesWidForceStop>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetApiV1TenantsTidWorkspacesWidForceStopQueryResult = NonNullable<Awaited<ReturnType<typeof getApiV1TenantsTidWorkspacesWidForceStop>>>
+export type GetApiV1TenantsTidWorkspacesWidForceStopQueryError = ErrorType<Error>
+
+
+export function useGetApiV1TenantsTidWorkspacesWidForceStop<TData = Awaited<ReturnType<typeof getApiV1TenantsTidWorkspacesWidForceStop>>, TError = ErrorType<Error>>(
+ tid: string,
+    wid: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidWorkspacesWidForceStop>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getApiV1TenantsTidWorkspacesWidForceStop>>,
+          TError,
+          Awaited<ReturnType<typeof getApiV1TenantsTidWorkspacesWidForceStop>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetApiV1TenantsTidWorkspacesWidForceStop<TData = Awaited<ReturnType<typeof getApiV1TenantsTidWorkspacesWidForceStop>>, TError = ErrorType<Error>>(
+ tid: string,
+    wid: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidWorkspacesWidForceStop>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getApiV1TenantsTidWorkspacesWidForceStop>>,
+          TError,
+          Awaited<ReturnType<typeof getApiV1TenantsTidWorkspacesWidForceStop>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetApiV1TenantsTidWorkspacesWidForceStop<TData = Awaited<ReturnType<typeof getApiV1TenantsTidWorkspacesWidForceStop>>, TError = ErrorType<Error>>(
+ tid: string,
+    wid: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidWorkspacesWidForceStop>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary GET /api/v1/tenants/:tid/workspaces/:wid/force-stop
+ */
+
+export function useGetApiV1TenantsTidWorkspacesWidForceStop<TData = Awaited<ReturnType<typeof getApiV1TenantsTidWorkspacesWidForceStop>>, TError = ErrorType<Error>>(
+ tid: string,
+    wid: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiV1TenantsTidWorkspacesWidForceStop>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetApiV1TenantsTidWorkspacesWidForceStopQueryOptions(tid,wid,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+/**
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/workspaces/:wid/force-stop
  */
 export const postApiV1TenantsTidWorkspacesWidForceStop = (
@@ -881,7 +841,7 @@ export const postApiV1TenantsTidWorkspacesWidForceStop = (
 ) => {
 
 
-      return customInstance<ForceStopIntent>(
+      return customInstance<PostApiV1TenantsTidWorkspacesWidForceStop202>(
       {url: `/api/v1/tenants/${tid}/workspaces/${wid}/force-stop`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
       data: postApiV1TenantsTidWorkspacesWidForceStopBody, signal
@@ -940,7 +900,77 @@ export const usePostApiV1TenantsTidWorkspacesWidForceStop = <TError = ErrorType<
       return useMutation(getPostApiV1TenantsTidWorkspacesWidForceStopMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. An open force-stop on that runtime is 409 termination_unconfirmed until the intent itself is stopped. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * @summary POST /api/v1/tenants/:tid/workspaces/:wid/restart
+ */
+export const postApiV1TenantsTidWorkspacesWidRestart = (
+    tid: string,
+    wid: string,
+    postApiV1TenantsTidWorkspacesWidRestartBody: PostApiV1TenantsTidWorkspacesWidRestartBody,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<PostApiV1TenantsTidWorkspacesWidRestart202>(
+      {url: `/api/v1/tenants/${tid}/workspaces/${wid}/restart`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: postApiV1TenantsTidWorkspacesWidRestartBody, signal
+    },
+      options);
+    }
+
+
+
+
+export const getPostApiV1TenantsTidWorkspacesWidRestartMutationKey = () => ['postApiV1TenantsTidWorkspacesWidRestart'] as const;
+
+export const getPostApiV1TenantsTidWorkspacesWidRestartMutationOptions = <TError = ErrorType<Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidRestart>>, TError,PostApiV1TenantsTidWorkspacesWidRestartMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidRestart>>, TError,PostApiV1TenantsTidWorkspacesWidRestartMutationVariables, TContext> => {
+
+const mutationKey = getPostApiV1TenantsTidWorkspacesWidRestartMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidRestart>>, PostApiV1TenantsTidWorkspacesWidRestartMutationVariables> = (props) => {
+          const {tid,wid,data} = props ?? {};
+
+          return  postApiV1TenantsTidWorkspacesWidRestart(tid,wid,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PostApiV1TenantsTidWorkspacesWidRestartMutationResult = NonNullable<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidRestart>>>
+    export type PostApiV1TenantsTidWorkspacesWidRestartMutationBody = PostApiV1TenantsTidWorkspacesWidRestartBody
+    export type PostApiV1TenantsTidWorkspacesWidRestartMutationError = ErrorType<Error>
+    export type PostApiV1TenantsTidWorkspacesWidRestartMutationVariables = {tid: string;wid: string;data: PostApiV1TenantsTidWorkspacesWidRestartBody}
+
+    /**
+ * @summary POST /api/v1/tenants/:tid/workspaces/:wid/restart
+ */
+export const usePostApiV1TenantsTidWorkspacesWidRestart = <TError = ErrorType<Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidRestart>>, TError,PostApiV1TenantsTidWorkspacesWidRestartMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidRestart>>,
+        TError,
+        PostApiV1TenantsTidWorkspacesWidRestartMutationVariables,
+        TContext
+      > => {
+      return useMutation(getPostApiV1TenantsTidWorkspacesWidRestartMutationOptions(options), queryClient);
+    }
+    /**
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/workspaces/:wid/start
  */
 export const postApiV1TenantsTidWorkspacesWidStart = (
@@ -1010,7 +1040,7 @@ export const usePostApiV1TenantsTidWorkspacesWidStart = <TError = ErrorType<Erro
       return useMutation(getPostApiV1TenantsTidWorkspacesWidStartMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. An open force-stop on that runtime is 409 termination_unconfirmed until the intent itself is stopped. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/workspaces/:wid/stop
  */
 export const postApiV1TenantsTidWorkspacesWidStop = (

@@ -42,13 +42,17 @@ func (s *Store) Control(ctx context.Context, r *ControlRequest) (Object, error) 
 		if r.Action == "clone_get" || r.Action == "clone_pending" {
 			return cloneCommand(t, r)
 		}
-		// Checked before the lease so an old protocol or an unauthenticated
-		// caller cannot replay a stored dispatch, and so a stale lease is not
-		// mistaken for permission to use the new capability.
-		if r.Action == "control_dispatch" {
-			return controlDispatch(t, r)
-		}
 		leaseValid(t, r)
+		refreshRuntimeControls(t)
+		if r.Action == "effect_permit" {
+			return effectPermit(t, r)
+		}
+		if strings.HasPrefix(r.Action, "force_") {
+			return submitted(t, r, func() Object { return forceStopCommand(t, r) })
+		}
+		if strings.HasPrefix(r.Action, "runtime_") {
+			return submitted(t, r, func() Object { return runtimeControlCommand(t, r) })
+		}
 		if r.Action == "claim" {
 			return claim(t, r)
 		}
@@ -133,9 +137,7 @@ func leaseValid(t *transaction, r *ControlRequest) {
 }
 
 func claim(t *transaction, r *ControlRequest) Object {
-	// A restarted controller has to see waits that were saved while it was
-	// down. The scan is database work and does not itself install a plugin.
-	continuePluginMaintenance(t)
+	schedulePluginMaintenance(t)
 	o := t.one("SELECT * FROM operations WHERE state='queued' OR (state='retry_wait' AND retry_at<=clock_timestamp()) OR state='running' ORDER BY created_at,id LIMIT 1")
 	if o == nil {
 		return Object{"operation": nil}
@@ -199,13 +201,9 @@ func planEffect(t *transaction, r *ControlRequest, o Object, spaceEvents *[]Spac
 		}
 	}
 	require(found, 403, "invalid_effect_scope")
+	requireNoForceStop(t, wid)
 	if existing := effectFor(t, o.S("id"), kind, wid); existing != nil {
 		return Object{"effect": existing, "operation": o}
-	}
-	// A new ordinary effect is not allocated while force-stop is unconfirmed.
-	// The previously planned effect above keeps its stable id for reconciliation.
-	if forceStopBlocksEffect(kind) {
-		requireNoOpenForceStop(t, wid)
 	}
 	// The effect id doubles as the preallocated sandbox instance id, so it is
 	// drawn before the step-specific request building below.
@@ -258,6 +256,10 @@ func planPluginEffect(t *transaction, o Object, kind, wid string, spaceEvents *[
 		reject(409, "invalid_step")
 	}
 	require(wid == o.S("workspaceId"), 403, "invalid_effect_scope")
+	c := runtimeControl(t, wid)
+	require(c.S("state") == "maintenance" && c.S("maintenanceOperationId") == o.S("id") && c.B("bindingConfirmed"), 409, "runtime_input_closure_unconfirmed")
+	require(t.pluginExecution == PluginExecutionSimulation, 409, "executor_capability_unavailable")
+	checkActivities(t, t.one("SELECT * FROM workspaces WHERE id=$1", wid))
 	pluginID := o.O("request").S("pluginId")
 	version := o.O("request").S("version")
 	require(pluginID != "", 409, "invalid_plugin_request")
@@ -267,8 +269,8 @@ func planPluginEffect(t *transaction, o Object, kind, wid string, spaceEvents *[
 		pluginInstanceWriteback(t, o, "removing", "", nil, spaceEvents)
 		return request
 	}
-	entry := t.pluginCatalogEntry(pluginID)
-	require(entry != nil, 409, "plugin_not_found")
+	entry := o.O("request").O("release")
+	require(entry.S("id") == pluginID && entry.S("version") == version, 409, "plugin_release_unverified")
 	// Admission: plugin_ensure dispatches only to a ready workspace, mirroring
 	// the node step gate — a provisioning or stopped workspace is not a valid
 	// download target.
@@ -331,7 +333,6 @@ func effectResult(t *transaction, r *ControlRequest, o Object, spaceEvents *[]Sp
 			message = "external_failure"
 		}
 		pluginInstanceWriteback(t, o, "failed", "", &message, spaceEvents)
-		failPluginMaintenance(t, o)
 	}
 	t.exec("UPDATE external_effects SET state=$2,external_id=COALESCE($3,external_id),result=$4,reconciled_epoch=$5 WHERE id=$1", e.S("id"), state, nullable(external), jsonText(result), o.N("controllerEpoch"))
 	t.exec("UPDATE operations SET version=version+1,updated_at=now() WHERE id=$1", o.S("id"))
@@ -358,13 +359,6 @@ func completedEffect(t *transaction, o Object, kind, wid string) Object {
 
 func advance(t *transaction, r *ControlRequest, o Object, spaceEvents *[]SpaceEvent) Object {
 	reconciled(t, o)
-	// Keep the in-flight operation, but do not open a sandbox, install a plugin,
-	// or delete data on a runtime whose force-stop is still unconfirmed.
-	if forceStopBlocksStep(o.S("step")) {
-		for _, w := range operationWorkspaces(t, o) {
-			requireNoOpenForceStop(t, w.S("id"))
-		}
-	}
 	next := ""
 	wid := o.S("workspaceId")
 	switch o.S("step") {
@@ -404,10 +398,15 @@ func advance(t *transaction, r *ControlRequest, o Object, spaceEvents *[]SpaceEv
 				t.exec("UPDATE sandbox_instances SET observed_state='terminated',terminated_at=now() WHERE id=$1", live.S("id"))
 			}
 		}
-		if o.S("kind") == "stop" || o.S("kind") == "administrative_stop" {
+		switch o.S("kind") {
+		case "restart":
+			t.exec("UPDATE workspaces SET desired_state='running',observed_state='starting',version=version+1 WHERE id=$1", wid)
+			t.exec("UPDATE runtime_controls SET control_epoch=control_epoch+1,binding_confirmed=false,bound_sandbox_id=NULL,input_closed=false,version=version+1 WHERE workspace_id=$1", wid)
+			next = "sandbox"
+		case "stop", "administrative_stop":
 			t.exec("UPDATE workspaces SET observed_state='stopped',version=version+1 WHERE id=$1", wid)
 			next = "done"
-		} else {
+		default:
 			next = "cleanup"
 		}
 	case "cleanup":
@@ -426,25 +425,26 @@ func advance(t *transaction, r *ControlRequest, o Object, spaceEvents *[]SpaceEv
 		}
 		next = "done"
 	case "plugin":
-		// The effect's own success is the Cloud plan, not a real plugin
-		// executor. Keep the instance in progress and let maintenance
-		// reconcile that effect instead of marking the plugin installed.
-		kind, progress := "plugin_ensure", "installing"
+		// The plugin step completes the install/remove for exactly the
+		// operation's bound workspace; the space-level aggregate is recomputed
+		// from the fan-out rows in the same transaction.
+		kind := "plugin_ensure"
+		state, version := "installed", o.O("request").S("version")
 		if o.S("kind") == "remove_plugin" {
-			kind, progress = "plugin_delete", "removing"
+			kind, state, version = "plugin_delete", "removed", ""
 		}
 		completedEffect(t, o, kind, wid)
-		pluginInstanceWriteback(t, o, progress, "", nil, spaceEvents)
+		pluginInstanceWriteback(t, o, state, version, nil, spaceEvents)
 		next = "done"
 	default:
 		reject(409, "invalid_step")
 	}
 	if next == "done" {
-		t.exec("UPDATE operations SET step='done',state='succeeded',result=jsonb_build_object('resourceId',COALESCE(workspace_id,project_id)),version=version+1,updated_at=now() WHERE id=$1", o.S("id"))
+		t.exec("UPDATE operations SET step='done',state='succeeded',error_code=NULL,retry_at=NULL,result=jsonb_build_object('resourceId',COALESCE(workspace_id,project_id)),version=version+1,updated_at=now() WHERE id=$1", o.S("id"))
+		finishRuntimeMaintenance(t, o.S("id"))
 	} else {
 		t.exec("UPDATE operations SET step=$2,version=version+1,updated_at=now() WHERE id=$1", o.S("id"), next)
 	}
-	continuePluginMaintenance(t)
 	return t.one("SELECT * FROM operations WHERE id=$1", o.S("id"))
 }
 
@@ -462,15 +462,11 @@ func currentNode(t *transaction, wid string) Object {
 // The Node is checked again so admission never opens on a Node that went away since the node step.
 func openWorkspace(t *transaction, o Object, wid string) {
 	currentNode(t, wid)
-	// A late create or start must not reopen admission over an accepted force-stop.
-	requireNoOpenForceStop(t, wid)
 	t.exec("UPDATE workspaces SET observed_state='ready',admission_open=true,version=version+1 WHERE id=$1", wid)
 	t.exec("UPDATE projects SET lifecycle='active',version=version+1 WHERE id=$1 AND lifecycle='provisioning'", o.S("projectId"))
-	continuePluginMaintenance(t)
 }
 
 func deleteWorkspace(t *transaction, wid string) {
 	t.exec("UPDATE workspaces SET observed_state='deleted',admission_open=false,deleted_at=now(),version=version+1 WHERE id=$1", wid)
 	t.exec("UPDATE tasks SET deleted_at=now(),version=version+1 WHERE workspace_id=$1", wid)
-	continuePluginMaintenance(t)
 }

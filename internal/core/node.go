@@ -6,38 +6,31 @@ func access(t *transaction, r *ControlRequest) Object {
 	tid, wid := r.Body.S("tenantId"), r.Body.S("workspaceId")
 	membership(t, tid, u.S("id"), false)
 	w := workspace(t, tid, u.S("id"), wid, false)
-	// Permission before occupancy, so a caller who cannot use the runtime
-	// never learns that it is in use and never receives its content.
-	requireRuntimeUse(t, tid, u.S("id"), w)
 	p := project(t, tid, u.S("id"), w.S("projectId"))
 	action := r.Body.S("action")
 	require(action == "read" || action == "execute", 400, "invalid_action")
 	executable := w.B("admissionOpen") && w.S("desiredState") == "running" && w.S("observedState") == "ready" && p.S("lifecycle") == "active"
 	n := t.one("SELECT n.id,s.id AS sandbox_id,s.generation FROM node_instances n JOIN sandbox_instances s ON s.id=n.sandbox_instance_id WHERE s.workspace_id=$1 AND s.generation=$2 AND s.terminated_at IS NULL AND n.ended_at IS NULL AND n.initialized AND n.connection_state='connected' AND n.last_seen_at>clock_timestamp()-interval '30 seconds'", wid, w.N("runtimeGeneration"))
 	executable = executable && n != nil
+	if action == "execute" {
+		require(executable, 409, "execution_closed")
+		requireRuntimeSession(t, w, u.S("id"), r.Body.S("sessionId"))
+	}
 	if r.Action == "access" {
-		if action == "execute" && runtimeOccupied(t, wid) {
-			reject(409, "resource_in_use")
-		}
-		if action == "execute" {
-			require(executable, 409, "execution_closed")
-		}
 		return Object{"userId": u.S("id"), "tenantId": tid, "workspaceId": wid, "allowedAction": action, "executable": executable, "runtimeGeneration": w.N("runtimeGeneration")}
 	}
 	require(action == "execute", 400, "invalid_action")
+	c := requireRuntimeSession(t, w, u.S("id"), r.Body.S("sessionId"))
 	ticketID := r.Body.S("ticketId")
 	kind := r.Body.S("kind")
 	require(validID(ticketID) && (kind == "task" || kind == "interaction"), 400, "invalid_ticket")
 	existing := t.one("SELECT * FROM execution_tickets WHERE id=$1", ticketID)
 	if existing != nil {
-		require(existing.S("tenantId") == tid && existing.S("workspaceId") == wid && existing.S("actorUserId") == u.S("id") && existing.S("kind") == kind, 409, "idempotency_conflict")
+		require(existing.S("tenantId") == tid && existing.S("workspaceId") == wid && existing.S("actorUserId") == u.S("id") && existing.S("kind") == kind && existing.S("controlSessionId") == c.S("sessionId") && existing.N("controlEpoch") == c.N("controlEpoch"), 409, "idempotency_conflict")
 		return existing
 	}
-	if runtimeOccupied(t, wid) {
-		reject(409, "resource_in_use")
-	}
-	require(executable, 409, "execution_closed")
-	t.exec("INSERT INTO execution_tickets(id,tenant_id,workspace_id,node_instance_id,actor_user_id,admission_epoch,kind,state) VALUES($1,$2,$3,$4,$5,$6,$7,'active')", ticketID, tid, wid, n.S("id"), u.S("id"), w.N("admissionEpoch"), kind)
+	checkActivities(t, w)
+	t.exec("INSERT INTO execution_tickets(id,tenant_id,workspace_id,node_instance_id,actor_user_id,admission_epoch,kind,state,control_session_id,control_epoch) VALUES($1,$2,$3,$4,$5,$6,$7,'active',$8,$9)", ticketID, tid, wid, n.S("id"), u.S("id"), w.N("admissionEpoch"), kind, c.S("sessionId"), c.N("controlEpoch"))
 	return t.one("SELECT * FROM execution_tickets WHERE id=$1", ticketID)
 }
 
@@ -116,6 +109,10 @@ func nodeStatus(t *transaction, r *ControlRequest, n, w Object) {
 	t.exec("UPDATE node_instances SET connection_state=$2,initialized=$3,last_seen_at=clock_timestamp(),idle_admission_epoch=NULL,version=version+1 WHERE id=$1", n.S("id"), state, r.Body.B("initialized"))
 	if state == "disconnected" {
 		closeUnavailable(t, w)
+	} else if r.Body.B("initialized") && w.S("desiredState") == "running" && w.S("observedState") == "unavailable" && w.S("baseCommitId") != "" {
+		// Transport recovery restores availability of the already initialized runtime only.
+		// Its withdrawn page qualification still requires durable closure and a fresh epoch.
+		t.exec("UPDATE workspaces SET observed_state='ready',admission_open=true,version=version+1 WHERE id=$1", w.S("id"))
 	}
 }
 
@@ -139,6 +136,8 @@ func nodeIdle(t *transaction, r *ControlRequest, n, w Object) Object {
 		return Object{"accepted": false, "errorCode": "resource_in_use"}
 	}
 	checkActivities(t, w)
+	c := runtimeControl(t, w.S("id"))
+	require(c.S("state") == "maintenance" && c.S("maintenanceOperationId") == o.S("id") && c.B("bindingConfirmed") && c.S("boundSandboxId") == n.S("sandboxInstanceId"), 409, "runtime_input_closure_unconfirmed")
 	require(n.B("initialized") && n.S("connectionState") == "connected", 409, "idle_unconfirmed")
 	t.exec("UPDATE node_instances SET idle_admission_epoch=$2,last_seen_at=clock_timestamp(),version=version+1 WHERE id=$1", n.S("id"), w.N("admissionEpoch"))
 	return nil
@@ -149,13 +148,9 @@ func restoreAdmission(t *transaction, o Object) {
 		raw, ok := v.(map[string]any)
 		require(ok, 500, "internal_error")
 		w := Object(raw)
-		// The snapshot was taken before force-stop. Restoring it would reopen admission.
-		admissionOpen := w.B("admissionOpen")
-		if openForceStop(t, wid) != nil {
-			admissionOpen = false
-		}
-		t.exec("UPDATE workspaces SET desired_state=$2,observed_state=$3,admission_open=$4,admission_epoch=admission_epoch+1,version=version+1 WHERE id=$1", wid, w.S("desiredState"), w.S("observedState"), admissionOpen)
+		t.exec("UPDATE workspaces SET desired_state=$2,observed_state=$3,admission_open=$4,admission_epoch=admission_epoch+1,version=version+1 WHERE id=$1", wid, w.S("desiredState"), w.S("observedState"), w.B("admissionOpen"))
 	}
 	t.exec("UPDATE projects SET lifecycle='active',version=version+1 WHERE id=$1 AND lifecycle='deleting'", o.S("projectId"))
 	t.exec("UPDATE operations SET state='failed',error_code='resource_in_use',version=version+1,updated_at=now() WHERE id=$1", o.S("id"))
+	finishRuntimeMaintenance(t, o.S("id"))
 }

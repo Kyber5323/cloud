@@ -11,11 +11,11 @@ func itoa(n int) string { return strconv.Itoa(n) }
 
 // PublicRequest is populated only after service and final-user credentials are verified.
 type PublicRequest struct {
-	Method, Path, TenantID, ProjectID, WorkspaceID, SpaceID, OperationID, CloneID, UserID, IssueID, CommentID, LabelID, StatusID, ViewID, RunID, ContextRefID, InteractionID, FormRef, InvitationID, JoinLinkID, JoinRequestID, Key, After, Query, GroupBy, Scope string
-	Limit                                                                                                                                                                                                                                                         int
-	Body                                                                                                                                                                                                                                                          Object
-	Identity                                                                                                                                                                                                                                                      *Claims
-	Person                                                                                                                                                                                                                                                        *DirectoryPerson
+	Method, Path, TenantID, ProjectID, WorkspaceID, SpaceID, OperationID, CloneID, UserID, IssueID, CommentID, LabelID, StatusID, ViewID, RunID, ContextRefID, InteractionID, FormRef, InvitationID, JoinLinkID, JoinRequestID, Key, After, Query, GroupBy string
+	Limit                                                                                                                                                                                                                                                  int
+	Body                                                                                                                                                                                                                                                   Object
+	Identity                                                                                                                                                                                                                                               *Claims
+	Person                                                                                                                                                                                                                                                 *DirectoryPerson
 }
 
 // Public executes one authorized public request in a short database transaction.
@@ -57,11 +57,16 @@ func (s *Store) Public(ctx context.Context, r *PublicRequest) (Object, int, erro
 			out, status = createTenant(t, r, uid)
 			return out
 		}
-		isAdmin := r.SpaceID == "" && (strings.HasSuffix(r.Path, "/resource-status") || strings.HasSuffix(r.Path, "/administrative-stop") || strings.HasSuffix(r.Path, "/force-stop") || strings.HasSuffix(r.Path, "/credential-verifications") || (r.UserID != "" && r.Method == "PUT") || strings.Contains(r.Path, "/invitations") || strings.Contains(r.Path, "/join-links") || strings.Contains(r.Path, "/join-requests") || strings.HasSuffix(r.Path, "/members/huawei"))
+		isAdmin := r.SpaceID == "" && (strings.HasSuffix(r.Path, "/resource-status") || strings.HasSuffix(r.Path, "/force-stop") || (r.UserID != "" && r.Method == "PUT") || strings.Contains(r.Path, "/invitations") || strings.Contains(r.Path, "/join-links") || strings.Contains(r.Path, "/join-requests") || strings.HasSuffix(r.Path, "/members/huawei"))
 		membership(t, r.TenantID, uid, isAdmin)
+		refreshRuntimeControls(t)
 		if r.Method == "GET" {
+			if strings.HasSuffix(r.Path, "/force-stop") {
+				return forceStopPublic(t, r, uid)
+			}
 			return readPublic(t, r, uid)
 		}
+		authorizeRuntimeReplay(t, r, uid)
 		hash := requestHash(r.Method, r.Path, r.Body)
 		idempotent := r.Method == "POST" || r.Method == "DELETE"
 		if idempotent {
@@ -118,19 +123,14 @@ func (s *Store) Public(ctx context.Context, r *PublicRequest) (Object, int, erro
 			out = retryOperation(t, r, uid)
 			status = 202
 		case r.WorkspaceID != "" && strings.HasSuffix(r.Path, "/force-stop"):
-			out = acceptForceStop(t, r, uid, hash)
+			out = forceStopPublic(t, r, uid)
 			status = 202
-		case r.WorkspaceID != "" && strings.Contains(r.Path, "/control"):
-			out = mutateRuntimeControl(t, r, uid)
+		case r.WorkspaceID != "" && strings.Contains(r.Path, "/control/"):
+			out = runtimeControlPublic(t, r, uid)
 		case r.WorkspaceID != "":
 			out = workspaceAction(t, r, uid, hash, isAdmin)
 			status = 202
 		case r.ProjectID != "":
-			if strings.HasSuffix(r.Path, "/credential-verifications") {
-				require(r.Method == "POST", 404, "not_found")
-				out = submitCredentialVerification(t, r, uid, hash)
-				break
-			}
 			p, m := projectInSpace(t, r.TenantID, uid, r.ProjectID)
 			switch {
 			case strings.HasSuffix(r.Path, "/workspaces"):
@@ -152,11 +152,10 @@ func (s *Store) Public(ctx context.Context, r *PublicRequest) (Object, int, erro
 				idleProject(t, p.S("id"))
 				require(p.S("lifecycle") == "active", 409, "resource_unavailable")
 				ws := t.list("SELECT * FROM workspaces WHERE project_id=$1 AND deleted_at IS NULL ORDER BY id", p.S("id"))
-				if code := projectDeleteConflict(t, uid, ws); code != "" {
-					reject(409, code)
-				}
 				previous := Object{}
 				for _, w := range ws {
+					require(runtimeControl(t, w.S("id")).S("state") == "idle", 409, "runtime_control_held")
+					checkActivities(t, w)
 					previous[w.S("id")] = w
 				}
 				for _, w := range ws {
@@ -165,6 +164,9 @@ func (s *Store) Public(ctx context.Context, r *PublicRequest) (Object, int, erro
 				t.exec("UPDATE projects SET lifecycle='deleting',version=version+1 WHERE id=$1", p.S("id"))
 				req := Object{"previous": previous}
 				op := newOperation(t, r, uid, p.S("id"), "", "delete_project", "quiesce", hash, req)
+				for _, w := range ws {
+					reserveRuntimeMaintenance(t, w.S("id"), op.S("id"))
+				}
 				out = Object{"resource": t.one("SELECT * FROM projects WHERE id=$1", p.S("id")), "operation": op}
 				status = 202
 				if p.S("spaceId") != "" {
@@ -406,15 +408,14 @@ func readPublic(t *transaction, r *PublicRequest, uid string) Object {
 		return page(t, "SELECT w.id,w.project_id,w.owner_user_id,w.kind,w.desired_state,w.observed_state,w.runtime_generation,w.version FROM workspaces w WHERE w.tenant_id=$1 AND w.deleted_at IS NULL", []any{r.TenantID}, "w.id", r)
 	case r.OperationID != "":
 		return ownedOperation(t, r, uid)
-	case strings.Contains(r.Path, "/control"):
-		return readRuntimeControl(t, r, uid)
+	case r.WorkspaceID != "" && strings.HasSuffix(r.Path, "/control"):
+		return runtimeControlPublic(t, r, uid)
 	case r.WorkspaceID != "":
-		w := workspace(t, r.TenantID, uid, r.WorkspaceID, false)
-		return presentRuntime(w, runtimeContentAllowed(membership(t, r.TenantID, uid, false).S("role"), uid, w))
+		return workspace(t, r.TenantID, uid, r.WorkspaceID, false)
 	case r.ProjectID != "":
 		p := project(t, r.TenantID, uid, r.ProjectID)
 		if strings.HasSuffix(r.Path, "/workspaces") {
-			return runtimeList(t, r, uid, p.S("id"))
+			return runtimeListing(t, r, uid, p.S("id"))
 		}
 		return p
 	default:
@@ -435,11 +436,7 @@ func putMember(t *transaction, r *PublicRequest, uid string) Object {
 		require(t.one("SELECT m.user_id FROM tenant_memberships m JOIN users u ON u.id=m.user_id WHERE m.tenant_id=$1 AND m.user_id<>$2 AND m.role='admin' AND m.status='active' AND u.status='active' AND u.deleted_at IS NULL", r.TenantID, r.UserID) != nil, 409, "last_admin")
 	}
 	t.exec("UPDATE tenant_memberships SET role=$3,status=$4,version=version+1 WHERE tenant_id=$1 AND user_id=$2", r.TenantID, r.UserID, role, status)
-	// The same transaction drops operation rights the new role or status no longer grants.
-	revokeLostRuntimeControl(t, r.TenantID, r.UserID)
-	if status == "disabled" {
-		freezeMemberCredentials(t, r.TenantID, r.UserID)
-	}
+	refreshRuntimeControls(t)
 	return t.one("SELECT * FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2", r.TenantID, r.UserID)
 }
 
@@ -480,25 +477,20 @@ func createProject(t *transaction, r *PublicRequest, uid, hash string) Object {
 	var cred any
 	if id := r.Body.S("credentialRefId"); id != "" {
 		require(validID(id), 400, "invalid_credential_ref")
-		ref := t.one("SELECT availability FROM credential_refs WHERE id=$1 AND tenant_id=$2 AND owner_user_id=$3 AND purpose='git' AND deleted_at IS NULL", id, r.TenantID, uid)
-		require(ref != nil, 404, "credential_ref_not_found")
-		require(ref.S("availability") != "frozen", 409, "credential_unavailable")
+		require(t.one("SELECT id FROM credential_refs WHERE id=$1 AND tenant_id=$2 AND owner_user_id=$3 AND purpose='git' AND deleted_at IS NULL", id, r.TenantID, uid) != nil, 404, "credential_ref_not_found")
 		cred = id
 	}
 	pid, wid := newID(), newID()
 	t.exec("INSERT INTO projects(id,tenant_id,owner_user_id,space_id,name,repository_url,default_branch,credential_ref_id,lifecycle) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'provisioning')", pid, r.TenantID, uid, spaceID, name, repo, branch, cred)
-	insertWorkspace(t, r.TenantID, uid, pid, wid, "main", branch, "")
+	insertWorkspace(t, r.TenantID, uid, uid, pid, wid, "main", branch, "")
 	op := newOperation(t, r, uid, pid, wid, "create_project", "sandbox", hash, Object{})
-	// The creator points at this operation, so the workspace row has to exist first.
-	bindRuntimeCreator(t, wid, uid, op.S("id"), "create_project_operation")
-	w := t.one("SELECT * FROM workspaces WHERE id=$1", wid)
-	return Object{"resource": t.one("SELECT * FROM projects WHERE id=$1", pid), "workspace": presentRuntime(w, runtimeContentAllowed(membership(t, r.TenantID, uid, false).S("role"), uid, w)), "operation": op}
+	return Object{"resource": t.one("SELECT * FROM projects WHERE id=$1", pid), "workspace": t.one("SELECT * FROM workspaces WHERE id=$1", wid), "operation": op}
 }
 
-func insertWorkspace(t *transaction, tid, uid, pid, wid, kind, ref, title string) {
+func insertWorkspace(t *transaction, tid, owner, creator, pid, wid, kind, ref, title string) {
 	// The Workspace's Node clones ref into the Workspace's own data; there is no shared Project
 	// repository or linked worktree any more.
-	t.exec("INSERT INTO workspaces(id,tenant_id,owner_user_id,project_id,kind,desired_state,observed_state,requested_ref) VALUES($1,$2,$3,$4,$5,'running','provisioning',$6)", wid, tid, uid, pid, kind, ref)
+	t.exec("INSERT INTO workspaces(id,tenant_id,owner_user_id,creator_user_id,creator_evidence,project_id,kind,desired_state,observed_state,requested_ref) VALUES($1,$2,$3,$4,'verified_request',$5,$6,'running','provisioning',$7)", wid, tid, owner, creator, pid, kind, ref)
 	if kind == "isolated" {
 		t.exec("INSERT INTO tasks(id,workspace_id,title) VALUES($1,$2,$3)", newID(), wid, title)
 	}
@@ -506,7 +498,6 @@ func insertWorkspace(t *transaction, tid, uid, pid, wid, kind, ref, title string
 
 func createWorkspace(t *transaction, r *PublicRequest, p Object, uid, hash string) Object {
 	require(p.S("lifecycle") == "active", 409, "resource_unavailable")
-	require(!projectCredentialFrozen(t, p.S("id")), 409, "credential_unavailable")
 	idleProject(t, p.S("id"))
 	title := validText(r.Body.S("title"), 200)
 	ref := validRef(r.Body.S("baseRef"))
@@ -517,13 +508,11 @@ func createWorkspace(t *transaction, r *PublicRequest, p Object, uid, hash strin
 		require(ref != "HEAD", 400, "default_branch_required")
 	}
 	wid := newID()
-	// The project's durable owner stays on the workspace FK. The requester is
-	// the creator, recorded once the create operation row exists.
-	insertWorkspace(t, r.TenantID, p.S("ownerUserId"), p.S("id"), wid, "isolated", ref, title)
+	// The project's durable owner is part of the workspace FK. A different
+	// tenant member may initiate this action, recorded separately as actor.
+	insertWorkspace(t, r.TenantID, p.S("ownerUserId"), uid, p.S("id"), wid, "isolated", ref, title)
 	op := newOperation(t, r, uid, p.S("id"), wid, "create_workspace", "sandbox", hash, Object{})
-	bindRuntimeCreator(t, wid, uid, op.S("id"), "create_workspace_operation")
-	w := workspace(t, r.TenantID, uid, wid, false)
-	return Object{"resource": presentRuntime(w, runtimeContentAllowed(membership(t, r.TenantID, uid, false).S("role"), uid, w)), "operation": op}
+	return Object{"resource": workspace(t, r.TenantID, uid, wid, false), "operation": op}
 }
 
 func newOperation(t *transaction, r *PublicRequest, uid, pid, wid, kind, step, hash string, req Object) Object {
@@ -534,11 +523,15 @@ func newOperation(t *transaction, r *PublicRequest, uid, pid, wid, kind, step, h
 	}
 	t.exec("INSERT INTO operations(id,tenant_id,actor_user_id,project_id,workspace_id,kind,state,step,request,idempotency_key,request_hash) VALUES($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10)", id, r.TenantID, uid, pid, w, kind, step, jsonText(req), r.Key, hash)
 	t.queued = append(t.queued, id)
+	if wid != "" && (kind == "create_project" || kind == "create_workspace") {
+		reserveRuntimeMaintenance(t, wid, id)
+	}
 	return t.one("SELECT * FROM operations WHERE id=$1", id)
 }
 
 func checkActivities(t *transaction, w Object) {
-	require(t.one("SELECT id FROM execution_tickets WHERE workspace_id=$1 AND state='active'", w.S("id")) == nil, 409, "resource_in_use")
+	require(t.one("SELECT id FROM execution_tickets WHERE workspace_id=$1 AND state='active' AND terminated_by_force_stop_id IS NULL", w.S("id")) == nil, 409, "resource_in_use")
+	require(t.one("SELECT execution_id FROM clone_executions WHERE workspace_id=$1 AND result IS NULL AND terminated_by_force_stop_id IS NULL", w.S("id")) == nil, 409, "resource_in_use")
 }
 
 func closeAdmission(t *transaction, w Object, desired string) {
@@ -570,22 +563,16 @@ func workspaceAction(t *transaction, r *PublicRequest, uid, hash string, admin b
 	p := t.one("SELECT * FROM projects WHERE id=$1", w.S("projectId"))
 	require(p.S("lifecycle") == "active", 409, "resource_unavailable")
 	version(w, r.Body.N("version"))
-	idleProject(t, p.S("id"))
-	// administrative-stop keeps its existing administrator path. Ordinary start,
-	// stop, restart and delete need use permission and the caller's held session.
-	// An open force-stop is checked after use so a caller without permission
-	// still receives runtime_use_forbidden and learns nothing about the intent.
 	if !admin {
-		requireRuntimeUse(t, r.TenantID, uid, w)
-		if openForceStop(t, w.S("id")) != nil {
-			reject(409, "termination_unconfirmed")
-		}
-		requireHeldRuntimeControl(t, r, uid, w)
+		requireRuntimeSession(t, w, uid, r.Body.S("sessionId"))
 	}
+	requireNoForceStop(t, w.S("id"))
+	idleProject(t, p.S("id"))
 	kind, step := "stop", "quiesce"
 	req := Object{"previous": Object{w.S("id"): w}}
 	if strings.HasSuffix(r.Path, "/start") {
 		kind, step = "start", "sandbox"
+		require(w.S("baseCommitId") != "", 409, "runtime_initialization_incomplete")
 		require(w.S("desiredState") == "stopped" && w.S("observedState") == "stopped", 409, "resource_unavailable")
 		t.exec("UPDATE workspaces SET desired_state='running',observed_state='starting',version=version+1 WHERE id=$1", w.S("id"))
 	} else {
@@ -596,12 +583,13 @@ func workspaceAction(t *transaction, r *PublicRequest, uid, hash string, admin b
 			require(w.S("kind") == "isolated", 409, "main_workspace_required")
 			kind, desired = "delete_workspace", "deleted"
 		}
-		if admin {
-			kind = "administrative_stop"
+		if strings.HasSuffix(r.Path, "/restart") {
+			kind = "restart"
 		}
 		closeAdmission(t, w, desired)
 	}
 	op := newOperation(t, r, uid, p.S("id"), w.S("id"), kind, step, hash, req)
+	reserveRuntimeMaintenance(t, w.S("id"), op.S("id"))
 	resource := workspace(t, r.TenantID, uid, w.S("id"), admin)
 	if admin {
 		resource = adminResource(resource)
@@ -614,11 +602,15 @@ func ownedOperation(t *transaction, r *PublicRequest, uid string) Object {
 	require(validID(r.OperationID), 404, "not_found")
 	o := t.one("SELECT o.* FROM operations o JOIN projects p ON p.id=o.project_id WHERE o.id=$1 AND o.tenant_id=$2 AND p.tenant_id=$2", r.OperationID, r.TenantID)
 	require(o != nil, 404, "not_found")
+	if o.S("workspaceId") != "" {
+		workspace(t, r.TenantID, uid, o.S("workspaceId"), false)
+	} else {
+		membership(t, r.TenantID, uid, true)
+	}
 	if o.S("kind") == "administrative_stop" {
 		membership(t, r.TenantID, uid, true)
 		return adminOperation(o)
 	}
-	authorizeOperationUse(t, r.TenantID, uid, o)
 	return o
 }
 

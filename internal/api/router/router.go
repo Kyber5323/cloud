@@ -91,28 +91,27 @@ func Routes() []Route {
 		{"GET", "/api/v1/tenants/:tid/projects", "", nil},
 		{"POST", "/api/v1/tenants/:tid/projects", "", []string{"name", "repositoryUrl", "defaultBranch", "credentialRefId"}},
 		{"GET", "/api/v1/tenants/:tid/projects/:pid", "", nil},
-		{"POST", "/api/v1/tenants/:tid/projects/:pid/credential-verifications", "", []string{"credentialRefId", "capability", "version"}},
 		{"PATCH", "/api/v1/tenants/:tid/projects/:pid", "", []string{"name", "version"}},
 		{"DELETE", "/api/v1/tenants/:tid/projects/:pid", "", []string{"version"}},
 		{"GET", "/api/v1/tenants/:tid/projects/:pid/workspaces", "", nil},
 		{"POST", "/api/v1/tenants/:tid/projects/:pid/workspaces", "", []string{"title", "baseRef"}},
 		{"GET", "/api/v1/tenants/:tid/workspaces/:wid", "", nil},
+		{"GET", "/api/v1/tenants/:tid/workspaces/:wid/control", "", nil},
+		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/control/acquire", "", []string{"version"}},
+		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/control/renew", "", []string{"version", "sessionId"}},
+		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/control/release", "", []string{"version", "sessionId"}},
 		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/start", "", []string{"version", "sessionId"}},
 		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/stop", "", []string{"version", "sessionId"}},
 		{"DELETE", "/api/v1/tenants/:tid/workspaces/:wid", "", []string{"version", "sessionId"}},
-		{"GET", "/api/v1/tenants/:tid/workspaces/:wid/control", "", nil},
-		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/control", "", nil},
-		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/control/renew", "", []string{"sessionId"}},
-		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/control/release", "", []string{"sessionId"}},
-		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/control/activities", "", []string{"sessionId"}},
 		{"GET", "/api/v1/tenants/:tid/clones", "", nil},
 		{"POST", "/api/v1/tenants/:tid/clones", "", []string{"requestId", "repository", "branch"}},
 		{"GET", "/api/v1/tenants/:tid/clones/:cloneId", "", nil},
 		{"GET", "/api/v1/tenants/:tid/operations/:oid", "", nil},
 		{"POST", "/api/v1/tenants/:tid/operations/:oid/retry", "", []string{"version"}},
 		{"GET", "/api/v1/tenants/:tid/resource-status", "", nil},
-		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/administrative-stop", "", []string{"version"}},
-		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/force-stop", "", []string{"version", "reason"}},
+		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/force-stop", "", []string{"version", "reason", "impactConfirmed"}},
+		{"GET", "/api/v1/tenants/:tid/workspaces/:wid/force-stop", "", nil},
+		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/restart", "", []string{"version", "sessionId"}},
 		{"GET", "/api/v1/tenants/:tid/spaces", "", nil},
 		{"GET", "/api/v1/tenants/:tid/spaces/:spaceId", "", nil},
 		{"PATCH", "/api/v1/tenants/:tid/spaces/:spaceId", "", []string{"name", "description", "version"}},
@@ -120,10 +119,10 @@ func Routes() []Route {
 		{"POST", "/api/v1/tenants/:tid/spaces/:spaceId/projects", "", []string{"name", "repositoryUrl", "defaultBranch", "credentialRefId"}},
 		{"GET", "/api/v1/tenants/:tid/spaces/:spaceId/plugins/catalog", "", nil},
 		{"GET", "/api/v1/tenants/:tid/spaces/:spaceId/plugins", "", nil},
-		{"POST", "/api/v1/tenants/:tid/spaces/:spaceId/plugins", "", []string{"identifier", "pluginVersion"}},
+		{"POST", "/api/v1/tenants/:tid/spaces/:spaceId/plugins", "", []string{"identifier", "pluginVersion", "version"}},
 		{"DELETE", "/api/v1/tenants/:tid/spaces/:spaceId/plugins", "", []string{"identifier", "version"}},
-		{"POST", "/internal/v1/access", "access", []string{"tenantId", "workspaceId", "action", "epoch"}},
-		{"POST", "/internal/v1/admissions", "admit", []string{"tenantId", "workspaceId", "action", "ticketId", "kind", "epoch"}},
+		{"POST", "/internal/v1/access", "access", []string{"tenantId", "workspaceId", "action", "epoch", "sessionId"}},
+		{"POST", "/internal/v1/admissions", "admit", []string{"tenantId", "workspaceId", "action", "ticketId", "kind", "epoch", "sessionId"}},
 		{"POST", "/internal/v1/controller-lease/acquire", "lease_acquire", []string{}},
 		{"POST", "/internal/v1/controller-lease/renew", "lease_renew", []string{"epoch"}},
 		{"POST", "/internal/v1/controller-lease/release", "lease_release", []string{"epoch"}},
@@ -137,12 +136,20 @@ func Routes() []Route {
 		{"POST", "/internal/v1/nodes/status", "node_status", []string{"version", "connectionState", "initialized"}},
 		{"POST", "/internal/v1/nodes/idle", "node_idle", []string{"version", "admissionEpoch", "idle", "operationId"}},
 		{"POST", "/internal/v1/nodes/tickets/:ticket/finish", "node_finish", []string{"version"}},
-		{"POST", "/internal/v1/runtime-control/dispatches", "control_dispatch", []string{"epoch", "executionId", "workspaceId", "controlEpoch", "runtimeGeneration", "protocolGeneration", "input"}},
 	}
 }
 
 // New injects the store, trust configuration, and logger. No public user CRUD is registered.
 func New(store *core.Store, auth *core.Authenticator, log *zap.Logger, directories ...Directory) *gin.Engine {
+	return newRouter(store, auth, log, false, directories...)
+}
+
+// NewDevelopment keeps the simulator's internal JSON entry points separate from production.
+func NewDevelopment(store *core.Store, auth *core.Authenticator, log *zap.Logger, directories ...Directory) *gin.Engine {
+	return newRouter(store, auth, log, true, directories...)
+}
+
+func newRouter(store *core.Store, auth *core.Authenticator, log *zap.Logger, legacy bool, directories ...Directory) *gin.Engine {
 	var directory Directory
 	if len(directories) > 0 {
 		directory = directories[0]
@@ -169,6 +176,10 @@ func New(store *core.Store, auth *core.Authenticator, log *zap.Logger, directori
 	})
 	for _, route := range Routes() {
 		r.Handle(route.Method, route.Path, func(c *gin.Context) {
+			if route.Action != "" && !legacy {
+				failure(c, &core.Fault{Code: "retired_management_transport", Status: 410, Params: core.Object{}})
+				return
+			}
 			raw, ok := bearerToken(c.GetHeader("Authorization"))
 			if !ok {
 				failure(c, &core.Fault{Code: "invalid_service_credential", Status: 401, Params: core.Object{}})
@@ -243,7 +254,7 @@ func New(store *core.Store, auth *core.Authenticator, log *zap.Logger, directori
 						return
 					}
 				}
-				for _, k := range []string{"idle", "initialized"} {
+				for _, k := range []string{"idle", "initialized", "impactConfirmed"} {
 					for _, f := range route.Fields {
 						if f == k {
 							if _, ok := body[k]; !ok {
@@ -291,7 +302,7 @@ func New(store *core.Store, auth *core.Authenticator, log *zap.Logger, directori
 						return
 					}
 				}
-				out, status, e = store.Public(c.Request.Context(), &core.PublicRequest{Method: c.Request.Method, Path: c.Request.URL.Path, TenantID: c.Param("tid"), ProjectID: c.Param("pid"), WorkspaceID: c.Param("wid"), SpaceID: c.Param("spaceId"), OperationID: c.Param("oid"), CloneID: c.Param("cloneId"), UserID: c.Param("uid"), IssueID: c.Param("iid"), CommentID: c.Param("cid"), LabelID: c.Param("lid"), StatusID: c.Param("sid"), ViewID: c.Param("vid"), RunID: c.Param("rid"), ContextRefID: c.Param("crid"), InteractionID: c.Param("ixid"), FormRef: c.Param("formRef"), InvitationID: c.Param("iid"), JoinLinkID: c.Param("lid"), JoinRequestID: c.Param("rid"), Key: c.GetHeader("Idempotency-Key"), Limit: limit, After: c.Query("after"), Query: c.Query("q"), GroupBy: c.Query("by"), Scope: c.Query("scope"), Body: body, Identity: user, Person: person})
+				out, status, e = store.Public(c.Request.Context(), &core.PublicRequest{Method: c.Request.Method, Path: c.Request.URL.Path, TenantID: c.Param("tid"), ProjectID: c.Param("pid"), WorkspaceID: c.Param("wid"), SpaceID: c.Param("spaceId"), OperationID: c.Param("oid"), CloneID: c.Param("cloneId"), UserID: c.Param("uid"), IssueID: c.Param("iid"), CommentID: c.Param("cid"), LabelID: c.Param("lid"), StatusID: c.Param("sid"), ViewID: c.Param("vid"), RunID: c.Param("rid"), ContextRefID: c.Param("crid"), InteractionID: c.Param("ixid"), FormRef: c.Param("formRef"), InvitationID: c.Param("iid"), JoinLinkID: c.Param("lid"), JoinRequestID: c.Param("rid"), Key: c.GetHeader("Idempotency-Key"), Limit: limit, After: c.Query("after"), Query: c.Query("q"), GroupBy: c.Query("by"), Body: body, Identity: user, Person: person})
 			} else {
 				out, e = store.Control(c.Request.Context(), &core.ControlRequest{Action: route.Action, OperationID: c.Param("oid"), EffectID: c.Param("eid"), TicketID: c.Param("ticket"), Body: body, Service: service, Identity: user})
 			}
@@ -312,9 +323,9 @@ func New(store *core.Store, auth *core.Authenticator, log *zap.Logger, directori
 }
 
 // sseEvents streams committed space invalidation events to a verified member.
-// Membership is checked again before each notice, so a disable closes the
-// stream without delivering that notice. The payload stays a refresh hint;
-// runtime content is loaded with the creator or current-administrator check.
+// Authorization reuses the REST path: the caller must be able to read the space.
+// Events are lightweight invalidation notices; the authoritative state is always
+// fetched over REST afterwards.
 func sseEvents(store *core.Store, auth *core.Authenticator, c *gin.Context) {
 	_, user, fault := verifyPublicCredentials(c, auth)
 	if fault != nil {
@@ -358,7 +369,7 @@ func sseEvents(store *core.Store, auth *core.Authenticator, c *gin.Context) {
 			if err != nil || status != 200 {
 				return
 			}
-			b, err := core.MarshalSpaceEvent(ev)
+			b, err := json.Marshal(ev)
 			if err != nil {
 				return
 			}
@@ -398,7 +409,7 @@ func bearerToken(header string) (string, bool) {
 
 func validField(name string, value any) bool {
 	switch name {
-	case "version", "epoch", "admissionEpoch", "protocolVersion", "protocolGeneration", "controlEpoch", "runtimeGeneration", "retrySeconds", "position":
+	case "version", "epoch", "admissionEpoch", "protocolVersion", "retrySeconds", "position":
 		n, ok := value.(json.Number)
 		if !ok {
 			return false
@@ -466,7 +477,7 @@ func validField(name string, value any) bool {
 			}
 		}
 		return true
-	case "idle", "initialized":
+	case "idle", "initialized", "impactConfirmed":
 		_, ok := value.(bool)
 		return ok
 	case "result":
@@ -476,7 +487,7 @@ func validField(name string, value any) bool {
 		}
 		for k, v := range o {
 			switch k {
-			case "jobTerminated", "removed", "terminated", "installed":
+			case "jobTerminated", "removed", "terminated", "lateEnsureFenced", "installed":
 				if _, ok := v.(bool); !ok {
 					return false
 				}

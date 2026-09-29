@@ -121,6 +121,8 @@ message ExecutionRecord {
   string node_id = 3;
   ExecutionInput input = 4;
   optional ExecutionResult result = 5;
+  // Stable Node operation for this execution attempt; distinct from the durable business intent.
+  string node_operation_id = 6;
 }
 
 message ClaimWorkRequest {

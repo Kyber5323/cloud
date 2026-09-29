@@ -21,8 +21,6 @@ func toStatus(err error) error {
 		code, detail = codes.FailedPrecondition, controlpb.ErrorCode_ERROR_CODE_LEASE_HELD
 	case fault.Code == "stale_controller" || fault.Code == "stale_operation":
 		code, detail = codes.FailedPrecondition, controlpb.ErrorCode_ERROR_CODE_STALE_CONTROLLER
-	case fault.Code == "control_capability_unavailable":
-		code, detail = codes.FailedPrecondition, controlpb.ErrorCode_ERROR_CODE_CONTROL_CAPABILITY_UNAVAILABLE
 	case fault.Status == 409:
 		code, detail = codes.Aborted, controlpb.ErrorCode_ERROR_CODE_CONFLICT
 	case fault.Status == 400:

@@ -30,8 +30,6 @@ func run() error {
 	tenant := flag.String("tenant", "", "tenant UUID")
 	owner := flag.String("owner", "", "owner UUID")
 	secret := flag.String("secret-ref", "", "infrastructure secret reference, never a secret value")
-	scope := flag.String("scope", "unknown", "credential class: team, personal, or unknown")
-	basis := flag.String("authority-basis", "", "audit citation required for a team or personal reference")
 	flag.Parse()
 	cfg, e := config.Load(*configFile)
 	if e != nil {
@@ -55,7 +53,7 @@ func run() error {
 	case "bootstrap":
 		out, e = s.Bootstrap(ctx, *name, *source, *subject, *display)
 	case "credential-ref":
-		out, e = s.ConfigureClassifiedCredential(ctx, *tenant, *owner, *secret, *scope, *basis)
+		out, e = s.ConfigureCredential(ctx, *tenant, *owner, *secret)
 	default:
 		return fmt.Errorf("unknown command; choose migrate, bootstrap, credential-ref")
 	}

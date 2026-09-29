@@ -34,21 +34,23 @@ const (
 	OperationKind_OPERATION_KIND_DELETE_PROJECT      OperationKind = 7
 	OperationKind_OPERATION_KIND_INSTALL_PLUGIN      OperationKind = 8
 	OperationKind_OPERATION_KIND_REMOVE_PLUGIN       OperationKind = 9
+	OperationKind_OPERATION_KIND_RESTART             OperationKind = 10
 )
 
 // Enum value maps for OperationKind.
 var (
 	OperationKind_name = map[int32]string{
-		0: "OPERATION_KIND_UNSPECIFIED",
-		1: "OPERATION_KIND_CREATE_PROJECT",
-		2: "OPERATION_KIND_CREATE_WORKSPACE",
-		3: "OPERATION_KIND_START",
-		4: "OPERATION_KIND_STOP",
-		5: "OPERATION_KIND_ADMINISTRATIVE_STOP",
-		6: "OPERATION_KIND_DELETE_WORKSPACE",
-		7: "OPERATION_KIND_DELETE_PROJECT",
-		8: "OPERATION_KIND_INSTALL_PLUGIN",
-		9: "OPERATION_KIND_REMOVE_PLUGIN",
+		0:  "OPERATION_KIND_UNSPECIFIED",
+		1:  "OPERATION_KIND_CREATE_PROJECT",
+		2:  "OPERATION_KIND_CREATE_WORKSPACE",
+		3:  "OPERATION_KIND_START",
+		4:  "OPERATION_KIND_STOP",
+		5:  "OPERATION_KIND_ADMINISTRATIVE_STOP",
+		6:  "OPERATION_KIND_DELETE_WORKSPACE",
+		7:  "OPERATION_KIND_DELETE_PROJECT",
+		8:  "OPERATION_KIND_INSTALL_PLUGIN",
+		9:  "OPERATION_KIND_REMOVE_PLUGIN",
+		10: "OPERATION_KIND_RESTART",
 	}
 	OperationKind_value = map[string]int32{
 		"OPERATION_KIND_UNSPECIFIED":         0,
@@ -61,6 +63,7 @@ var (
 		"OPERATION_KIND_DELETE_PROJECT":      7,
 		"OPERATION_KIND_INSTALL_PLUGIN":      8,
 		"OPERATION_KIND_REMOVE_PLUGIN":       9,
+		"OPERATION_KIND_RESTART":             10,
 	}
 )
 
@@ -1449,9 +1452,11 @@ func (x *SandboxEnsured) GetNodeId() string {
 }
 
 type SandboxTerminated struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Durable rejection of the original ensure identity, including late delivery.
+	LateEnsureFenced bool `protobuf:"varint,1,opt,name=late_ensure_fenced,json=lateEnsureFenced,proto3" json:"late_ensure_fenced,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *SandboxTerminated) Reset() {
@@ -1482,6 +1487,13 @@ func (x *SandboxTerminated) ProtoReflect() protoreflect.Message {
 // Deprecated: Use SandboxTerminated.ProtoReflect.Descriptor instead.
 func (*SandboxTerminated) Descriptor() ([]byte, []int) {
 	return file_ora_cloud_internal_v1_operations_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *SandboxTerminated) GetLateEnsureFenced() bool {
+	if x != nil {
+		return x.LateEnsureFenced
+	}
+	return false
 }
 
 type WorkspaceDataDeleted struct {
@@ -2838,8 +2850,9 @@ const file_ora_cloud_internal_v1_operations_proto_rawDesc = "" +
 	"\arequest\"Y\n" +
 	"\x0eSandboxEnsured\x12.\n" +
 	"\x13sandbox_instance_id\x18\x01 \x01(\tR\x11sandboxInstanceId\x12\x17\n" +
-	"\anode_id\x18\x02 \x01(\tR\x06nodeId\"\x13\n" +
-	"\x11SandboxTerminated\"\x16\n" +
+	"\anode_id\x18\x02 \x01(\tR\x06nodeId\"A\n" +
+	"\x11SandboxTerminated\x12,\n" +
+	"\x12late_ensure_fenced\x18\x01 \x01(\bR\x10lateEnsureFenced\"\x16\n" +
 	"\x14WorkspaceDataDeleted\"+\n" +
 	"\x0fPluginInstalled\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\"\x0f\n" +
@@ -2936,7 +2949,7 @@ const file_ora_cloud_internal_v1_operations_proto_rawDesc = "" +
 	"\anode_id\x18\x02 \x01(\tR\x06nodeId\x127\n" +
 	"\x05nodes\x18\x03 \x03(\v2!.ora.cloud.internal.v1.NodeRecordR\x05nodes\"]\n" +
 	"\x19ListLiveSandboxesResponse\x12@\n" +
-	"\tsandboxes\x18\x01 \x03(\v2\".ora.cloud.internal.v1.LiveSandboxR\tsandboxes*\xdf\x02\n" +
+	"\tsandboxes\x18\x01 \x03(\v2\".ora.cloud.internal.v1.LiveSandboxR\tsandboxes*\xfb\x02\n" +
 	"\rOperationKind\x12\x1e\n" +
 	"\x1aOPERATION_KIND_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dOPERATION_KIND_CREATE_PROJECT\x10\x01\x12#\n" +
@@ -2947,7 +2960,9 @@ const file_ora_cloud_internal_v1_operations_proto_rawDesc = "" +
 	"\x1fOPERATION_KIND_DELETE_WORKSPACE\x10\x06\x12!\n" +
 	"\x1dOPERATION_KIND_DELETE_PROJECT\x10\a\x12!\n" +
 	"\x1dOPERATION_KIND_INSTALL_PLUGIN\x10\b\x12 \n" +
-	"\x1cOPERATION_KIND_REMOVE_PLUGIN\x10\t*\xe2\x01\n" +
+	"\x1cOPERATION_KIND_REMOVE_PLUGIN\x10\t\x12\x1a\n" +
+	"\x16OPERATION_KIND_RESTART\x10\n" +
+	"*\xe2\x01\n" +
 	"\x0eOperationState\x12\x1f\n" +
 	"\x1bOPERATION_STATE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16OPERATION_STATE_QUEUED\x10\x01\x12\x1b\n" +

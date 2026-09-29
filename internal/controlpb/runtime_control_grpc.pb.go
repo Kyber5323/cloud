@@ -19,122 +19,299 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RuntimeControlDeliveryService_RecordControlDispatch_FullMethodName = "/ora.cloud.internal.v1.RuntimeControlDeliveryService/RecordControlDispatch"
+	RuntimeControlService_ListBindings_FullMethodName       = "/ora.cloud.internal.v1.RuntimeControlService/ListBindings"
+	RuntimeControlService_AcknowledgeBinding_FullMethodName = "/ora.cloud.internal.v1.RuntimeControlService/AcknowledgeBinding"
+	RuntimeControlService_GetExecutionPermit_FullMethodName = "/ora.cloud.internal.v1.RuntimeControlService/GetExecutionPermit"
+	RuntimeControlService_GetEffectPermit_FullMethodName    = "/ora.cloud.internal.v1.RuntimeControlService/GetEffectPermit"
+	RuntimeControlService_ListForceStops_FullMethodName     = "/ora.cloud.internal.v1.RuntimeControlService/ListForceStops"
+	RuntimeControlService_ConfirmForceStop_FullMethodName   = "/ora.cloud.internal.v1.RuntimeControlService/ConfirmForceStop"
 )
 
-// RuntimeControlDeliveryServiceClient is the client API for RuntimeControlDeliveryService service.
+// RuntimeControlServiceClient is the client API for RuntimeControlService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// Runtime-control delivery. Protocol generation 2 is required. A caller that
-// omits it, or sends any other generation, is the old protocol and is refused.
-// Declaring a ControllerId does not authenticate this service. Until deployment
-// mutual TLS binds a service identity to the controller and the target runtime,
-// Cloud keeps the capability closed and records no dispatch.
-type RuntimeControlDeliveryServiceClient interface {
-	// Records one execution before anything is sent onward. The same submission
-	// and the same execution identity with the same input return the original
-	// record. Cloud does not start a Node, install a plugin, or mark a runtime
-	// stopped.
-	RecordControlDispatch(ctx context.Context, in *RecordControlDispatchRequest, opts ...grpc.CallOption) (*RecordControlDispatchResponse, error)
+// Mandatory for controlled cloud execution. Legacy participants must refuse execution when this
+// service or the Node runtime_control capability is unavailable, without falling back to raw clone.
+type RuntimeControlServiceClient interface {
+	ListBindings(ctx context.Context, in *ListBindingsRequest, opts ...grpc.CallOption) (*ListBindingsResponse, error)
+	AcknowledgeBinding(ctx context.Context, in *AcknowledgeBindingRequest, opts ...grpc.CallOption) (*AcknowledgeBindingResponse, error)
+	// Read-only and intentionally not submission-replayed: every dispatch obtains current authority.
+	GetExecutionPermit(ctx context.Context, in *GetExecutionPermitRequest, opts ...grpc.CallOption) (*GetExecutionPermitResponse, error)
+	GetEffectPermit(ctx context.Context, in *GetEffectPermitRequest, opts ...grpc.CallOption) (*GetEffectPermitResponse, error)
+	ListForceStops(ctx context.Context, in *ListForceStopsRequest, opts ...grpc.CallOption) (*ListForceStopsResponse, error)
+	ConfirmForceStop(ctx context.Context, in *ConfirmForceStopRequest, opts ...grpc.CallOption) (*ConfirmForceStopResponse, error)
 }
 
-type runtimeControlDeliveryServiceClient struct {
+type runtimeControlServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewRuntimeControlDeliveryServiceClient(cc grpc.ClientConnInterface) RuntimeControlDeliveryServiceClient {
-	return &runtimeControlDeliveryServiceClient{cc}
+func NewRuntimeControlServiceClient(cc grpc.ClientConnInterface) RuntimeControlServiceClient {
+	return &runtimeControlServiceClient{cc}
 }
 
-func (c *runtimeControlDeliveryServiceClient) RecordControlDispatch(ctx context.Context, in *RecordControlDispatchRequest, opts ...grpc.CallOption) (*RecordControlDispatchResponse, error) {
+func (c *runtimeControlServiceClient) ListBindings(ctx context.Context, in *ListBindingsRequest, opts ...grpc.CallOption) (*ListBindingsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RecordControlDispatchResponse)
-	err := c.cc.Invoke(ctx, RuntimeControlDeliveryService_RecordControlDispatch_FullMethodName, in, out, cOpts...)
+	out := new(ListBindingsResponse)
+	err := c.cc.Invoke(ctx, RuntimeControlService_ListBindings_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// RuntimeControlDeliveryServiceServer is the server API for RuntimeControlDeliveryService service.
-// All implementations must embed UnimplementedRuntimeControlDeliveryServiceServer
-// for forward compatibility.
-//
-// Runtime-control delivery. Protocol generation 2 is required. A caller that
-// omits it, or sends any other generation, is the old protocol and is refused.
-// Declaring a ControllerId does not authenticate this service. Until deployment
-// mutual TLS binds a service identity to the controller and the target runtime,
-// Cloud keeps the capability closed and records no dispatch.
-type RuntimeControlDeliveryServiceServer interface {
-	// Records one execution before anything is sent onward. The same submission
-	// and the same execution identity with the same input return the original
-	// record. Cloud does not start a Node, install a plugin, or mark a runtime
-	// stopped.
-	RecordControlDispatch(context.Context, *RecordControlDispatchRequest) (*RecordControlDispatchResponse, error)
-	mustEmbedUnimplementedRuntimeControlDeliveryServiceServer()
+func (c *runtimeControlServiceClient) AcknowledgeBinding(ctx context.Context, in *AcknowledgeBindingRequest, opts ...grpc.CallOption) (*AcknowledgeBindingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AcknowledgeBindingResponse)
+	err := c.cc.Invoke(ctx, RuntimeControlService_AcknowledgeBinding_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
-// UnimplementedRuntimeControlDeliveryServiceServer must be embedded to have
+func (c *runtimeControlServiceClient) GetExecutionPermit(ctx context.Context, in *GetExecutionPermitRequest, opts ...grpc.CallOption) (*GetExecutionPermitResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetExecutionPermitResponse)
+	err := c.cc.Invoke(ctx, RuntimeControlService_GetExecutionPermit_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runtimeControlServiceClient) GetEffectPermit(ctx context.Context, in *GetEffectPermitRequest, opts ...grpc.CallOption) (*GetEffectPermitResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetEffectPermitResponse)
+	err := c.cc.Invoke(ctx, RuntimeControlService_GetEffectPermit_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runtimeControlServiceClient) ListForceStops(ctx context.Context, in *ListForceStopsRequest, opts ...grpc.CallOption) (*ListForceStopsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListForceStopsResponse)
+	err := c.cc.Invoke(ctx, RuntimeControlService_ListForceStops_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runtimeControlServiceClient) ConfirmForceStop(ctx context.Context, in *ConfirmForceStopRequest, opts ...grpc.CallOption) (*ConfirmForceStopResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ConfirmForceStopResponse)
+	err := c.cc.Invoke(ctx, RuntimeControlService_ConfirmForceStop_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// RuntimeControlServiceServer is the server API for RuntimeControlService service.
+// All implementations must embed UnimplementedRuntimeControlServiceServer
+// for forward compatibility.
+//
+// Mandatory for controlled cloud execution. Legacy participants must refuse execution when this
+// service or the Node runtime_control capability is unavailable, without falling back to raw clone.
+type RuntimeControlServiceServer interface {
+	ListBindings(context.Context, *ListBindingsRequest) (*ListBindingsResponse, error)
+	AcknowledgeBinding(context.Context, *AcknowledgeBindingRequest) (*AcknowledgeBindingResponse, error)
+	// Read-only and intentionally not submission-replayed: every dispatch obtains current authority.
+	GetExecutionPermit(context.Context, *GetExecutionPermitRequest) (*GetExecutionPermitResponse, error)
+	GetEffectPermit(context.Context, *GetEffectPermitRequest) (*GetEffectPermitResponse, error)
+	ListForceStops(context.Context, *ListForceStopsRequest) (*ListForceStopsResponse, error)
+	ConfirmForceStop(context.Context, *ConfirmForceStopRequest) (*ConfirmForceStopResponse, error)
+	mustEmbedUnimplementedRuntimeControlServiceServer()
+}
+
+// UnimplementedRuntimeControlServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedRuntimeControlDeliveryServiceServer struct{}
+type UnimplementedRuntimeControlServiceServer struct{}
 
-func (UnimplementedRuntimeControlDeliveryServiceServer) RecordControlDispatch(context.Context, *RecordControlDispatchRequest) (*RecordControlDispatchResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method RecordControlDispatch not implemented")
+func (UnimplementedRuntimeControlServiceServer) ListBindings(context.Context, *ListBindingsRequest) (*ListBindingsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListBindings not implemented")
 }
-func (UnimplementedRuntimeControlDeliveryServiceServer) mustEmbedUnimplementedRuntimeControlDeliveryServiceServer() {
+func (UnimplementedRuntimeControlServiceServer) AcknowledgeBinding(context.Context, *AcknowledgeBindingRequest) (*AcknowledgeBindingResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AcknowledgeBinding not implemented")
 }
-func (UnimplementedRuntimeControlDeliveryServiceServer) testEmbeddedByValue() {}
+func (UnimplementedRuntimeControlServiceServer) GetExecutionPermit(context.Context, *GetExecutionPermitRequest) (*GetExecutionPermitResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetExecutionPermit not implemented")
+}
+func (UnimplementedRuntimeControlServiceServer) GetEffectPermit(context.Context, *GetEffectPermitRequest) (*GetEffectPermitResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetEffectPermit not implemented")
+}
+func (UnimplementedRuntimeControlServiceServer) ListForceStops(context.Context, *ListForceStopsRequest) (*ListForceStopsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListForceStops not implemented")
+}
+func (UnimplementedRuntimeControlServiceServer) ConfirmForceStop(context.Context, *ConfirmForceStopRequest) (*ConfirmForceStopResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ConfirmForceStop not implemented")
+}
+func (UnimplementedRuntimeControlServiceServer) mustEmbedUnimplementedRuntimeControlServiceServer() {}
+func (UnimplementedRuntimeControlServiceServer) testEmbeddedByValue()                               {}
 
-// UnsafeRuntimeControlDeliveryServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to RuntimeControlDeliveryServiceServer will
+// UnsafeRuntimeControlServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to RuntimeControlServiceServer will
 // result in compilation errors.
-type UnsafeRuntimeControlDeliveryServiceServer interface {
-	mustEmbedUnimplementedRuntimeControlDeliveryServiceServer()
+type UnsafeRuntimeControlServiceServer interface {
+	mustEmbedUnimplementedRuntimeControlServiceServer()
 }
 
-func RegisterRuntimeControlDeliveryServiceServer(s grpc.ServiceRegistrar, srv RuntimeControlDeliveryServiceServer) {
-	// If the following call pancis, it indicates UnimplementedRuntimeControlDeliveryServiceServer was
+func RegisterRuntimeControlServiceServer(s grpc.ServiceRegistrar, srv RuntimeControlServiceServer) {
+	// If the following call pancis, it indicates UnimplementedRuntimeControlServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&RuntimeControlDeliveryService_ServiceDesc, srv)
+	s.RegisterService(&RuntimeControlService_ServiceDesc, srv)
 }
 
-func _RuntimeControlDeliveryService_RecordControlDispatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RecordControlDispatchRequest)
+func _RuntimeControlService_ListBindings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListBindingsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RuntimeControlDeliveryServiceServer).RecordControlDispatch(ctx, in)
+		return srv.(RuntimeControlServiceServer).ListBindings(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RuntimeControlDeliveryService_RecordControlDispatch_FullMethodName,
+		FullMethod: RuntimeControlService_ListBindings_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RuntimeControlDeliveryServiceServer).RecordControlDispatch(ctx, req.(*RecordControlDispatchRequest))
+		return srv.(RuntimeControlServiceServer).ListBindings(ctx, req.(*ListBindingsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// RuntimeControlDeliveryService_ServiceDesc is the grpc.ServiceDesc for RuntimeControlDeliveryService service.
+func _RuntimeControlService_AcknowledgeBinding_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AcknowledgeBindingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeControlServiceServer).AcknowledgeBinding(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RuntimeControlService_AcknowledgeBinding_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeControlServiceServer).AcknowledgeBinding(ctx, req.(*AcknowledgeBindingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RuntimeControlService_GetExecutionPermit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetExecutionPermitRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeControlServiceServer).GetExecutionPermit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RuntimeControlService_GetExecutionPermit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeControlServiceServer).GetExecutionPermit(ctx, req.(*GetExecutionPermitRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RuntimeControlService_GetEffectPermit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetEffectPermitRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeControlServiceServer).GetEffectPermit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RuntimeControlService_GetEffectPermit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeControlServiceServer).GetEffectPermit(ctx, req.(*GetEffectPermitRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RuntimeControlService_ListForceStops_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListForceStopsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeControlServiceServer).ListForceStops(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RuntimeControlService_ListForceStops_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeControlServiceServer).ListForceStops(ctx, req.(*ListForceStopsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RuntimeControlService_ConfirmForceStop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConfirmForceStopRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeControlServiceServer).ConfirmForceStop(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RuntimeControlService_ConfirmForceStop_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeControlServiceServer).ConfirmForceStop(ctx, req.(*ConfirmForceStopRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// RuntimeControlService_ServiceDesc is the grpc.ServiceDesc for RuntimeControlService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var RuntimeControlDeliveryService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "ora.cloud.internal.v1.RuntimeControlDeliveryService",
-	HandlerType: (*RuntimeControlDeliveryServiceServer)(nil),
+var RuntimeControlService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "ora.cloud.internal.v1.RuntimeControlService",
+	HandlerType: (*RuntimeControlServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "RecordControlDispatch",
-			Handler:    _RuntimeControlDeliveryService_RecordControlDispatch_Handler,
+			MethodName: "ListBindings",
+			Handler:    _RuntimeControlService_ListBindings_Handler,
+		},
+		{
+			MethodName: "AcknowledgeBinding",
+			Handler:    _RuntimeControlService_AcknowledgeBinding_Handler,
+		},
+		{
+			MethodName: "GetExecutionPermit",
+			Handler:    _RuntimeControlService_GetExecutionPermit_Handler,
+		},
+		{
+			MethodName: "GetEffectPermit",
+			Handler:    _RuntimeControlService_GetEffectPermit_Handler,
+		},
+		{
+			MethodName: "ListForceStops",
+			Handler:    _RuntimeControlService_ListForceStops_Handler,
+		},
+		{
+			MethodName: "ConfirmForceStop",
+			Handler:    _RuntimeControlService_ConfirmForceStop_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

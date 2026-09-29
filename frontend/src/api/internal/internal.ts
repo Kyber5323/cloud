@@ -17,7 +17,6 @@ import type {
 
 import type {
   Access,
-  ControlDispatch,
   EmptyClaim,
   Error,
   IdleRefusal,
@@ -41,7 +40,6 @@ import type {
   PostInternalV1OperationsOidEffectsEidResult200,
   PostInternalV1OperationsOidEffectsEidResultBody,
   PostInternalV1OperationsOidSnapshotBody,
-  PostInternalV1RuntimeControlDispatchesBody,
   Snapshot,
   Ticket
 } from '../generated.schemas';
@@ -55,7 +53,7 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 /**
- * Checks the final user, active membership, and runtime use by the creator or a current administrator. Missing use returns 403 runtime_use_forbidden and no content. Execute also requires the current controller lease, open admission, a ready runtime and a fresh initialized Node. An active execution ticket returns 409 resource_in_use. This lookup is not an execution reservation; use admissions.
+ * Checks final user, active tenant membership and tenant scope. Execute additionally requires current controller lease epoch, open admission, ready workspace and a fresh initialized Node. This lookup is not an execution reservation; use admissions.
  * @summary access
  */
 export const postInternalV1Access = (
@@ -123,7 +121,7 @@ export const usePostInternalV1Access = <TError = ErrorType<Error>,
       return useMutation(getPostInternalV1AccessMutationOptions(options), queryClient);
     }
     /**
- * Reserves one active task or interaction ticket for a caller who may use the runtime. Another active ticket returns 409 resource_in_use and does not insert a second ticket. A caller without use permission receives 403 runtime_use_forbidden even when the runtime is occupied. The same ticket UUID and scope returns the existing ticket. Requires the current controller holder and epoch and a caller-bound user token.
+ * Atomically reserves an active task/interaction ticket on the current Node under the same transaction lock as stop/delete. Requires current controller holder+epoch and caller-bound final-user token. Unknown/uncompleted tickets remain active; bound Node explicitly finishes them. Repeated ticket UUID with identical scope returns it while admission remains open.
  * @summary admit
  */
 export const postInternalV1Admissions = (
@@ -1013,7 +1011,7 @@ export const usePostInternalV1OperationsOidEffectsEidResult = <TError = ErrorTyp
       return useMutation(getPostInternalV1OperationsOidEffectsEidResultMutationOptions(options), queryClient);
     }
     /**
- * Controller requests require an independent controller service credential; holder, active database-time lease epoch and operation version are checked. Operation detail and retry follow the target runtime's creator or a current administrator, not the historical actor. administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Controller requests require an independent controller service credential; holder, active database-time lease epoch and operation version are checked. Active tenant members may inspect project operations; administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary snapshot
  */
 export const postInternalV1OperationsOidSnapshot = (
@@ -1080,72 +1078,4 @@ export const usePostInternalV1OperationsOidSnapshot = <TError = ErrorType<Error>
         TContext
       > => {
       return useMutation(getPostInternalV1OperationsOidSnapshotMutationOptions(options), queryClient);
-    }
-    /**
- * Records one fenced execution after rechecking the held session, use permission, runtime generation, write exclusion and credential availability. The body cannot name the actor. Protocol generation must be 2. A self-declared ControllerId is not authentication, and until mutual TLS binds the service identity this route stays closed with 403 control_capability_unavailable. The same execution and input return the original record. Nothing is sent to a Node, and the runtime is not marked stopped.
- * @summary control dispatch
- */
-export const postInternalV1RuntimeControlDispatches = (
-    postInternalV1RuntimeControlDispatchesBody: PostInternalV1RuntimeControlDispatchesBody,
- options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
-) => {
-
-
-      return customInstance<ControlDispatch>(
-      {url: `/internal/v1/runtime-control/dispatches`, method: 'POST',
-      headers: {'Content-Type': 'application/json', },
-      data: postInternalV1RuntimeControlDispatchesBody, signal
-    },
-      options);
-    }
-
-
-
-
-export const getPostInternalV1RuntimeControlDispatchesMutationKey = () => ['postInternalV1RuntimeControlDispatches'] as const;
-
-export const getPostInternalV1RuntimeControlDispatchesMutationOptions = <TError = ErrorType<Error>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postInternalV1RuntimeControlDispatches>>, TError,PostInternalV1RuntimeControlDispatchesMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
-): UseMutationOptions<Awaited<ReturnType<typeof postInternalV1RuntimeControlDispatches>>, TError,PostInternalV1RuntimeControlDispatchesMutationVariables, TContext> => {
-
-const mutationKey = getPostInternalV1RuntimeControlDispatchesMutationKey();
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postInternalV1RuntimeControlDispatches>>, PostInternalV1RuntimeControlDispatchesMutationVariables> = (props) => {
-          const {data} = props ?? {};
-
-          return  postInternalV1RuntimeControlDispatches(data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type PostInternalV1RuntimeControlDispatchesMutationResult = NonNullable<Awaited<ReturnType<typeof postInternalV1RuntimeControlDispatches>>>
-    export type PostInternalV1RuntimeControlDispatchesMutationBody = PostInternalV1RuntimeControlDispatchesBody
-    export type PostInternalV1RuntimeControlDispatchesMutationError = ErrorType<Error>
-    export type PostInternalV1RuntimeControlDispatchesMutationVariables = {data: PostInternalV1RuntimeControlDispatchesBody}
-
-    /**
- * @summary control dispatch
- */
-export const usePostInternalV1RuntimeControlDispatches = <TError = ErrorType<Error>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postInternalV1RuntimeControlDispatches>>, TError,PostInternalV1RuntimeControlDispatchesMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof postInternalV1RuntimeControlDispatches>>,
-        TError,
-        PostInternalV1RuntimeControlDispatchesMutationVariables,
-        TContext
-      > => {
-      return useMutation(getPostInternalV1RuntimeControlDispatchesMutationOptions(options), queryClient);
     }

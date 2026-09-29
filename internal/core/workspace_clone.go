@@ -25,16 +25,15 @@ func workspaceCloneDispatch(t *transaction, r *ControlRequest, operation, execut
 	}
 	require(o.S("step") == "clone" && o.S("state") == "running", 409, "dispatch_conflict")
 	require(o.N("controllerEpoch") == r.Body.N("epoch"), 409, "stale_operation")
-	// An accepted create can still be waiting to clone. Membership may have
-	// frozen the reference after acceptance, so dispatch checks again. An
-	// execution that already exists returned above and keeps its original scope.
-	require(!projectCredentialFrozen(t, o.S("projectId")), 409, "credential_unavailable")
 	wid := o.S("workspaceId")
+	require(runtimeUsable(t, t.one("SELECT * FROM workspaces WHERE id=$1", wid), o.S("actorUserId")), 403, "runtime_use_forbidden")
+	requireRepositoryAccess(t, o.S("projectId"))
+	requireNoForceStop(t, wid)
 	w := t.one("SELECT w.requested_ref,p.repository_url FROM workspaces w JOIN projects p ON p.id=w.project_id WHERE w.id=$1", wid)
 	require(input.S("repositoryUrl") == w.S("repositoryUrl") && input.S("branch") == w.S("requestedRef"), 409, "dispatch_conflict")
 	require(currentNode(t, wid).S("nodeId") == node, 409, "dispatch_conflict")
 	require(t.one("SELECT execution_id FROM clone_executions WHERE operation_id=$1 AND (result IS NULL OR result->>'outcome'='clone_ready')", operation) == nil, 409, "dispatch_conflict")
-	t.exec("INSERT INTO clone_executions(execution_id,operation_id,workspace_id,node_id,input,dispatched_epoch) VALUES($1,$2,$3,$4,$5,$6)", execution, operation, wid, node, jsonText(input), r.Body.N("epoch"))
+	t.exec("INSERT INTO clone_executions(execution_id,operation_id,workspace_id,node_id,input,dispatched_epoch,node_operation_id) VALUES($1,$2,$3,$4,$5,$6,$1::text)", execution, operation, wid, node, jsonText(input), r.Body.N("epoch"))
 	return t.one("SELECT * FROM clone_executions WHERE execution_id=$1", execution)
 }
 

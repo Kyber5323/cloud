@@ -32,7 +32,7 @@ func newControlHarness(t *testing.T) *controlHarness {
 	pool, _ := testSchema(t, "grpc_")
 	db, e := gorm.Open(postgres.New(postgres.Config{Conn: pool}), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	must(t, e)
-	store, e := core.NewStore(db)
+	store, e := core.NewDevelopmentStore(db) // This fixture exercises the retired legacy clone registry only.
 	must(t, e)
 	must(t, store.Migrate(context.Background()))
 	return &controlHarness{store: store, conn: controlConn(t, store)}

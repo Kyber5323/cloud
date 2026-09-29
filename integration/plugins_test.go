@@ -84,6 +84,7 @@ func (f *fixture) spaceProject(t *testing.T, sid, key string) core.Object {
 	t.Helper()
 	created := f.call("POST", f.pluginSpacePath(sid)+"/projects", core.Object{"name": "Project", "repositoryUrl": "https://example.invalid/repo.git", "defaultBranch": "main"}, key, 202)
 	f.drain()
+	f.acknowledgeSimulatorBindings() // Explicit closure for this simulator fixture.
 	return created
 }
 

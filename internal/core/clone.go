@@ -45,6 +45,7 @@ func (s *Store) signalOperations(ids []string) {
 // (tenant, user, requestId) with the same input returns the original request and reports nothing
 // new; different input is a conflict. Nothing is dispatched here: a Controller claims the row.
 func enqueueClone(t *transaction, tenantID, userID, requestID, repositoryURL, branch string) (row Object, created bool) {
+	require(t.legacyCloneFixture, 410, "runtime_scope_required")
 	require(requestID != "" && len(requestID) <= 200, 400, "invalid_clone_request")
 	validCloneSource(repositoryURL, branch)
 	membership(t, tenantID, userID, false)
@@ -169,6 +170,10 @@ func submitted(t *transaction, r *ControlRequest, apply func() Object) Object {
 func cloneCommand(t *transaction, r *ControlRequest) Object {
 	switch r.Action {
 	case "clone_claim":
+		if !t.legacyCloneFixture {
+			require(t.one("SELECT id FROM clone_requests WHERE state='queued'") == nil, 410, "runtime_scope_required")
+			return Object{"cloneRequest": nil}
+		}
 		// A pure read: ownership moves only when the dispatch is recorded, so a Controller that
 		// dies between claim and dispatch leaves nothing to recover.
 		work := t.one("SELECT * FROM clone_requests WHERE state='queued' ORDER BY created_at,id LIMIT 1")
@@ -186,9 +191,9 @@ func cloneCommand(t *transaction, r *ControlRequest) Object {
 	case "clone_pending":
 		node := r.Body.S("nodeId")
 		if node == "" {
-			return Object{"executions": t.list("SELECT * FROM clone_executions WHERE result IS NULL ORDER BY created_at,execution_id")}
+			return Object{"executions": t.list("SELECT * FROM clone_executions WHERE result IS NULL AND terminated_by_force_stop_id IS NULL ORDER BY created_at,execution_id")}
 		}
-		return Object{"executions": t.list("SELECT * FROM clone_executions WHERE result IS NULL AND node_id=$1 ORDER BY created_at,execution_id", node)}
+		return Object{"executions": t.list("SELECT * FROM clone_executions WHERE result IS NULL AND terminated_by_force_stop_id IS NULL AND node_id=$1 ORDER BY created_at,execution_id", node)}
 	default:
 		reject(404, "not_found")
 	}
@@ -206,6 +211,7 @@ func cloneDispatch(t *transaction, r *ControlRequest) Object {
 	if request == nil {
 		return workspaceCloneDispatch(t, r, operation, execution, node, input)
 	}
+	require(t.legacyCloneFixture, 410, "runtime_scope_required")
 	require(input.S("repositoryUrl") == request.S("repositoryUrl") && input.S("branch") == request.S("branch"), 409, "dispatch_conflict")
 	if existing := t.one("SELECT * FROM clone_executions WHERE operation_id=$1", operation); existing != nil {
 		require(existing.S("executionId") == execution && existing.S("nodeId") == node && jsonText(existing.O("input")) == jsonText(input), 409, "dispatch_conflict")
@@ -213,7 +219,7 @@ func cloneDispatch(t *transaction, r *ControlRequest) Object {
 	}
 	require(request.S("state") == "queued", 409, "dispatch_conflict")
 	require(t.one("SELECT execution_id FROM clone_executions WHERE execution_id=$1", execution) == nil, 409, "dispatch_conflict")
-	t.exec("INSERT INTO clone_executions(execution_id,operation_id,node_id,input,dispatched_epoch) VALUES($1,$2,$3,$4,$5)", execution, operation, node, jsonText(input), r.Body.N("epoch"))
+	t.exec("INSERT INTO clone_executions(execution_id,operation_id,node_id,input,dispatched_epoch,node_operation_id) VALUES($1,$2,$3,$4,$5,$2::uuid::text)", execution, operation, node, jsonText(input), r.Body.N("epoch"))
 	t.exec("UPDATE clone_requests SET state='dispatched',updated_at=now() WHERE id=$1", operation)
 	return t.one("SELECT * FROM clone_executions WHERE execution_id=$1", execution)
 }

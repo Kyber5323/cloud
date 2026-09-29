@@ -33,8 +33,6 @@ import type {
   PatchApiV1TenantsTidProjectsPidBody,
   PostApiV1TenantsTidProjects202,
   PostApiV1TenantsTidProjectsBody,
-  PostApiV1TenantsTidProjectsPidCredentialVerifications200,
-  PostApiV1TenantsTidProjectsPidCredentialVerificationsBody,
   Project
 } from '../generated.schemas';
 
@@ -62,7 +60,7 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
 };
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/tenants/:tid/projects
  */
 export const getApiV1TenantsTidProjects = (
@@ -163,7 +161,7 @@ export function useGetApiV1TenantsTidProjects<TData = Awaited<ReturnType<typeof 
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/projects
  */
 export const postApiV1TenantsTidProjects = (
@@ -232,7 +230,7 @@ export const usePostApiV1TenantsTidProjects = <TError = ErrorType<Error>,
       return useMutation(getPostApiV1TenantsTidProjectsMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Project deletion checks every live runtime before changing any of them. Another control session, an active or unknown write, or an active ticket is 409 resource_in_use. An open force-stop is 409 termination_unconfirmed. Deletion does not start a force-stop. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary DELETE /api/v1/tenants/:tid/projects/:pid
  */
 export const deleteApiV1TenantsTidProjectsPid = (
@@ -302,7 +300,7 @@ export const useDeleteApiV1TenantsTidProjectsPid = <TError = ErrorType<Error>,
       return useMutation(getDeleteApiV1TenantsTidProjectsPidMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/tenants/:tid/projects/:pid
  */
 export const getApiV1TenantsTidProjectsPid = (
@@ -402,7 +400,7 @@ export function useGetApiV1TenantsTidProjectsPid<TData = Awaited<ReturnType<type
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Only project name may change; version must match. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Only project name may change; version must match. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary PATCH /api/v1/tenants/:tid/projects/:pid
  */
 export const patchApiV1TenantsTidProjectsPid = (
@@ -470,74 +468,4 @@ export const usePatchApiV1TenantsTidProjectsPid = <TError = ErrorType<Error>,
         TContext
       > => {
       return useMutation(getPatchApiV1TenantsTidProjectsPidMutationOptions(options), queryClient);
-    }
-    /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Only a current tenant administrator can submit one team credential candidate already configured for this tenant. Cloud stores the project's repository and the requested read or write capability. It does not accept a secret and does not contact a Git remote. The project binding stays unchanged until a matching scoped result is recorded. Read success is not push permission. A failed, unknown, or no-longer-matching result does not switch the binding, and replaying the idempotency key returns the original intent.
- * @summary POST /api/v1/tenants/:tid/projects/:pid/credential-verifications
- */
-export const postApiV1TenantsTidProjectsPidCredentialVerifications = (
-    tid: string,
-    pid: string,
-    postApiV1TenantsTidProjectsPidCredentialVerificationsBody: PostApiV1TenantsTidProjectsPidCredentialVerificationsBody,
- options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
-) => {
-
-
-      return customInstance<PostApiV1TenantsTidProjectsPidCredentialVerifications200>(
-      {url: `/api/v1/tenants/${tid}/projects/${pid}/credential-verifications`, method: 'POST',
-      headers: {'Content-Type': 'application/json', },
-      data: postApiV1TenantsTidProjectsPidCredentialVerificationsBody, signal
-    },
-      options);
-    }
-
-
-
-
-export const getPostApiV1TenantsTidProjectsPidCredentialVerificationsMutationKey = () => ['postApiV1TenantsTidProjectsPidCredentialVerifications'] as const;
-
-export const getPostApiV1TenantsTidProjectsPidCredentialVerificationsMutationOptions = <TError = ErrorType<Error>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidProjectsPidCredentialVerifications>>, TError,PostApiV1TenantsTidProjectsPidCredentialVerificationsMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
-): UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidProjectsPidCredentialVerifications>>, TError,PostApiV1TenantsTidProjectsPidCredentialVerificationsMutationVariables, TContext> => {
-
-const mutationKey = getPostApiV1TenantsTidProjectsPidCredentialVerificationsMutationKey();
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postApiV1TenantsTidProjectsPidCredentialVerifications>>, PostApiV1TenantsTidProjectsPidCredentialVerificationsMutationVariables> = (props) => {
-          const {tid,pid,data} = props ?? {};
-
-          return  postApiV1TenantsTidProjectsPidCredentialVerifications(tid,pid,data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type PostApiV1TenantsTidProjectsPidCredentialVerificationsMutationResult = NonNullable<Awaited<ReturnType<typeof postApiV1TenantsTidProjectsPidCredentialVerifications>>>
-    export type PostApiV1TenantsTidProjectsPidCredentialVerificationsMutationBody = PostApiV1TenantsTidProjectsPidCredentialVerificationsBody
-    export type PostApiV1TenantsTidProjectsPidCredentialVerificationsMutationError = ErrorType<Error>
-    export type PostApiV1TenantsTidProjectsPidCredentialVerificationsMutationVariables = {tid: string;pid: string;data: PostApiV1TenantsTidProjectsPidCredentialVerificationsBody}
-
-    /**
- * @summary POST /api/v1/tenants/:tid/projects/:pid/credential-verifications
- */
-export const usePostApiV1TenantsTidProjectsPidCredentialVerifications = <TError = ErrorType<Error>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidProjectsPidCredentialVerifications>>, TError,PostApiV1TenantsTidProjectsPidCredentialVerificationsMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof postApiV1TenantsTidProjectsPidCredentialVerifications>>,
-        TError,
-        PostApiV1TenantsTidProjectsPidCredentialVerificationsMutationVariables,
-        TContext
-      > => {
-      return useMutation(getPostApiV1TenantsTidProjectsPidCredentialVerificationsMutationOptions(options), queryClient);
     }

@@ -45,6 +45,7 @@ enum OperationKind {
   OPERATION_KIND_DELETE_PROJECT = 7;
   OPERATION_KIND_INSTALL_PLUGIN = 8;
   OPERATION_KIND_REMOVE_PLUGIN = 9;
+  OPERATION_KIND_RESTART = 10;
 }
 
 enum OperationState {
@@ -202,7 +203,10 @@ message SandboxEnsured {
   string node_id = 2;
 }
 
-message SandboxTerminated {}
+message SandboxTerminated {
+  // Durable rejection of the original ensure identity, including late delivery.
+  bool late_ensure_fenced = 1;
+}
 
 message WorkspaceDataDeleted {}
 

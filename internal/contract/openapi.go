@@ -90,10 +90,16 @@ func Document() map[string]any {
 	s["JoinRequest"] = object(obj{"id": uuid(), "tenantId": uuid(), "userId": uuid(), "linkId": uuid(), "status": enumeration("pending", "approved", "rejected"), "createdAt": timestamp(), "decidedAt": optional(timestamp()), "decidedBy": optional(uuid()), "version": number(), "name": str(), "displayName": str()}, "id", "tenantId", "userId", "linkId", "status", "createdAt", "version")
 	s["SpaceEvent"] = object(obj{"type": enumeration("space.updated", "space.member_updated", "project.created", "project.updated", "project.archived", "space.plugins_updated", "plugins.catalog_updated"), "spaceId": uuid(), "projectId": optional(uuid()), "version": number()}, "type", "spaceId")
 	s["Project"] = resource("id tenantId ownerUserId spaceId name repositoryUrl defaultBranch credentialRefId lifecycle version createdAt deletedAt", "credentialRefId deletedAt")
-	s["Workspace"] = resource("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version admissionOpen admissionEpoch createdAt deletedAt requestedRef baseCommitId", "deletedAt baseCommitId")
+	properties(s, "Project")["repositoryCredentialRefId"] = optional(uuid())
+	s["Workspace"] = resource("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version admissionOpen admissionEpoch createdAt deletedAt requestedRef baseCommitId creatorUserId creatorOperationId creatorEvidence", "deletedAt baseCommitId creatorUserId creatorOperationId")
 	// branchName is the retired linked-worktree branch; only Workspaces created before the Node
 	// clone flow have one.
-	s["WorkspaceListItem"] = resource("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version admissionOpen admissionEpoch createdAt deletedAt requestedRef baseCommitId branchName title", "deletedAt baseCommitId branchName title")
+	s["WorkspaceListItem"] = object(fields("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version createdAt deletedAt creatorUserId creatorOperationId creatorEvidence canUse requestedRef baseCommitId branchName title admissionOpen admissionEpoch"), strings.Fields("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version createdAt deletedAt creatorUserId creatorEvidence canUse")...)
+	for _, key := range []string{"deletedAt", "creatorUserId", "creatorOperationId", "branchName", "title"} {
+		properties(s, "WorkspaceListItem")[key] = optional(asObject(properties(s, "WorkspaceListItem")[key]))
+	}
+	properties(s, "WorkspaceListItem")["canUse"] = boolean()
+
 	s["Comment"] = resource("id tenantId issueId authorUserId authorType authorId parentId body seq version createdAt updatedAt deletedAt", "authorUserId authorId parentId deletedAt")
 	commentProps := properties(s, "Comment")
 	commentProps["seq"] = number()
@@ -174,39 +180,20 @@ func Document() map[string]any {
 	s["PluginCatalog"] = object(obj{"items": array(ref("PluginCatalogEntry")), "syncedAt": optional(timestamp())}, "items")
 	s["SpacePlugin"] = resource("id spaceId tenantId sourceNamespace identifier desiredState desiredVersion observedState observedVersion installError version createdAt updatedAt", "observedVersion installError")
 	spacePluginProps := properties(s, "SpacePlugin")
+	for _, key := range []string{"affectedCount", "completedCount", "waitingStartCount", "waitingControlCount", "unavailableCount", "failedCount", "desiredRevision"} {
+		spacePluginProps[key] = number()
+	}
+	spacePluginProps["requestedByUserId"] = optional(uuid())
 	spacePluginProps["desiredState"] = enumeration("installed", "removed")
 	spacePluginProps["observedState"] = enumeration("pending", "installing", "installed", "failed", "removing", "removed")
 	spacePluginProps["observedVersion"] = optional(str())
 	spacePluginProps["installError"] = optional(str())
-	s["PluginMaintenanceSummary"] = object(obj{
-		"affected":            number(),
-		"completed":           number(),
-		"waitingForOccupancy": number(),
-		"waitingForStart":     number(),
-		"failed":              number(),
-	}, "affected", "completed", "waitingForOccupancy", "waitingForStart", "failed")
-	s["SpacePluginList"] = object(obj{"items": array(ref("SpacePlugin")), "maintenance": ref("PluginMaintenanceSummary")}, "items", "maintenance")
-	s["CredentialVerification"] = object(obj{
-		"id":                 uuid(),
-		"tenantId":           uuid(),
-		"projectId":          uuid(),
-		"initiatorUserId":    uuid(),
-		"candidateRefId":     uuid(),
-		"repositoryUrl":      str(),
-		"capability":         enumeration("read", "write"),
-		"state":              enumeration("pending", "succeeded", "failed", "unknown"),
-		"verifiedCapability": optional(enumeration("read", "write")),
-		"projectVersion":     number(),
-		"candidateVersion":   number(),
-		"version":            number(),
-		"createdAt":          timestamp(),
-		"updatedAt":          timestamp(),
-	}, "id", "tenantId", "projectId", "initiatorUserId", "candidateRefId", "repositoryUrl", "capability", "state", "projectVersion", "candidateVersion", "version", "createdAt", "updatedAt")
+	s["SpacePluginList"] = object(obj{"items": array(ref("SpacePlugin"))}, "items")
 	s["PluginUniversalRelease"] = object(obj{"url": str(), "sha256": str()}, "url", "sha256")
 	s["PluginReleaseTarget"] = object(obj{"target": str(), "url": str(), "sha256": str()}, "target", "url", "sha256")
 	s["PluginLogoCandidate"] = object(obj{"role": enumeration("universal", "light", "dark"), "extension": enumeration("svg", "png", "webp", "jpg", "jpeg")}, "role", "extension")
-	s["OperationRequest"] = object(obj{"previous": obj{"type": "object", "additionalProperties": ref("Workspace")}, "pluginId": str(), "version": str()})
-	s["OperationResult"] = object(obj{"resourceId": uuid()})
+	s["OperationRequest"] = object(obj{"previous": obj{"type": "object", "additionalProperties": ref("Workspace")}, "pluginId": str(), "version": str(), "desiredRevision": number(), "release": ref("PluginCatalogEntry")})
+	s["OperationResult"] = object(obj{"resourceId": uuid(), "forceStopId": uuid()})
 	s["Operation"] = resource("id tenantId actorUserId projectId workspaceId kind state step request result errorCode idempotencyKey requestHash controllerEpoch retryAt version createdAt updatedAt", "workspaceId errorCode controllerEpoch retryAt")
 	opProps := properties(s, "Operation")
 	opProps["request"] = ref("OperationRequest")
@@ -220,6 +207,8 @@ func Document() map[string]any {
 		p["desiredState"] = enumeration("running", "stopped", "deleted")
 		p["observedState"] = enumeration("provisioning", "starting", "ready", "stopping", "stopped", "unavailable", "deleting", "deleted")
 	}
+	s["RuntimeForceStop"] = object(obj{"id": uuid(), "tenantId": uuid(), "workspaceId": uuid(), "actorUserId": uuid(), "reason": str(), "state": enumeration("registered", "terminating", "succeeded"), "controlEpoch": number(), "runtimeGeneration": number(), "version": number(), "controllerEpoch": optional(number()), "createdAt": timestamp(), "confirmedAt": optional(timestamp())}, "id", "tenantId", "workspaceId", "actorUserId", "reason", "state", "controlEpoch", "runtimeGeneration", "version", "createdAt")
+	s["RuntimeControl"] = object(obj{"workspaceId": uuid(), "state": enumeration("idle", "acquiring", "held", "draining", "reconciling", "maintenance"), "controlEpoch": number(), "holderUserId": optional(uuid()), "expiresAt": optional(timestamp()), "version": number(), "sessionId": optional(uuid())}, "workspaceId", "state", "controlEpoch", "holderUserId", "expiresAt", "version")
 	s["Lease"] = resource("name holderId epoch expiresAt", "")
 	properties(s, "Lease")["holderId"] = str()
 	properties(s, "Lease")["epoch"] = number()
@@ -228,28 +217,30 @@ func Document() map[string]any {
 	s["Node"] = resource("id sandboxInstanceId serviceSubject connectionState protocolVersion initialized lastSeenAt endedAt idleAdmissionEpoch version workspaceId nodeId nodeIncarnationId", "endedAt idleAdmissionEpoch nodeId nodeIncarnationId")
 	properties(s, "Node")["nodeId"] = optional(str())
 	properties(s, "Node")["nodeIncarnationId"] = optional(str())
-	s["Ticket"] = resource("id tenantId workspaceId nodeInstanceId actorUserId admissionEpoch kind state createdAt finishedAt version", "finishedAt")
+	s["Ticket"] = resource("id tenantId workspaceId nodeInstanceId actorUserId admissionEpoch kind state createdAt finishedAt version controlSessionId controlEpoch terminatedByForceStopId", "finishedAt controlSessionId controlEpoch terminatedByForceStopId")
+	properties(s, "Ticket")["controlEpoch"] = optional(number())
 	// storage_ensure, worktree_ensure, worktree_delete and storage_delete are retired kinds that only
 	// historical effects carry.
 	s["EffectRequest"] = object(obj{"kind": enumeration("storage_ensure", "worktree_ensure", "sandbox_ensure", "sandbox_terminate", "worktree_delete", "storage_delete", "workspace_data_delete", "plugin_ensure", "plugin_delete"), "projectId": uuid(), "workspaceId": uuid(), "repositoryUrl": str(), "requestedRef": str(), "sandboxInstanceId": uuid(), "pluginId": str(), "version": str(), "universal": ref("PluginUniversalRelease"), "targets": array(ref("PluginReleaseTarget"))}, "kind", "projectId")
-	s["EffectResult"] = object(obj{"layoutVersion": number(), "commitId": obj{"type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"}, "jobTerminated": boolean(), "removed": boolean(), "terminated": boolean(), "installed": boolean(), "sandboxInstanceId": uuid(), "nodeId": str(), "version": str(), "error": str(), "diagnostic": str()})
+	s["EffectResult"] = object(obj{"layoutVersion": number(), "commitId": obj{"type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"}, "jobTerminated": boolean(), "removed": boolean(), "terminated": boolean(), "lateEnsureFenced": boolean(), "installed": boolean(), "sandboxInstanceId": uuid(), "nodeId": str(), "version": str(), "error": str(), "diagnostic": str()})
 	s["Effect"] = resource("id operationId projectId workspaceId kind state externalId request result reconciledEpoch createdAt version", "workspaceId externalId")
 	ep := properties(s, "Effect")
 	ep["externalId"] = optional(str())
 	ep["request"] = ref("EffectRequest")
 	ep["result"] = ref("EffectResult")
 	s["ControllerProject"] = resource("id tenantId ownerUserId spaceId name repositoryUrl defaultBranch credentialRefId lifecycle version createdAt deletedAt secretRef", "credentialRefId deletedAt secretRef")
-	s["ControllerWorkspace"] = resource("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version admissionOpen admissionEpoch createdAt deletedAt requestedRef baseCommitId", "deletedAt baseCommitId")
-	addRuntimeCreator(s, "Workspace", true)
-	addRuntimeCreator(s, "WorkspaceListItem", true)
-	addRuntimeCreator(s, "ControllerWorkspace", false)
+	properties(s, "ControllerProject")["repositoryCredentialRefId"] = optional(uuid())
+	s["ControllerWorkspace"] = resource("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version admissionOpen admissionEpoch createdAt deletedAt requestedRef baseCommitId creatorUserId creatorOperationId creatorEvidence", "deletedAt baseCommitId creatorUserId creatorOperationId")
 	for _, name := range []string{"Workspace", "WorkspaceListItem", "ControllerWorkspace"} {
 		properties(s, name)["baseCommitId"] = optional(obj{"type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"})
 	}
 	// A Workspace operation's clone executions, registered through the gRPC ExecutionService.
-	s["CloneExecution"] = resource("executionId operationId workspaceId cloneRequestId nodeId input result dispatchedEpoch createdAt updatedAt", "workspaceId cloneRequestId result")
+	s["CloneExecution"] = resource("executionId operationId workspaceId cloneRequestId nodeId input result dispatchedEpoch createdAt updatedAt nodeOperationId terminatedByForceStopId", "workspaceId cloneRequestId result terminatedByForceStopId")
 	ce := properties(s, "CloneExecution")
+	ce["credentialRefId"] = optional(uuid())
+	ce["credentialRefVersion"] = optional(number())
 	ce["nodeId"] = str()
+	ce["nodeOperationId"] = str()
 	ce["executionId"] = str()
 	ce["input"] = obj{"type": "object", "additionalProperties": true}
 	ce["result"] = optional(obj{"type": "object", "additionalProperties": true})
@@ -257,31 +248,7 @@ func Document() map[string]any {
 	s["Snapshot"] = object(obj{"operation": ref("Operation"), "project": ref("ControllerProject"), "workspaces": array(ref("ControllerWorkspace")), "sandboxes": array(ref("Sandbox")), "nodes": array(ref("Node")), "effects": array(ref("Effect")), "clones": array(ref("CloneExecution"))}, "operation", "project", "workspaces", "sandboxes", "nodes", "effects", "clones")
 	s["EmptyClaim"] = object(obj{"operation": obj{"type": "object", "nullable": true, "enum": []any{nil}}}, "operation")
 	s["Access"] = object(obj{"userId": uuid(), "tenantId": uuid(), "workspaceId": uuid(), "allowedAction": enumeration("read", "execute"), "executable": boolean(), "runtimeGeneration": number()}, "userId", "tenantId", "workspaceId", "allowedAction", "executable", "runtimeGeneration")
-	s["ForceStopIntent"] = resource("id tenantId workspaceId initiatorUserId targetRuntimeGeneration reason idempotencyKey state version createdAt updatedAt", "")
-	forceStop := properties(s, "ForceStopIntent")
-	forceStop["targetRuntimeGeneration"] = number()
-	forceStop["state"] = enumeration("requested", "terminating", "reconciling", "stopped")
-	s["RuntimeControl"] = object(obj{
-		"workspaceId":    uuid(),
-		"controlState":   enumeration("idle", "acquiring", "held", "winding_down", "reconciling"),
-		"leaseExpired":   boolean(),
-		"observedState":  enumeration("provisioning", "starting", "ready", "stopping", "stopped", "unavailable", "deleting", "deleted"),
-		"callerHolds":    boolean(),
-		"allowedActions": array(enumeration("acquire", "renew", "release", "start", "stop", "delete", "write")),
-		"sessionId":      optional(uuid()),
-		"holderUserId":   optional(uuid()),
-		"controlEpoch":   number(),
-		"expiresAt":      optional(timestamp()),
-		"version":        number(),
-	}, "workspaceId", "controlState", "leaseExpired", "observedState", "callerHolds", "allowedActions")
 	s["IdleRefusal"] = object(obj{"accepted": boolean(), "errorCode": enumeration("resource_in_use")}, "accepted", "errorCode")
-	s["ControlDispatch"] = object(obj{
-		"executionId":       str(),
-		"workspaceId":       uuid(),
-		"controlEpoch":      number(),
-		"runtimeGeneration": number(),
-		"input":             obj{"type": "object", "additionalProperties": true},
-	}, "executionId", "workspaceId", "controlEpoch", "runtimeGeneration", "input")
 	// Clone requests mirror the transitional Controller DTO: the tagged state carries the terminal
 	// fact, and identities assigned at dispatch are null until a Controller records it.
 	s["CloneState"] = object(obj{"kind": enumeration("pending", "succeeded", "failed"), "path": str(), "commit": str(), "reason": enumeration("sourceUnavailable", "branchNotFound", "destinationConflict", "operationFailed", "interrupted", "unspecified"), "retainedPath": str()}, "kind")
@@ -327,9 +294,6 @@ func Document() map[string]any {
 		if r.Path == "/api/v1/tenants/:tid/people" {
 			parameters = append(parameters, obj{"name": "keyword", "in": "query", "required": true, "schema": obj{"type": "string", "minLength": 2, "maxLength": 100}})
 		}
-		if r.Method == "GET" && strings.HasSuffix(r.Path, "/workspaces") && strings.Contains(r.Path, "/projects/") {
-			parameters = append(parameters, obj{"name": "scope", "in": "query", "schema": enumeration("own", "all"), "description": "own lists runtimes the caller created. all, the default, lists every runtime in the project."})
-		}
 		if len(parameters) > 0 {
 			operation["parameters"] = parameters
 		}
@@ -355,7 +319,7 @@ func Document() map[string]any {
 		"operationId": "getSpaceEvents",
 		"tags":        []string{"spaces"},
 		"summary":     "Stream collaboration space events over server-sent events",
-		"description": "Membership is verified before the stream opens and again before each notice, so disabling a member closes the stream without delivering that notice. Events are refresh hints with no runtime content; clients refetch REST, which checks the creator or a current administrator.",
+		"description": "Membership is verified before the stream opens. Events are lightweight invalidation notices published after commit; clients refetch authoritative state over REST.",
 		"parameters": []any{
 			obj{"name": "tid", "in": "path", "required": true, "schema": uuid()},
 			obj{"name": "spaceId", "in": "path", "required": true, "schema": uuid()},
@@ -428,20 +392,9 @@ func responseSchema(r router.Route) (schema obj, status string) {
 			return ref("Snapshot"), "200"
 		case "plan", "effect_result":
 			return object(obj{"effect": ref("Effect"), "operation": ref("Operation")}, "effect", "operation"), "200"
-		case "control_dispatch":
-			return ref("ControlDispatch"), "200"
 		default:
 			return ref("Operation"), "200"
 		}
-	}
-	if strings.Contains(r.Path, "/control") {
-		return ref("RuntimeControl"), "200"
-	}
-	if strings.HasSuffix(r.Path, "/force-stop") {
-		return ref("ForceStopIntent"), "202"
-	}
-	if strings.HasSuffix(r.Path, "/credential-verifications") {
-		return object(obj{"resource": ref("CredentialVerification")}, "resource"), "200"
 	}
 	if r.Path == "/api/v1/tenants/:tid/people" {
 		return object(obj{"items": array(ref("DirectoryPerson"))}, "items"), "200"
@@ -492,7 +445,7 @@ func responseSchema(r router.Route) (schema obj, status string) {
 			if r.Method == "GET" {
 				return ref("SpacePluginList"), "200"
 			}
-			return object(obj{"resource": ref("SpacePlugin"), "maintenance": ref("PluginMaintenanceSummary")}, "resource", "maintenance"), "200"
+			return object(obj{"resource": ref("SpacePlugin")}, "resource"), "200"
 		case strings.Contains(r.Path, "/projects"):
 			if r.Method == "GET" {
 				return object(obj{"items": array(ref("Project")), "nextCursor": str()}, "items", "nextCursor"), "200"
@@ -602,6 +555,9 @@ func responseSchema(r router.Route) (schema obj, status string) {
 	case r.Path == "/api/v1/tenants" && r.Method == "POST":
 		return ref("TenantCreated"), "201"
 	}
+	if strings.Contains(r.Path, "/workspaces/") && (strings.HasSuffix(r.Path, "/control") || strings.Contains(r.Path, "/control/")) {
+		return ref("RuntimeControl"), "200"
+	}
 	name := "Project"
 	switch {
 	case r.Path == "/api/v1/me":
@@ -617,6 +573,11 @@ func responseSchema(r router.Route) (schema obj, status string) {
 		name = "Operation"
 	case strings.HasSuffix(r.Path, "/resource-status"):
 		name = "AdminResource"
+	case strings.HasSuffix(r.Path, "/force-stop"):
+		if r.Method == "GET" {
+			return object(obj{"forceStop": optional(ref("RuntimeForceStop"))}, "forceStop"), "200"
+		}
+		return object(obj{"resource": ref("AdminResource"), "forceStop": ref("RuntimeForceStop")}, "resource", "forceStop"), "202"
 	case strings.HasSuffix(r.Path, "/administrative-stop"):
 		name = "AdminResource"
 	case strings.Contains(r.Path, "/workspaces"):
@@ -651,9 +612,6 @@ func responseSchema(r router.Route) (schema obj, status string) {
 }
 
 func optionalField(name string, r router.Route) bool {
-	if r.Action == "control_dispatch" {
-		return false
-	}
 	if strings.Contains(r.Path, "/issues") {
 		switch name {
 		case "title":
@@ -672,31 +630,23 @@ func optionalField(name string, r router.Route) bool {
 		// Confirm must state what it is confirming; assist may be asked with a still-empty form.
 		return strings.HasSuffix(r.Path, "/assist")
 	}
-	return name == "credentialRefId" || name == "role" && strings.HasSuffix(r.Path, "/members/huawei") || name == "version" && r.Method == "PUT" || name == "epoch" && r.Action == "access" || name == "workspaceId" && r.Action == "plan" || name == "externalId" && r.Action == "effect_result"
+	return name == "version" && r.Method == "POST" && strings.HasSuffix(r.Path, "/plugins") || name == "credentialRefId" || name == "role" && strings.HasSuffix(r.Path, "/members/huawei") || name == "version" && r.Method == "PUT" || name == "epoch" && r.Action == "access" || name == "workspaceId" && r.Action == "plan" || name == "externalId" && r.Action == "effect_result"
 }
 
 func inputSchema(name string, r router.Route) obj {
 	switch name {
 	case "version", "epoch", "admissionEpoch":
 		return obj{"type": "integer", "format": "int64", "minimum": 0}
-	case "controlEpoch", "runtimeGeneration":
-		return obj{"type": "integer", "format": "int64", "minimum": 1}
-	case "protocolGeneration":
-		return obj{"type": "integer", "enum": []int{2}}
-	case "reason":
-		return obj{"type": "string", "minLength": 1, "maxLength": 2000}
 	case "retrySeconds":
 		return obj{"type": "integer", "minimum": 1, "maximum": 3600}
 	case "protocolVersion":
 		return obj{"type": "integer", "enum": []int{1}}
-	case "initialized", "idle":
+	case "initialized", "idle", "impactConfirmed":
 		return boolean()
 	case "result":
 		return ref("EffectResult")
 	case "action":
 		return enumeration("read", "execute")
-	case "capability":
-		return enumeration("read", "write")
 	case "role":
 		return enumeration("admin", "member")
 	case "status":
@@ -726,7 +676,7 @@ func inputSchema(name string, r router.Route) obj {
 		return enumeration("sandbox_ensure", "sandbox_terminate", "workspace_data_delete", "plugin_ensure", "plugin_delete")
 	case "errorCode":
 		return enumeration("substrate_timeout", "termination_unconfirmed", "git_cleanup_failed", "node_unavailable", "external_failure", "clone_failed", "clone_result_unknown")
-	case "tenantId", "operationId", "ticketId", "credentialRefId", "sessionId":
+	case "tenantId", "operationId", "ticketId", "credentialRefId":
 		return uuid()
 	case "category":
 		return enumeration("unstarted", "started", "done", "closed")
@@ -774,18 +724,16 @@ func description(r router.Route) string {
 		return "Tenant administrators search the fixed Tianzhou endpoint through Cloud. Machine credentials stay server-side; only employed people and limited directory fields are returned."
 	case "/api/v1/tenants/:tid/members/huawei":
 		return "Tenant administrators add a selected Huawei person by stable globalUserId. Cloud searches Tianzhou again and verifies current employment before creating or reactivating membership."
-	case "/api/v1/tenants/:tid/workspaces/:wid/force-stop":
-		return "Accepts one independent force-stop intent. Only a current tenant administrator may accept it. The body carries the target runtime version and a non-empty reason; the idempotency key is the retry identity. The same key and body return the original intent, and a different reason or target is 409 idempotency_conflict. A second open intent for that runtime is 409 resource_in_use. Acceptance persists the intent, closes new admission, withdraws ordinary control sessions, and links this runtime's in-flight operations, tickets and effects without deleting or rewriting them. It does not create an operation, does not change administrative_stop, does not mark the runtime stopped, and does not delete data. Until the intent is stopped, acquire, restart and data deletion return 409 termination_unconfirmed. Another runtime is left untouched."
 	}
-	base := "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. "
+	base := "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. "
 	if r.Action != "" {
 		base = "Controller requests require an independent controller service credential; holder, active database-time lease epoch and operation version are checked. "
 	}
 	switch r.Action {
 	case "access":
-		return "Checks the final user, active membership, and runtime use by the creator or a current administrator. Missing use returns 403 runtime_use_forbidden and no content. Execute also requires the current controller lease, open admission, a ready runtime and a fresh initialized Node. An active execution ticket returns 409 resource_in_use. This lookup is not an execution reservation; use admissions."
+		return "Checks final user, active tenant membership and tenant scope. Execute additionally requires current controller lease epoch, open admission, ready workspace and a fresh initialized Node. This lookup is not an execution reservation; use admissions."
 	case "admit":
-		return "Reserves one active task or interaction ticket for a caller who may use the runtime. Another active ticket returns 409 resource_in_use and does not insert a second ticket. A caller without use permission receives 403 runtime_use_forbidden even when the runtime is occupied. The same ticket UUID and scope returns the existing ticket. Requires the current controller holder and epoch and a caller-bound user token."
+		return "Atomically reserves an active task/interaction ticket on the current Node under the same transaction lock as stop/delete. Requires current controller holder+epoch and caller-bound final-user token. Unknown/uncompleted tickets remain active; bound Node explicitly finishes them. Repeated ticket UUID with identical scope returns it while admission remains open."
 	case "lease_acquire", "lease_renew", "lease_release":
 		return "Controller subject is holderId. Global lease lasts 30 seconds using PostgreSQL clock_timestamp(); renew every 10 seconds. Expired acquisition increments epoch, active same-holder acquisition returns current lease. Release and renew require exact live holder+epoch."
 	case "claim":
@@ -798,20 +746,8 @@ func description(r router.Route) string {
 		return base + "Derives the next step server-side. Requires current-epoch successful effects. Create goes sandbox, node, clone; start goes sandbox, node. quiesce requires all tickets finished and fresh exact-epoch idle proof from each live Node. The clone step requires the operation's latest clone execution (registered over gRPC) to have succeeded on the current Node; it records the baseline commit and commits Workspace Ready/admission with operation success, re-checking the fresh initialized current Node. start commits the same readiness at its node step. Workspace data deletion is planned and completed only after termination confirmation."
 	case "defer":
 		return base + "Preserves operation/effect/resource references and current step; sets blocked or retry_wait with bounded retry delay. Never reports cleanup success on timeout."
-	case "control_dispatch":
-		return "Records one fenced execution after rechecking the held session, use permission, runtime generation, write exclusion and credential availability. The body cannot name the actor. Protocol generation must be 2. A self-declared ControllerId is not authentication, and until mutual TLS binds the service identity this route stays closed with 403 control_capability_unavailable. The same execution and input return the original record. Nothing is sent to a Node, and the runtime is not marked stopped."
 	case "node_register", "node_status", "node_idle", "node_finish":
 		return "Kept for the Go simulator's Node: desktop Nodes hold no Cloud credential and are reported by their Controller over gRPC NodeReportService. Requires node service credential whose sub is a process UUID equal to the sandbox's ensured nodeId and whose workspaceId/sandboxId/generation match the current unterminated instance. Node identity cannot be replaced while live. Status/idle use Node version; ticket finish uses Ticket version and a completed replay is idempotent. initialized cannot regress. Idle is scoped to operationId and exact Workspace admissionEpoch; true requires no active tickets. false fails that quiesce operation with resource_in_use and restores original admission. Registration requires protocolVersion=1; Pod Running alone cannot make Ready."
-	}
-	if strings.HasSuffix(r.Path, "/credential-verifications") {
-		return base + "Only a current tenant administrator can submit one team credential candidate already configured for this tenant. Cloud stores the project's repository and the requested read or write capability. It does not accept a secret and does not contact a Git remote. The project binding stays unchanged until a matching scoped result is recorded. Read success is not push permission. A failed, unknown, or no-longer-matching result does not switch the binding, and replaying the idempotency key returns the original intent."
-	}
-	if strings.Contains(r.Path, "/plugins") && !strings.HasSuffix(r.Path, "/plugins/catalog") {
-		if r.Method == "GET" {
-			base += "Active members can read the space selection. The maintenance summary counts affected, waiting, failed and completed runtimes and does not include execution logs. "
-		} else {
-			base += "Only a current tenant administrator can install, remove or change a plugin version. Acceptance stores the desired selection. A busy, stopped or occupied runtime waits instead of failing the whole request. Acceptance does not mark the plugin installed. A member is refused and creates no desired row, operation or effect. "
-		}
 	}
 	if strings.Contains(r.Path, "/spaces") {
 		switch {
@@ -827,7 +763,7 @@ func description(r router.Route) string {
 		base = "Public requests require a gateway service credential plus a caller-bound user credential. The verified identity authorizes self-service provisioning without prior membership. Atomically creates a tenant and its sole visible collaboration space with the same name and the given globally unique, immutable slug; the caller becomes its first administrator. The idempotency key is matched per user across tenants and recorded under the new tenant. "
 	}
 	if strings.Contains(r.Path, "/clones") {
-		base += "Clone requests are independent accepted work items outside the project/workspace operation model: Cloud accepts them in its own transaction, a Controller claims and dispatches them over the internal control contract, and only the submitting user can read them. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. "
+		base += "Unscoped clone submission is retired in production and returns 410 runtime_scope_required; existing requests remain readable by their original submitter. An explicit development store can exercise the legacy coordination fixture without enabling a production bypass. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. "
 	}
 	if strings.Contains(r.Path, "members") && !strings.Contains(r.Path, "/spaces") {
 		if r.Method == "GET" {
@@ -839,17 +775,8 @@ func description(r router.Route) string {
 	if strings.Contains(r.Path, "resource-status") || strings.Contains(r.Path, "administrative-stop") {
 		base += "Administrator response explicitly excludes repository URL, worktree details, credentials, execution output and operation request/result/error details. Administrative stop still requires idle evidence. "
 	}
-	if strings.Contains(r.Path, "/control") {
-		return base + "Exclusive operation lease for one runtime. The lease lasts 60 seconds from PostgreSQL clock_timestamp and the client renews it every 20 seconds; both use the database clock. One open session is reserved atomically. Replaying an idempotency key returns the stored result and does not restore or extend an expired lease. Acquiring, winding down and reconciling are not idle, and lease expiry does not mean the process has stopped. A second conflicting write returns 409 resource_in_use without a file, Git or process effect. A caller without use permission receives 403 runtime_use_forbidden."
-	}
 	if strings.Contains(r.Path, "operations") {
-		base += "Operation detail and retry follow the target runtime's creator or a current administrator, not the historical actor. administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. "
-	}
-	if strings.Contains(r.Path, "/workspaces/") && (strings.HasSuffix(r.Path, "/start") || strings.HasSuffix(r.Path, "/stop") || r.Method == "DELETE") && !strings.Contains(r.Path, "/administrative-stop") {
-		base += "Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. An open force-stop on that runtime is 409 termination_unconfirmed until the intent itself is stopped. "
-	}
-	if r.Method == "DELETE" && strings.HasSuffix(r.Path, "/projects/:pid") {
-		base += "Project deletion checks every live runtime before changing any of them. Another control session, an active or unknown write, or an active ticket is 409 resource_in_use. An open force-stop is 409 termination_unconfirmed. Deletion does not start a force-stop. "
+		base += "Active tenant members may inspect project operations; administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. "
 	}
 	if r.Method == "PATCH" && !strings.Contains(r.Path, "/spaces") {
 		base += "Only project name may change; version must match. "
@@ -861,10 +788,7 @@ func description(r router.Route) string {
 		base += "Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. "
 	}
 	if strings.HasSuffix(r.Path, "/workspaces") && r.Method == "POST" {
-		base += "Creates one isolated Workspace and Task display identity. title/baseRef required; baseRef becomes the Workspace's requestedRef, which its Node clones; HEAD means the Project's defaultBranch. The requester is the creator; the project owner is unchanged. "
-	}
-	if strings.HasSuffix(r.Path, "/workspaces") && r.Method == "GET" {
-		base += "scope=own lists runtimes the caller created. The default scope=all lists every runtime. requestedRef and baseCommitId are omitted unless the caller is the creator or a current administrator. "
+		base += "Creates one isolated Workspace and Task display identity. title/baseRef required; baseRef becomes the Workspace's requestedRef, which its Node clones; HEAD means the Project's defaultBranch. "
 	}
 	pagination := "Lists use ascending UUID pagination."
 	if r.Path == "/api/v1/me/tenants" {
@@ -882,11 +806,11 @@ func errorDescription(code string) string {
 	case "401":
 		return "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
 	case "403":
-		return "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
+		return "Disabled user, inactive/missing membership, wrong service role, or admin required"
 	case "404":
 		return "Resource absent or outside authorized tenant/owner scope"
 	case "409":
-		return "Version/idempotency conflict, resource_in_use, control_required, control_not_held, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+		return "Version/idempotency conflict, resource_in_use, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
 	case "428":
 		return "Version precondition required"
 	case "503":

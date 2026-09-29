@@ -159,7 +159,8 @@ func TestPluginInstallAPI(t *testing.T) {
 	if replay.O("resource").S("version") != row.S("version") {
 		t.Fatalf("idempotent replay = %v", replay)
 	}
-	f.call("POST", f.path("/spaces/"+sid+"/plugins"), core.Object{"identifier": "official/hello-world"}, "install-2", 200)
+	f.call("POST", f.path("/spaces/"+sid+"/plugins"), core.Object{"identifier": "official/hello-world"}, "install-2", 428)
+	f.call("POST", f.path("/spaces/"+sid+"/plugins"), core.Object{"identifier": "official/hello-world", "version": row.N("version")}, "install-2-versioned", 200)
 	if f.scalar("SELECT count(*) FROM operations WHERE kind='install_plugin' AND project_id IN (SELECT id FROM projects WHERE space_id=$1)", sid) != 1 {
 		t.Fatal("re-installing the same version must not fan out again")
 	}
@@ -214,12 +215,12 @@ func TestPluginInstallAndRemoveLifecycle(t *testing.T) {
 	f.call("POST", f.path("/spaces/"+sid+"/plugins"), core.Object{"identifier": "official/hello-world"}, "install-life", 200)
 	f.drain()
 	row := f.spacePlugin(sid, "official/hello-world")
-	if row.S("observedState") == "installed" || row.S("desiredState") != "installed" {
-		t.Fatalf("cloud plan must not mark the plugin installed: %v", row)
+	if row.S("observedState") != "installed" || row.S("observedVersion") != "1.0.0" {
+		t.Fatalf("space plugin after drain = %v", row)
 	}
 	var instanceState string
 	must(t, f.store.Pool.QueryRow(`SELECT observed_state FROM workspace_plugin_instances WHERE source_namespace='official' AND identifier='hello-world'`).Scan(&instanceState))
-	if instanceState == "installed" {
+	if instanceState != "installed" {
 		t.Fatalf("instance after drain = %s", instanceState)
 	}
 	// The drain broadcasts at least one writeback event after the install.
@@ -237,17 +238,17 @@ func TestPluginInstallAndRemoveLifecycle(t *testing.T) {
 	plugins := f.call("GET", f.path("/spaces/"+sid+"/plugins"), nil, "", 200)
 	version := core.Object(plugins["items"].([]any)[0].(map[string]any)).N("version")
 	removed := f.call("DELETE", f.path("/spaces/"+sid+"/plugins"), core.Object{"identifier": "official/hello-world", "version": version}, "remove-1", 200)
-	if removed.O("resource").S("desiredState") != "removed" || removed.O("resource").S("observedState") == "removed" {
-		t.Fatalf("removal must be accepted without being reported removed: %v", removed)
+	if removed.O("resource").S("desiredState") != "removed" || removed.O("resource").S("observedState") != "pending" {
+		t.Fatalf("removal row = %v", removed)
 	}
-	f.drain()
+	f.completeNextPlugin(t, "remove_plugin")
 	row = f.spacePlugin(sid, "official/hello-world")
-	if row.S("desiredState") != "removed" || row.S("observedState") == "removed" {
+	if row.S("observedState") != "removed" {
 		t.Fatalf("space plugin after removal drain = %v", row)
 	}
 	var instanceState2 string
 	must(t, f.store.Pool.QueryRow(`SELECT observed_state FROM workspace_plugin_instances WHERE source_namespace='official' AND identifier='hello-world'`).Scan(&instanceState2))
-	if instanceState2 == "removed" {
+	if instanceState2 != "removed" {
 		t.Fatalf("instance after removal drain = %s", instanceState2)
 	}
 }

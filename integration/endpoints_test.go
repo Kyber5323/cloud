@@ -126,8 +126,8 @@ func TestDatabaseEffectAndTicketScopes(t *testing.T) {
 	bob := f.call("GET", "/api/v1/me", nil, "", 200)
 	f.user.Subject = "alice"
 	f.addMemberID(bob.S("id"), "member")
-	if _, e := f.store.Pool.Exec("INSERT INTO execution_tickets(id,tenant_id,workspace_id,node_instance_id,actor_user_id,admission_epoch,kind,state) VALUES($1,$2,$3,$4,$5,0,'task','active')", uuid.NewString(), f.tid, aw, node.Subject, bob.S("id")); e != nil {
-		t.Fatal("ticket rejected an initiator who is a tenant member but not the workspace owner", e)
+	if _, e := f.store.Pool.Exec("INSERT INTO execution_tickets(id,tenant_id,workspace_id,node_instance_id,actor_user_id,admission_epoch,kind,state) VALUES($1,$2,$3,$4,$5,0,'task','active')", uuid.NewString(), f.tid, aw, node.Subject, bob.S("id")); e == nil {
+		t.Fatal("ticket accepted an actor who does not own the workspace")
 	}
 	// The verified gateway key cannot elevate itself by placing controller in role.
 	nowClaims := core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "gateway-a"}, Role: "controller"}
@@ -165,18 +165,20 @@ func TestProjectDeleteClosesEveryWorkspaceAndWaitsForCleanup(t *testing.T) {
 	wid := side.O("resource").S("id")
 	n := f.node(wid)
 	ticket := uuid.NewString()
-	f.internal("/internal/v1/admissions", core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "ticketId": ticket, "kind": "task", "epoch": f.controller.Epoch}, 200)
+	f.internal("/internal/v1/admissions", core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "ticketId": ticket, "kind": "task", "epoch": f.controller.Epoch, "sessionId": f.controlSession(wid)}, 200)
 	project := f.call("GET", f.path("/projects/"+pid), nil, "", 200)
 	f.call("DELETE", f.path("/projects/"+pid), core.Object{"version": project.N("version")}, "busy-delete", 409)
 	if !f.ws(main).B("admissionOpen") || !f.ws(wid).B("admissionOpen") {
 		t.Fatal("busy cascade partially closed admission")
 	}
 	f.finishTicket(ticket, n)
+	f.releaseRuntimeControl(wid)
 	deleting := f.call("DELETE", f.path("/projects/"+pid), core.Object{"version": project.N("version")}, "delete", 202)
 	for _, id := range []string{main, wid} {
 		f.internal("/internal/v1/admissions", core.Object{"tenantId": f.tid, "workspaceId": id, "action": "execute", "ticketId": uuid.NewString(), "kind": "task", "epoch": f.controller.Epoch}, 409)
 	}
 	f.substrate.SetFault("workspace_data_delete", "fail")
+	f.acknowledgeSimulatorBindings()
 	if err := f.controller.Drain(context.Background()); err == nil {
 		t.Fatal("expected data deletion failure")
 	}

@@ -2,49 +2,100 @@ syntax = "proto3";
 
 package ora.cloud.internal.v1;
 
-import "ora/cloud/internal/v1/executions.proto";
+import "ora/cloud/internal/v1/operations.proto";
 
-// Runtime-control delivery. Protocol generation 2 is required. A caller that
-// omits it, or sends any other generation, is the old protocol and is refused.
-// Declaring a ControllerId does not authenticate this service. Until deployment
-// mutual TLS binds a service identity to the controller and the target runtime,
-// Cloud keeps the capability closed and records no dispatch.
-service RuntimeControlDeliveryService {
-  // Records one execution before anything is sent onward. The same submission
-  // and the same execution identity with the same input return the original
-  // record. Cloud does not start a Node, install a plugin, or mark a runtime
-  // stopped.
-  rpc RecordControlDispatch(RecordControlDispatchRequest) returns (RecordControlDispatchResponse);
+// Mandatory for controlled cloud execution. Legacy participants must refuse execution when this
+// service or the Node runtime_control capability is unavailable, without falling back to raw clone.
+service RuntimeControlService {
+  rpc ListBindings(ListBindingsRequest) returns (ListBindingsResponse);
+  rpc AcknowledgeBinding(AcknowledgeBindingRequest) returns (AcknowledgeBindingResponse);
+  // Read-only and intentionally not submission-replayed: every dispatch obtains current authority.
+  rpc GetExecutionPermit(GetExecutionPermitRequest) returns (GetExecutionPermitResponse);
+  rpc GetEffectPermit(GetEffectPermitRequest) returns (GetEffectPermitResponse);
+  rpc ListForceStops(ListForceStopsRequest) returns (ListForceStopsResponse);
+  rpc ConfirmForceStop(ConfirmForceStopRequest) returns (ConfirmForceStopResponse);
 }
 
-message RecordControlDispatchRequest {
-  // Caller-chosen retry identity. The same id with different content conflicts.
-  string submission_id = 1;
-  // Controller lease epoch. It fences the coordinator, not the user session.
-  int64 epoch = 2;
-  // Stable execution identity. A retry must reuse it and must not mint another.
-  string execution_id = 3;
-  // Runtime the execution is bound to. Cloud loads the tenant from this row.
-  string workspace_id = 4;
-  // Runtime control epoch of the held session. Not the controller lease epoch.
-  int64 control_epoch = 5;
-  // Runtime generation the execution is pinned to.
-  int64 runtime_generation = 6;
-  // Fixed input. Only a clone spec is accepted; other kinds stay closed.
-  ExecutionInput input = 7;
-  // Must be 2. Zero is the old protocol and is refused.
-  uint32 protocol_generation = 8;
-}
-
-// The durable dispatch record. It carries no user id and no secret.
-message ControlDispatch {
-  string execution_id = 1;
+// Scope allocated by Cloud. Epochs name different authorities; none substitutes for another.
+message RuntimeBinding {
+  string tenant_id = 1;
   string workspace_id = 2;
-  int64 control_epoch = 3;
+  string sandbox_id = 3;
   int64 runtime_generation = 4;
-  ExecutionInput input = 5;
+  string node_id = 5;
+  string node_incarnation_id = 6;
+  string node_instance_id = 7;
+  int64 controller_epoch = 8;
+  int64 control_epoch = 9;
+  int64 control_version = 10;
+  string session_id = 11;
+  string actor_user_id = 12;
+  string operation_id = 13;
+  string execution_id = 14;
+  bool input_closed = 15;
+  int64 issued_at_ms = 16;
+  int64 expires_at_ms = 17;
+  string node_operation_id = 18;
 }
 
-message RecordControlDispatchResponse {
-  ControlDispatch dispatch = 1;
+message ListBindingsRequest { int64 epoch = 1; }
+message ListBindingsResponse { repeated RuntimeBinding bindings = 1; }
+message AcknowledgeBindingRequest {
+  string submission_id = 1;
+  int64 epoch = 2;
+  string workspace_id = 3;
+  string node_instance_id = 4;
+  int64 control_epoch = 5;
+  int64 control_version = 6;
+  bool input_closed = 7;
+  repeated string unfinished_execution_ids = 8;
+}
+message AcknowledgeBindingResponse {}
+message GetExecutionPermitRequest {
+  int64 epoch = 1;
+  string workspace_id = 2;
+  string node_instance_id = 3;
+  int64 control_epoch = 4;
+  string execution_id = 5;
+}
+message GetExecutionPermitResponse { RuntimeBinding binding = 1; }
+
+
+// Fresh authority for one persisted lifecycle effect. Never inferred from an old plan replay.
+message RuntimeEffectPermit {
+ string tenant_id = 1;
+ string workspace_id = 2;
+ string sandbox_id = 3;
+ int64 runtime_generation = 4;
+ int64 controller_epoch = 5;
+ int64 control_epoch = 6;
+ int64 issued_at_ms = 7;
+ int64 expires_at_ms = 8;
+}
+message GetEffectPermitRequest {
+ int64 epoch = 1;
+ string effect_id = 2;
+ string force_stop_id = 3;
+}
+message GetEffectPermitResponse { RuntimeEffectPermit permit = 1; }
+message RuntimeForceStopPlan {
+ string id = 1;
+ int64 version = 2;
+ string workspace_id = 3;
+ repeated Effect effects = 4;
+}
+message ListForceStopsRequest { int64 epoch = 1; }
+message ListForceStopsResponse { repeated RuntimeForceStopPlan plans = 1; }
+message ConfirmForceStopRequest {
+ string submission_id = 1;
+ int64 epoch = 2;
+ string force_stop_id = 3;
+ int64 version = 4;
+ string effect_id = 5;
+ bool terminated = 6;
+ bool late_ensure_fenced = 7;
+}
+message ConfirmForceStopResponse {
+ int64 version = 1;
+ bool completed = 2;
 }

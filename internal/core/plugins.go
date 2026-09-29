@@ -113,6 +113,17 @@ func (t *transaction) spacePluginRow(spaceID, namespace, identifier string) Obje
 	return t.one(`SELECT *,(source_namespace||'/'||identifier) AS id FROM space_plugins WHERE space_id=$1 AND source_namespace=$2 AND identifier=$3`, spaceID, namespace, identifier)
 }
 
+// spacePluginList returns the space's selected plugins with their aggregate
+// observed state. Desired/observed split makes the UI able to show "installing"
+// while the fan-out effects are still running.
+func spacePluginList(t *transaction, spaceID string) Object {
+	rows := t.list(`SELECT space_id,tenant_id,source_namespace,identifier,desired_state,desired_version,observed_state,observed_version,install_error,version,created_at,updated_at,(source_namespace||'/'||identifier) AS id FROM space_plugins WHERE space_id=$1 ORDER BY source_namespace,identifier`, spaceID)
+	for i, row := range rows {
+		rows[i] = pluginSelection(t, spaceID, row.S("sourceNamespace"), row.S("identifier"))
+	}
+	return Object{"items": rows}
+}
+
 // pluginIdentity splits a canonical plugin id into its namespace and identifier
 // segments; the catalog rows are the authority that such an id exists.
 func pluginIdentity(id string) (namespace, identifier string, ok bool) {
@@ -129,6 +140,64 @@ func pluginIdentity(id string) (namespace, identifier string, ok bool) {
 // actual dispatch).
 func livePluginWorkspaces(t *transaction, spaceID string) []Object {
 	return t.list(`SELECT w.* FROM workspaces w JOIN projects p ON p.id=w.project_id WHERE p.space_id=$1 AND w.deleted_at IS NULL ORDER BY w.id`, spaceID)
+}
+
+// installSpacePlugin records an administrator's pinned selection. Execution waits durably;
+// accepting selection is never evidence that a real runtime installed the plugin.
+func installSpacePlugin(t *transaction, r *PublicRequest, uid string) Object {
+	requireSpaceRole(spaceMember(t, r.SpaceID, uid), "admin")
+	namespace, identifier, ok := pluginIdentity(r.Body.S("identifier"))
+	require(ok, 400, "invalid_plugin_id")
+	entry := t.pluginCatalogEntry(namespace + "/" + identifier)
+	require(entry != nil, 404, "plugin_not_found")
+	require(entry.S("kind") != "pack", 400, "plugin_kind_not_installable")
+	desired := r.Body.S("pluginVersion")
+	if desired == "" {
+		desired = entry.S("version")
+	}
+	require(desired == entry.S("version"), 400, "plugin_version_unavailable")
+	old := t.spacePluginRow(r.SpaceID, namespace, identifier)
+	if old != nil {
+		version(old, r.Body.N("version"))
+		if old.S("desiredState") == "installed" && old.S("desiredVersion") == desired {
+			schedulePluginMaintenance(t)
+			return Object{"resource": pluginSelection(t, r.SpaceID, namespace, identifier)}
+		}
+		t.exec("UPDATE space_plugins SET desired_state='installed',desired_version=$4,observed_state='pending',install_error=NULL,requested_by_user_id=$5,selected_release=$6,desired_revision=desired_revision+1,version=version+1,updated_at=clock_timestamp() WHERE space_id=$1 AND source_namespace=$2 AND identifier=$3", r.SpaceID, namespace, identifier, desired, uid, jsonText(entry))
+	} else {
+		require(r.Body.N("version") == 0, 409, "version_conflict")
+		t.exec("INSERT INTO space_plugins(space_id,tenant_id,source_namespace,identifier,desired_state,desired_version,observed_state,requested_by_user_id,selected_release) VALUES($1,$2,$3,$4,'installed',$5,'pending',$6,$7)", r.SpaceID, r.TenantID, namespace, identifier, desired, uid, jsonText(entry))
+	}
+	recordPluginTargets(t, r, namespace, identifier)
+	schedulePluginMaintenance(t)
+	return Object{"resource": pluginSelection(t, r.SpaceID, namespace, identifier)}
+}
+
+// removeSpacePlugin uses the same administrator, version and maintenance boundary as install.
+func removeSpacePlugin(t *transaction, r *PublicRequest, uid string) Object {
+	requireSpaceRole(spaceMember(t, r.SpaceID, uid), "admin")
+	namespace, identifier, ok := pluginIdentity(r.Body.S("identifier"))
+	require(ok, 400, "invalid_plugin_id")
+	old := t.spacePluginRow(r.SpaceID, namespace, identifier)
+	require(old != nil, 404, "plugin_not_installed")
+	version(old, r.Body.N("version"))
+	t.exec("UPDATE space_plugins SET desired_state='removed',observed_state='pending',install_error=NULL,requested_by_user_id=$4,desired_revision=desired_revision+1,version=version+1,updated_at=clock_timestamp() WHERE space_id=$1 AND source_namespace=$2 AND identifier=$3", r.SpaceID, namespace, identifier, uid)
+	recordPluginTargets(t, r, namespace, identifier)
+	schedulePluginMaintenance(t)
+	return Object{"resource": pluginSelection(t, r.SpaceID, namespace, identifier)}
+}
+
+// recordPluginTargets covers only runtimes that existed when the selection was accepted.
+// A later-created runtime is not silently added to this maintenance responsibility.
+func recordPluginTargets(t *transaction, r *PublicRequest, namespace, identifier string) {
+	row := t.spacePluginRow(r.SpaceID, namespace, identifier)
+	targets := livePluginWorkspaces(t, r.SpaceID)
+	for _, w := range targets {
+		t.exec("INSERT INTO workspace_plugin_instances(workspace_id,tenant_id,owner_user_id,project_id,source_namespace,identifier,observed_state,desired_revision) VALUES($1,$2,$3,$4,$5,$6,'pending',$7) ON CONFLICT(workspace_id,source_namespace,identifier) DO UPDATE SET observed_state=CASE WHEN workspace_plugin_instances.maintenance_operation_id IS NULL THEN 'pending' ELSE workspace_plugin_instances.observed_state END,desired_revision=EXCLUDED.desired_revision,install_error=NULL,version=workspace_plugin_instances.version+1,updated_at=clock_timestamp()", w.S("id"), w.S("tenantId"), w.S("ownerUserId"), w.S("projectId"), namespace, identifier, row.N("desiredRevision"))
+	}
+	if len(targets) == 0 {
+		t.exec("UPDATE space_plugins SET observed_state=desired_state,observed_version=CASE WHEN desired_state='installed' THEN desired_version END WHERE space_id=$1 AND source_namespace=$2 AND identifier=$3", r.SpaceID, namespace, identifier)
+	}
 }
 
 // pluginAggregate folds the fan-out instance states into the space-level
@@ -165,7 +234,7 @@ func pluginInstanceWriteback(t *transaction, op Object, state, version string, i
 	if !ok {
 		return
 	}
-	row := t.one(`SELECT wi.workspace_id,p.space_id FROM workspace_plugin_instances wi JOIN workspaces ws ON ws.id=wi.workspace_id JOIN projects p ON p.id=ws.project_id WHERE wi.workspace_id=$1 AND wi.source_namespace=$2 AND wi.identifier=$3`,
+	row := t.one(`SELECT wi.workspace_id,wi.desired_revision,p.space_id FROM workspace_plugin_instances wi JOIN workspaces ws ON ws.id=wi.workspace_id JOIN projects p ON p.id=ws.project_id WHERE wi.workspace_id=$1 AND wi.source_namespace=$2 AND wi.identifier=$3`,
 		op.S("workspaceId"), namespace, identifier)
 	if row == nil || row.S("spaceId") == "" {
 		return
@@ -174,8 +243,15 @@ func pluginInstanceWriteback(t *transaction, op Object, state, version string, i
 	if installError != nil {
 		err = *installError
 	}
+	terminal := state == "installed" || state == "removed"
+	if terminal && row.N("desiredRevision") != op.O("request").N("desiredRevision") {
+		state = "pending"
+	}
 	t.exec(`UPDATE workspace_plugin_instances SET observed_state=$4,observed_version=$5,install_error=$6,version=version+1,updated_at=now() WHERE workspace_id=$1 AND source_namespace=$2 AND identifier=$3`,
 		op.S("workspaceId"), namespace, identifier, state, nullable(version), err)
+	if terminal {
+		t.exec("UPDATE workspace_plugin_instances SET maintenance_operation_id=NULL,pending_reason=NULL WHERE workspace_id=$1 AND source_namespace=$2 AND identifier=$3", op.S("workspaceId"), namespace, identifier)
+	}
 	states := t.list("SELECT observed_state FROM workspace_plugin_instances WHERE source_namespace=$1 AND identifier=$2 AND workspace_id IN (SELECT w.id FROM workspaces w JOIN projects p ON p.id=w.project_id WHERE p.space_id=$3 AND w.deleted_at IS NULL)", namespace, identifier, row.S("spaceId"))
 	aggregate := "installed"
 	if desired := t.one("SELECT desired_state FROM space_plugins WHERE space_id=$1 AND source_namespace=$2 AND identifier=$3", row.S("spaceId"), namespace, identifier); desired != nil {

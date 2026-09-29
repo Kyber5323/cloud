@@ -9,15 +9,11 @@ API, and maps the resulting `Fault` to a gRPC status. No business rule, cache or
 
 ## Caller identity
 
-- Controllers are not authenticated at this stage: every call names its ControllerId in the
-  `x-ora-controller-id` metadata; a missing, blank or longer than 256-byte value is `INVALID_ARGUMENT`.
-- The value only becomes the lease and submission holder in `Store.Control` (as a `role=controller`
-  principal), never a request field.
-- `RuntimeControlDeliveryService` does not treat that declaration as authentication. A protocol
-  generation other than 2, or a caller without a deployment-bound service identity, is refused and
-  records nothing. Mutual TLS is not wired, so the capability stays closed.
-- Unary and stream interceptors share one reading; later server streams inherit it. Without
-  authentication, `control.grpc_addr` should listen on loopback or a private network only.
+Production requires TLS 1.3 mutual authentication: both peers verify a trusted certificate.
+The Controller certificate must carry the configured service URI and its ControllerId must
+match `x-ora-controller-id`. Metadata cannot select another service identity. Missing or
+incorrect certificates are rejected; plaintext has no production fallback. `NewDevelopment`
+is only an explicit in-process test fixture, never the production listener.
 
 ## Error mapping
 
@@ -26,7 +22,6 @@ The status code is the primary classification and `ErrorDetail{ErrorCode}` is at
 
 | `Fault` | gRPC status | `ErrorCode` |
 |---|---|---|
-| `control_capability_unavailable` | `FAILED_PRECONDITION` | `CONTROL_CAPABILITY_UNAVAILABLE` |
 | `lease_held` | `FAILED_PRECONDITION` | `LEASE_HELD` |
 | `stale_controller`, `stale_operation` | `FAILED_PRECONDITION` | `STALE_CONTROLLER` |
 | other 409 | `ABORTED` | `CONFLICT` |
@@ -67,8 +62,6 @@ The status code is the primary classification and `ErrorDetail{ErrorCode}` is at
   one ended. `ReportNodeStatus` / `EndNode` / `ReportNodeIdle` share the Node-credential routes'
   transactions and fencing.
 
-- `RuntimeControlDeliveryService.RecordControlDispatch`: protocol generation 2 runtime-control dispatch. A self-declared ControllerId is not a service identity; until mutual TLS binds one, the RPC stays closed and a refusal writes no `runtime_control_dispatches` row. When the caller is authenticated and permission still holds, one short transaction rechecks the exclusive session, use permission, runtime generation, write exclusion and credential availability, then stores the execution identity, fixed input and control epoch. The same execution and input return the original record. It does not dispatch to a Node and does not mark the runtime stopped.
-
 - `ControlSignalService.Watch`: the Controller-opened server stream. Opening verifies the epoch with
   `lease_check` (read-only, no renewal); afterwards it forwards signals from the in-process
   `core.ControlHub`: `WorkAvailable{operation_id}` after a `clone_requests` row commits, `OperationAvailable{operation_id}` after a Workspace operation is created or retried, `Drain` before
@@ -79,4 +72,12 @@ The status code is the primary classification and `ErrorDetail{ErrorCode}` is at
   listener accepts client HTTP/2 PINGs spaced at least 5 seconds apart, also while the connection has no
   active stream, so the Controller's keepalive is never cut by `GOAWAY(too_many_pings)`; the server sends
   no PINGs of its own. The listen address comes
-from `control.grpc_addr` and must stay on a loopback or private network until TLS lands.
+from `control.grpc_addr`; production always uses authenticated TLS.
+
+## Runtime controls
+
+`RuntimeControlService` delivers exact tenant, Workspace, sandbox, runtime generation, Node incarnation,
+user control epoch and Controller lease epoch bindings. Binding acknowledgements reconcile closed input
+and unfinished responsibility; a fresh execution permit is required before dispatch. Delayed snapshots
+return `ABORTED stale_runtime_control` and cannot renew or revive a withdrawn session.
+See [runtime-control](../../docs/runtime-control.en.md) for the business authority and evidence limits.

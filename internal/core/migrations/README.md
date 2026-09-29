@@ -49,10 +49,6 @@
 - **`0015_plugins.sql`**：增加插件目录、空间级选择和运行时安装记录。
 - **`0016_workspace_runtime_follows_node.sql`**：停用旧存储卷与工作树创建流程，采用独立 Workspace 数据、Node 和仓库克隆初始化，保留历史记录供读取。
 - **`0017_tenant_membership_and_join.sql`**：收敛为一租户一空间，租户成员身份成为唯一权限来源；恢复项目必须归属空间的约束，空间 slug 在全平台唯一且归档后不复用；为 IDaaS 关联身份、邀请和加入申请增加持久化表。历史多空间、无空间项目、重复 slug 或租户与空间名称不一致的测试数据必须重建；迁移不会静默拆分或改名。
-- **`0018_runtime_control.sql`**：运行时控制的权威状态。创建者与 `owner_user_id` 分开，只从唯一对应的创建 operation 回填，无法证明的保持未知。新增独占会话、冲突写活动、独立强停意图和插件维护等待。历史凭据标为未知并增加冻结状态；不改 owner 外键，不保存密钥，也不改变 `administrative_stop`。
-- **`0019_runtime_use_actor.sql`**：执行票据记录已验证的发起者，不再要求发起者等于运行时 `owner_user_id`。使用权限由每次准入时的创建者或当前管理员决定。
-- **`0020_plugin_maintenance_and_credentials.sql`**：插件维护等待按运行时展开，同一请求可以记下多个运行时。新增凭据候选验证意图；验证成功前不切换项目绑定，不保存密钥，也不改写历史凭据归属。
-- **`0021_runtime_control_dispatch.sql`**：新增运行时控制派发记录。一行只在同一事务核验当前许可后插入，保存执行身份、固定输入和控制代次。不回填历史执行，不保存密钥，也不表示 Node 已经开始。
 
 ## 校验和完整性与不可变性
 
@@ -68,3 +64,9 @@
 - **`0015_plugins.sql`**（append-only）：插件市场三张表与枚举放宽：
   - `plugin_sources`（部署全局源，默认 `official` 命名空间）、`plugin_catalog_entries`（目录快照，读取永远不出网）、`space_plugins`（工作区选择状态权威，`UNIQUE(space_id, source_namespace, identifier)`）、`workspace_plugin_instances`（fan-out 执行事实，复合外键继承 tenant/owner/project/workspace）。
   - 放宽 `operations.kind`（+install_plugin/remove_plugin）、`operations.step`（+plugin）、`external_effects.kind`（+plugin_ensure/plugin_delete）；原 CHECK 在 0001 定义，PG 命名为 `表_列_check`，0015 DROP 后以扩展集合重建。
+
+## 多人运行时控制的追加迁移
+
+0018–0023 在已发布 0017 后追加，不改写旧迁移：0018 单独保存经可靠记录证明的创建者，未知保持 NULL；0019 保存 PostgreSQL 操作会话、控制代次与审计；0020 保存独立强停意图、目标及重启阶段；0021 区分 Node operation ID 和 Cloud operation ID，保留重试历史；0022 保存插件请求者、固定版本与持久 pending（待执行）；0023 保存凭据引用归属依据、可用性、范围、能力和版本。旧 owner 外键、凭据关联与操作记录继续保留。历史个人/未知引用在关联成员已停用时冻结；不猜测团队身份或有效绑定。
+
+真实 PostgreSQL 新库与 0017 升级证据见 integration/runtime_upgrade_test.go、runtime_control_test.go、repository_credentials_test.go 和 plugin_pending_test.go。业务事务只有数据库操作，不跨执行程序、网络或文件调用持锁。Node 的本地恢复日志不替代此业务权威。
