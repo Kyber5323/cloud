@@ -55,7 +55,7 @@ func startPromptGraph(variables []any, prompt string) core.Object {
 // launchGraph is startInputGraph with the workflow's launch-field declaration in the envelope: the
 // author's answer, carried in the document rather than registered anywhere, about which platform
 // fields the @ form asks for and which of them it insists on (§38.37d).
-func launchGraph(variables []any, launchFields []any) core.Object {
+func launchGraph(variables, launchFields []any) core.Object {
 	graph := startInputGraph(variables)
 	graph["launchFields"] = launchFields
 	return graph
@@ -102,10 +102,14 @@ func reviewVariables() []any {
 	return []any{
 		core.Object{"name": "repository", "displayName": "Repository", "fieldType": "text-input", "valueType": "string", "required": true},
 		core.Object{"name": "branch", "displayName": "Branch", "fieldType": "text-input", "valueType": "string", "value": "main"},
-		core.Object{"name": "scope", "displayName": "Review scope", "fieldType": "select", "valueType": "string", "required": true,
-			"options": []any{"current-issue", "changed-files", "full-repo"}},
-		core.Object{"name": "severity", "displayName": "Severity", "fieldType": "select", "valueType": "string", "required": true,
-			"options": []any{"low", "medium", "high"}},
+		core.Object{
+			"name": "scope", "displayName": "Review scope", "fieldType": "select", "valueType": "string", "required": true,
+			"options": []any{"current-issue", "changed-files", "full-repo"},
+		},
+		core.Object{
+			"name": "severity", "displayName": "Severity", "fieldType": "select", "valueType": "string", "required": true,
+			"options": []any{"low", "medium", "high"},
+		},
 		core.Object{"name": "includeDependencies", "displayName": "Include dependencies", "fieldType": "checkbox", "valueType": "boolean", "value": false},
 	}
 }
@@ -469,7 +473,7 @@ func launchIssue(t *testing.T, f *fixture, projectID, title, key string) core.Ob
 }
 
 // fieldShapes is a descriptor's fields without their defaults. A default can name a value only one
-// workflow has — a version names that workflow's newest snapshot — while the shape is the catalogue's.
+// workflow has — a version names that workflow's newest snapshot — while the shape is the catalog's.
 func fieldShapes(fields []core.Object) []string {
 	out := []string{}
 	for _, field := range fields {
@@ -491,7 +495,7 @@ func TestFormDescriptorAuthorDeclaredLaunchFields(t *testing.T) {
 	}, "launch-issue", 200).O("resource")
 
 	// Drift guard. A declaration that spells out the platform's own answers must be the same form as
-	// declaring nothing at all: the catalogue the editor's dialog seeds from and the catalogue the
+	// declaring nothing at all: the catalog the editor's dialog seeds from and the catalog the
 	// projection injects have to agree, or the first save from that dialog would change the form.
 	plain := createPromptWorkflow(t, f, "Plain", "launch-plain", "Ship it", notesVariables())
 	explicit := createLaunchWorkflow(t, f, "Explicit", "launch-explicit", notesVariables(), launchDefaults())

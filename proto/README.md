@@ -11,8 +11,13 @@
 |---|---|
 | `errors.proto` | `ErrorDetail{ErrorCode}`：附在 `google.rpc.Status` detail 上的错误分类；gRPC 状态码是主分类，枚举细分 |
 | `lease.proto` | `ControllerLeaseService`：全局协调租约，`epoch` 作为所有写操作的 fencing token |
-| `executions.proto` | `ExecutionService`：领取工作、派发前登记、Node 事件接管、查询结果保存与恢复读取；第一版只覆盖 clone 闭环 |
-| `signals.proto` | `ControlSignalService.Watch`：Controller 发起的服务端流，下发 `WorkAvailable`／`Drain`／`NodeAssignment` |
+| `executions.proto` | `ExecutionService`：领取工作、派发前登记、Node 事件接管、查询结果保存与恢复读取；执行种类包括 clone、插件安装/移除、Agent 会话与 Revision 交付，会话与交付工作项带目标 Node（`WorkTarget`） |
+| `plugin_executions.proto` | 插件安装/移除执行的输入（Cloud 从目录快照拼装的下载与 SHA-256）与逐插件结果 |
+| `agent_executions.proto` | Agent 会话与 Revision 交付执行的输入与结果、git 身份、用户轮次，以及只存在于内存的上传授权 `UploadGrant` |
+| `agent_runs.proto` | `AgentRunService`：按序批量接管 Thread 事件、领取与登记 Thread 命令、签发 Revision 上传授权 |
+| `operations.proto` | `WorkspaceOperationService`：领取、计划 effect、登记 effect 结果、推进与延期 Workspace 生命周期操作 |
+| `nodes.proto` | `NodeReportService`：Controller 登记它持有会话的 desktop Node（`node_id` + `node_incarnation_id`），并报告状态、结束与 idle |
+| `signals.proto` | `ControlSignalService.Watch`：Controller 发起的服务端流，下发 `WorkAvailable`／`OperationAvailable`／`ThreadCommandAvailable`／`Drain`／`NodeAssignment` |
 
 ## 语义要点
 
@@ -20,8 +25,9 @@
   同身份不同内容返回 `ABORTED` + `CONFLICT`。回复丢失后用同一身份重传，不换身份。
 - **边界顺序**：`RecordDispatch` 成功后 Controller 才可向 Node 派发；`TakeOverNodeEvent` 成功后才可
   向 Node 发送该序号的确认；`RecordQueriedResult` 不产生确认依据。
-- **信号流**：至多一次、不持久化、不改变归属；断流后 Controller 退回周期 `ClaimWork`。
-- **无租户字段**：契约只携带 Cloud 已授权的 opaque 身份；评审以此拒绝携带 tenant／user／membership 的变更。
+- **信号流**：至多一次、不持久化、不改变归属；断流后 Controller 退回周期 `ClaimWork`、`ClaimOperation` 与 `ClaimThreadCommands`。
+- **上传授权不是输入**：`UploadGrant` 是短期持有者凭据，不进入执行输入、登记或任何日志；执行输入只带对象键。
+- **授权来源**：业务授权由 Cloud/PostgreSQL 决定。运行时控制字段携带已确认的租户、用户、会话及目标范围，执行端不得根据未经确认的调用方身份自行扩大权限。
 
 ## 生成与检查
 
@@ -38,3 +44,7 @@
 
 契约的语义由 specs 的
 `decisions/cloud/controller-integration/0-cloud-owned-internal-grpc-contract.md` 拥有；本目录只承载字段。
+
+## 已批准的运行时控制契约
+
+RuntimeControlService 传递 Cloud 已裁决的目标绑定、关闭确认、即时执行许可和独立强停计划。目标包含 tenant/workspace、实际用户/服务端会话与控制代次；它们用于受信执行端核验范围，不作为客户端自行声明的成员权限。用户控制代次、Controller 租约代次、运行时代次、Node 进程代次及稳定 execution/Node operation ID 分别保存。旧组件未声明 runtime_control 能力时明确拒绝。许可不由幂等响应复活，Controller 派发前重新获取；Node 接受与首次执行入口再次核验。Cloud–Controller 使用双向 TLS。文件/终端/插件/Agent 的新执行入口须具备同样保障后才开放。权威依据为 specs/decisions/cloud/controller-integration/20260927-fenced-runtime-control-delivery.md。

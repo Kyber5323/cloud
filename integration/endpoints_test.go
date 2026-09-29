@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"net/http"
+	"os"
 	"testing"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -41,7 +42,7 @@ func TestRemainingPublicContractsAndMembershipRevocation(t *testing.T) {
 	f.user.Subject = "member"
 	member := f.call("GET", "/api/v1/me", nil, "", 200)
 	f.user.Subject = "alice"
-	f.call("PUT", f.path("/members/"+member.S("id")), core.Object{"role": "member", "status": "active", "version": 0}, "", 200)
+	f.addMemberID(member.S("id"), "member")
 	f.user.Subject = "member"
 	owned := f.create("member-project")
 	f.drain()
@@ -65,8 +66,8 @@ func TestOperationPreconditionsAndScheduledRetry(t *testing.T) {
 	prefix := "/internal/v1/operations/" + oid
 	f.internal(prefix+"/advance", core.Object{"epoch": f.controller.Epoch, "version": claimed.N("version")}, 409)
 	f.internal(prefix+"/advance", core.Object{"epoch": f.controller.Epoch, "version": claimed.N("version"), "state": "succeeded"}, 400)
-	f.internal(prefix+"/effects", core.Object{"epoch": f.controller.Epoch, "version": claimed.N("version"), "kind": "sandbox_ensure", "workspaceId": p.O("workspace").S("id")}, 409)
-	effect := f.internal(prefix+"/effects", core.Object{"epoch": f.controller.Epoch, "version": claimed.N("version"), "kind": "storage_ensure"}, 200)
+	f.internal(prefix+"/effects", core.Object{"epoch": f.controller.Epoch, "version": claimed.N("version"), "kind": "sandbox_terminate", "workspaceId": p.O("workspace").S("id")}, 409)
+	effect := f.internal(prefix+"/effects", core.Object{"epoch": f.controller.Epoch, "version": claimed.N("version"), "kind": "sandbox_ensure", "workspaceId": p.O("workspace").S("id")}, 200)
 	f.internal(prefix+"/advance", core.Object{"epoch": f.controller.Epoch, "version": claimed.N("version")}, 409)
 	deferred := f.internal(prefix+"/defer", core.Object{"epoch": f.controller.Epoch, "version": effect.O("operation").N("version"), "state": "retry_wait", "errorCode": "substrate_timeout", "retrySeconds": 30}, 200)
 	none := f.internal("/internal/v1/operations/claim", core.Object{"epoch": f.controller.Epoch}, 200)
@@ -80,7 +81,7 @@ func TestOperationPreconditionsAndScheduledRetry(t *testing.T) {
 	if done.S("state") != "succeeded" || done.N("version") <= deferred.N("version") {
 		t.Fatal("scheduled retry failed", done)
 	}
-	f.internal(prefix+"/effects/"+effect.O("effect").S("id")+"/result", core.Object{"epoch": f.controller.Epoch, "version": effect.O("operation").N("version"), "state": "succeeded", "externalId": "forged", "result": core.Object{"layoutVersion": 1}}, 409)
+	f.internal(prefix+"/effects/"+effect.O("effect").S("id")+"/result", core.Object{"epoch": f.controller.Epoch, "version": effect.O("operation").N("version"), "state": "succeeded", "externalId": "forged", "result": core.Object{"sandboxInstanceId": effect.O("effect").S("id"), "nodeId": "forged"}}, 409)
 	node := f.node(p.O("workspace").S("id"))
 	out, status, e := f.client.Call(context.Background(), "POST", "/internal/v1/nodes/register", "node", node, nil, "", core.Object{"protocolVersion": 1})
 	must(t, e)
@@ -124,7 +125,7 @@ func TestDatabaseEffectAndTicketScopes(t *testing.T) {
 	f.user.Subject = "ticket-bob"
 	bob := f.call("GET", "/api/v1/me", nil, "", 200)
 	f.user.Subject = "alice"
-	f.call("PUT", f.path("/members/"+bob.S("id")), core.Object{"role": "member", "status": "active", "version": 0}, "", 200)
+	f.addMemberID(bob.S("id"), "member")
 	if _, e := f.store.Pool.Exec("INSERT INTO execution_tickets(id,tenant_id,workspace_id,node_instance_id,actor_user_id,admission_epoch,kind,state) VALUES($1,$2,$3,$4,$5,0,'task','active')", uuid.NewString(), f.tid, aw, node.Subject, bob.S("id")); e == nil {
 		t.Fatal("ticket accepted an actor who does not own the workspace")
 	}
@@ -164,30 +165,32 @@ func TestProjectDeleteClosesEveryWorkspaceAndWaitsForCleanup(t *testing.T) {
 	wid := side.O("resource").S("id")
 	n := f.node(wid)
 	ticket := uuid.NewString()
-	f.internal("/internal/v1/admissions", core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "ticketId": ticket, "kind": "task", "epoch": f.controller.Epoch}, 200)
+	f.internal("/internal/v1/admissions", core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "ticketId": ticket, "kind": "task", "epoch": f.controller.Epoch, "sessionId": f.controlSession(wid)}, 200)
 	project := f.call("GET", f.path("/projects/"+pid), nil, "", 200)
 	f.call("DELETE", f.path("/projects/"+pid), core.Object{"version": project.N("version")}, "busy-delete", 409)
 	if !f.ws(main).B("admissionOpen") || !f.ws(wid).B("admissionOpen") {
 		t.Fatal("busy cascade partially closed admission")
 	}
 	f.finishTicket(ticket, n)
+	f.releaseRuntimeControl(wid)
 	deleting := f.call("DELETE", f.path("/projects/"+pid), core.Object{"version": project.N("version")}, "delete", 202)
 	for _, id := range []string{main, wid} {
 		f.internal("/internal/v1/admissions", core.Object{"tenantId": f.tid, "workspaceId": id, "action": "execute", "ticketId": uuid.NewString(), "kind": "task", "epoch": f.controller.Epoch}, 409)
 	}
-	f.substrate.SetFault("worktree_delete", "fail")
+	f.substrate.SetFault("workspace_data_delete", "fail")
+	f.acknowledgeSimulatorBindings()
 	if err := f.controller.Drain(context.Background()); err == nil {
-		t.Fatal("expected maintenance failure")
+		t.Fatal("expected data deletion failure")
 	}
-	if f.scalar("SELECT count(*) FROM external_effects WHERE project_id=$1 AND kind='storage_delete'", pid) != 0 {
-		t.Fatal("storage deletion scheduled before maintenance completed")
+	if f.scalar("SELECT count(*) FROM projects WHERE id=$1 AND lifecycle='deleted'", pid) != 0 {
+		t.Fatal("project deleted before every Workspace's data was deleted")
 	}
 	if f.scalar("SELECT count(*) FROM workspaces WHERE project_id=$1 AND deleted_at IS NULL", pid) != 2 {
 		t.Fatal("failed cascade lost resources")
 	}
-	f.substrate.SetFault("worktree_delete", "")
+	f.substrate.SetFault("workspace_data_delete", "")
 	operation := f.call("GET", f.path("/operations/"+deleting.O("operation").S("id")), nil, "", 200)
-	if operation.S("state") != "retry_wait" || operation.S("errorCode") != "git_cleanup_failed" {
+	if operation.S("state") != "retry_wait" || operation.S("errorCode") != "substrate_timeout" {
 		t.Fatal("cleanup failure was not deferred", operation)
 	}
 	f.call("POST", f.path("/operations/"+operation.S("id")+"/retry"), core.Object{"version": operation.N("version")}, "cleanup-retry", 202)
@@ -195,7 +198,12 @@ func TestProjectDeleteClosesEveryWorkspaceAndWaitsForCleanup(t *testing.T) {
 	if f.scalar("SELECT count(*) FROM sandbox_instances s JOIN workspaces w ON w.id=s.workspace_id WHERE w.project_id=$1 AND s.terminated_at IS NULL", pid) != 0 || f.scalar("SELECT count(*) FROM workspaces WHERE project_id=$1 AND deleted_at IS NULL", pid) != 0 {
 		t.Fatal("cascade left a live resource")
 	}
-	if f.scalar("SELECT count(*) FROM project_storage WHERE project_id=$1 AND observed_state='deleted'", pid) != 1 {
-		t.Fatal("storage not confirmed deleted")
+	if f.scalar("SELECT count(*) FROM external_effects WHERE operation_id=$1 AND kind='workspace_data_delete' AND state='succeeded'", deleting.O("operation").S("id")) != 2 || f.scalar("SELECT count(*) FROM projects WHERE id=$1 AND lifecycle='deleted'", pid) != 1 {
+		t.Fatal("project deletion did not delete every Workspace's data before completing")
+	}
+	for _, id := range []string{main, wid} {
+		if _, e := os.Stat(f.substrate.WorkspaceData(id)); !os.IsNotExist(e) {
+			t.Fatal("workspace data survived project deletion", id, e)
+		}
 	}
 }

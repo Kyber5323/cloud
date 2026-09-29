@@ -306,7 +306,7 @@ func appliedContextRefs(body Object) []Object {
 // the same one: assist re-validates submitted values against this descriptor, and confirm re-validates
 // them against a freshly resolved one, so a descriptor that disagreed with what the client rendered
 // would reject values the user was legitimately shown.
-func workflowFormDescriptor(t *transaction, tid, targetType, targetID string, issue IssueFormContext) FormDescriptor {
+func workflowFormDescriptor(t *transaction, tid, targetType, targetID string, issue *IssueFormContext) FormDescriptor {
 	require(targetType == "workflow", 409, "interaction_not_confirmable")
 	require(t.directory != nil, 503, "form_descriptor_unavailable")
 	summary, ok, err := t.directory.ResolveTarget(t.ctx, tid, targetType, targetID)
@@ -317,7 +317,9 @@ func workflowFormDescriptor(t *transaction, tid, targetType, targetID string, is
 	require(summary.InteractionDescriptor.Mode == "form", 409, "interaction_not_confirmable")
 	formRef := summary.InteractionDescriptor.FormRef
 	require(formRef != "" && t.forms != nil, 503, "form_descriptor_unavailable")
-	descriptor, ok, err := t.forms.ResolveFormDescriptor(t.ctx, tid, formRef, issue)
+	// The port itself stays value-typed — see the nolint on ResolveFormDescriptor — so the context is
+	// dereferenced at the one place the two conventions meet.
+	descriptor, ok, err := t.forms.ResolveFormDescriptor(t.ctx, tid, formRef, *issue)
 	if err != nil {
 		panic(databaseFailure{err})
 	}

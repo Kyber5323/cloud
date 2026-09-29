@@ -2,34 +2,21 @@ package core
 
 import "context"
 
-// Workspace permission foundation (Step 2B — Workspace Sharing Model).
-//
-// Workspace is the resource-sharing boundary: a Workspace member may eventually
-// access the resources shared inside that Workspace, and per-resource membership
-// (project_members / issue_members / …) is not the target model. These helpers
-// are the minimal reusable predicates behind that model; they deliberately reuse
-// the existing membership/role data (collab_workspace_members) and do not add a
-// generic RBAC engine.
-//
-// They are current-state neutral: they answer "what role does this user hold in
-// this workspace", not which resources that role can reach. Wiring them into
-// real resource authorization (Project/Issue/Agent/…) is a later migration step.
+// A collaboration space is the sole visible representation of its tenant.
+// Tenant membership is the only source of its active role and permissions.
 
 // workspaceRole returns the active membership role of uid in spaceID, or "" when
-// uid is not an active member of a live, unarchived space whose tenant is active
-// (or when the user is no longer an active tenant member). It is the non-panicking
-// core reused by the Store methods and, later, by delete authorization inside an
-// existing transaction. Returns "owner" | "admin" | "member".
+// uid is not an active member of a live, unarchived space and tenant.
+// It returns "admin" or "member".
 func workspaceRole(t *transaction, spaceID, uid string) string {
 	if !validID(spaceID) || !validID(uid) {
 		return ""
 	}
-	m := t.one(`SELECT wm.role FROM collab_workspace_members wm
-JOIN collab_workspaces w ON w.id=wm.workspace_id
-JOIN tenant_memberships tm ON tm.tenant_id=w.tenant_id AND tm.user_id=wm.user_id
-JOIN users u ON u.id=wm.user_id
+	m := t.one(`SELECT tm.role FROM collab_workspaces w
+JOIN tenant_memberships tm ON tm.tenant_id=w.tenant_id AND tm.user_id=$2
+JOIN users u ON u.id=tm.user_id
 JOIN tenants tn ON tn.id=w.tenant_id
-WHERE wm.workspace_id=$1 AND wm.user_id=$2 AND wm.status='active'
+WHERE w.id=$1
 AND w.archived_at IS NULL
 AND tm.status='active' AND u.status='active' AND u.deleted_at IS NULL
 AND tn.status='active' AND tn.deleted_at IS NULL`, spaceID, uid)
@@ -58,38 +45,21 @@ func (s *Store) IsWorkspaceMember(ctx context.Context, spaceID, uid string) (boo
 	})
 }
 
-// IsWorkspaceAdmin reports whether uid is an active owner or admin of spaceID.
+// IsWorkspaceAdmin reports whether uid is an active tenant admin of spaceID.
 func (s *Store) IsWorkspaceAdmin(ctx context.Context, spaceID, uid string) (bool, error) {
 	return s.workspacePerm(ctx, func(t *transaction) bool {
-		switch workspaceRole(t, spaceID, uid) {
-		case "owner", "admin":
-			return true
-		}
-		return false
+		return workspaceRole(t, spaceID, uid) == "admin"
 	})
 }
 
-// workspaceCanDelete applies the unified workspace delete rule inside an existing
-// transaction: the creator may always delete their own resource; otherwise the
-// actor must be a workspace owner or admin. Ordinary members cannot delete
-// another member's resource, and non-members have no delete permission. It is the
-// transaction-scoped mirror of CanDeleteWorkspaceResource, reused by the project
-// DELETE path so the rule is decided in the same transact as project().
-func workspaceCanDelete(t *transaction, spaceID, uid, creatorUserID string) bool {
-	if uid == creatorUserID {
-		return true
-	}
-	switch workspaceRole(t, spaceID, uid) {
-	case "owner", "admin":
-		return true
-	}
-	return false
+// workspaceCanDelete requires current tenant administrator authority regardless
+// of who originally created the resource.
+func workspaceCanDelete(t *transaction, spaceID, uid, _ string) bool {
+	return workspaceRole(t, spaceID, uid) == "admin"
 }
 
-// CanDeleteWorkspaceResource applies the unified workspace delete rule:
-// the creator may always delete their own resource; otherwise the actor must be
-// a workspace owner or admin. Ordinary members cannot delete another member's
-// resource, and non-members have no delete permission.
+// CanDeleteWorkspaceResource reports current tenant administrator authority.
+// creatorUserID is retained for source compatibility but grants no privilege.
 func (s *Store) CanDeleteWorkspaceResource(ctx context.Context, spaceID, uid, creatorUserID string) (bool, error) {
 	return s.workspacePerm(ctx, func(t *transaction) bool {
 		return workspaceCanDelete(t, spaceID, uid, creatorUserID)

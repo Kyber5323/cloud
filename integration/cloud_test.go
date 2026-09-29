@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,12 +26,17 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/test/bufconn"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
 	"github.com/wanglongan587/cloud/internal/api/router"
 	"github.com/wanglongan587/cloud/internal/collab"
+	"github.com/wanglongan587/cloud/internal/controlgrpc"
+	"github.com/wanglongan587/cloud/internal/controlpb"
 	"github.com/wanglongan587/cloud/internal/core"
 	"github.com/wanglongan587/cloud/internal/simulator"
 )
@@ -46,6 +52,9 @@ type fixture struct {
 	cloud                  *httptest.Server
 	external               *httptest.Server
 	pgConfig               *pgx.ConnConfig
+	executions             controlpb.ExecutionServiceClient
+	controlConn            *grpc.ClientConn
+	controlSessions        map[string]string
 }
 
 // testSchema creates an isolated PostgreSQL schema for one test and returns a pool bound to it.
@@ -88,12 +97,15 @@ func setup(t *testing.T) *fixture {
 	pool, config := testSchema(t, "test_")
 	db, e := gorm.Open(postgres.New(postgres.Config{Conn: pool}), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	must(t, e)
-	store, e := core.NewStore(db)
+	store, e := core.NewDevelopmentStore(db)
 	must(t, e)
 	// Wire the dev/demo collaboration fixtures so the mock execution path is exercised. Workflow
 	// targets and their form descriptors stay database-backed: the fixtures layer agent/team in front
 	// of the directory NewStore already installed.
 	collab.WireDevelopmentFixtures(store)
+	// Plugin execution has no real executor yet; the simulation capability is what the fixtures above
+	// stand in for, and it must be opted into explicitly (see plugin_maintenance.go).
+	store.PluginExecution = core.PluginExecutionSimulation
 	must(t, store.Migrate(context.Background()))
 	must(t, store.Migrate(context.Background()))
 	credentials, e := simulator.NewCredentials()
@@ -102,7 +114,7 @@ func setup(t *testing.T) *fixture {
 	must(t, e)
 	gin.SetMode(gin.TestMode)
 	log, _ := zap.NewDevelopment()
-	cloud := httptest.NewServer(router.New(store, auth, log))
+	cloud := httptest.NewServer(router.NewDevelopment(store, auth, log))
 	t.Cleanup(cloud.Close)
 	// Git for Windows still limits the linked-worktree GIT_DIR even with core.longpaths.
 	root, e := os.MkdirTemp("", "ora-cloud-")
@@ -130,11 +142,27 @@ func setup(t *testing.T) *fixture {
 	bootstrap, e := store.Bootstrap(context.Background(), "Test tenant", "corp", "alice", "Alice")
 	must(t, e)
 	f.tid, f.uid = bootstrap.S("tenantId"), bootstrap.S("userId")
-	f.controller = &simulator.Controller{Client: client, SubstrateURL: external.URL}
+	f.controlConn = controlConn(t, store)
+	f.executions = controlpb.NewExecutionServiceClient(f.controlConn)
+	f.controller = &simulator.Controller{Client: client, SubstrateURL: external.URL, Executions: f.executions}
 	f.external, f.pgConfig = external, config
 	validateHTTP(t, f)
 	must(t, f.controller.Acquire(context.Background()))
 	return f
+}
+
+// controlConn serves the gRPC control surface for store over bufconn; the simulator Controller
+// uses it for the clone step, whose executions only that contract carries.
+func controlConn(t *testing.T, store *core.Store) *grpc.ClientConn {
+	t.Helper()
+	listener := bufconn.Listen(1 << 20)
+	server := controlgrpc.NewDevelopment(store)
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(server.Stop)
+	conn, e := grpc.NewClient("passthrough:///control", grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	must(t, e)
+	t.Cleanup(func() { _ = conn.Close() })
+	return conn
 }
 
 func TestMigrateUpgradesPreviousSchemaAndData(t *testing.T) {
@@ -163,7 +191,7 @@ func TestMigrateUpgradesPreviousSchemaAndData(t *testing.T) {
 		args  []any
 	}{
 		{"INSERT INTO users(id,display_name,status) VALUES($1,'Upgrade user','active')", []any{ids[0]}},
-		{"INSERT INTO tenants(id,name,status) VALUES($1,'Upgrade tenant','active')", []any{ids[1]}},
+		{"INSERT INTO tenants(id,name,status) VALUES($1,'Default','active')", []any{ids[1]}},
 		{"INSERT INTO tenant_memberships(tenant_id,user_id,role,status) VALUES($1,$2,'admin','active')", []any{ids[1], ids[0]}},
 		{"INSERT INTO projects(id,tenant_id,owner_user_id,name,repository_url,default_branch,lifecycle) VALUES($1,$2,$3,'Upgrade project','https://example.invalid/upgrade.git','main','active')", []any{ids[2], ids[1], ids[0]}},
 		{"INSERT INTO project_storage(project_id,substrate_storage_id,observed_state) VALUES($1,'upgrade-storage','ready')", []any{ids[2]}},
@@ -226,7 +254,66 @@ func (f *fixture) path(s string) string { return "/api/v1/tenants/" + f.tid + s 
 func (f *fixture) create(key string) core.Object {
 	return f.call("POST", f.path("/projects"), core.Object{"name": "Project", "repositoryUrl": "https://example.invalid/repo.git", "defaultBranch": "main"}, key, 202)
 }
-func (f *fixture) drain() { f.t.Helper(); must(f.t, f.controller.Drain(context.Background())) }
+
+func (f *fixture) drain() {
+	f.t.Helper()
+	f.acknowledgeSimulatorBindings()
+	must(f.t, f.controller.Drain(context.Background()))
+}
+
+// These acknowledgements are simulated Node evidence. They test Cloud's transaction rules;
+// Rust Node durability, TLS, process and filesystem evidence must come from its own tests.
+func (f *fixture) acknowledgeSimulatorBindings() {
+	f.t.Helper()
+	api := controlpb.NewRuntimeControlServiceClient(f.controlConn)
+	ctx := asController(f.client.Subject)
+	list, err := api.ListBindings(ctx, &controlpb.ListBindingsRequest{Epoch: f.controller.Epoch})
+	must(f.t, err)
+	for _, b := range list.Bindings {
+		if f.scalar("SELECT count(*) FROM execution_tickets WHERE workspace_id=$1 AND state='active'", b.WorkspaceId) != 0 || f.scalar("SELECT count(*) FROM clone_executions WHERE workspace_id=$1 AND result IS NULL", b.WorkspaceId) != 0 {
+			continue
+		}
+		_, err = api.AcknowledgeBinding(ctx, &controlpb.AcknowledgeBindingRequest{SubmissionId: uuid.NewString(), Epoch: f.controller.Epoch, WorkspaceId: b.WorkspaceId, NodeInstanceId: b.NodeInstanceId, ControlEpoch: b.ControlEpoch, ControlVersion: b.ControlVersion, InputClosed: b.InputClosed})
+		must(f.t, err)
+	}
+}
+
+// The fixture represents one verified page per user. Tests for multiple pages use the raw HTTP
+// client so this explicitly acquired binding cannot silently grant the second page eligibility.
+func (f *fixture) controlSession(wid string) string {
+	f.t.Helper()
+	key := f.tid + "/" + f.user.Subject + "/" + wid
+	if f.controlSessions == nil {
+		f.controlSessions = map[string]string{}
+	}
+	f.acknowledgeSimulatorBindings()
+	view := f.call("GET", f.path("/workspaces/"+wid+"/control"), nil, "", 200)
+	if view.S("state") != "idle" && f.controlSessions[key] != "" {
+		return f.controlSessions[key]
+	}
+	acquired := f.call("POST", f.path("/workspaces/"+wid+"/control/acquire"), core.Object{"version": view.N("version")}, uuid.NewString(), 200)
+	f.controlSessions[key] = acquired.S("sessionId")
+	f.acknowledgeSimulatorBindings()
+	return acquired.S("sessionId")
+}
+
+func (f *fixture) lifecycleBody(wid string, version any) core.Object {
+	return core.Object{"version": version, "sessionId": f.controlSession(wid)}
+}
+
+func (f *fixture) releaseRuntimeControl(wid string) {
+	f.t.Helper()
+	view := f.call("GET", f.path("/workspaces/"+wid+"/control"), nil, "", 200)
+	if view.S("state") == "held" || view.S("state") == "acquiring" {
+		sid := f.controlSessions[f.tid+"/"+f.user.Subject+"/"+wid]
+		if sid == "" {
+			f.t.Fatal("this fixture page does not own the control session")
+		}
+		f.call("POST", f.path("/workspaces/"+wid+"/control/release"), core.Object{"version": view.N("version"), "sessionId": sid}, uuid.NewString(), 200)
+	}
+	f.acknowledgeSimulatorBindings()
+}
+
 func (f *fixture) ws(wid string) core.Object {
 	return f.call("GET", f.path("/workspaces/"+wid), nil, "", 200)
 }
@@ -277,30 +364,31 @@ func TestHTTPProjectLifecycleAndDurableRecovery(t *testing.T) {
 		t.Fatal("idempotency created another project")
 	}
 	f.call("POST", f.path("/projects"), core.Object{"name": "Different", "repositoryUrl": "https://example.invalid/repo.git"}, "create", 409)
-	f.substrate.SetFault("worktree_ensure", "lose_response")
+	f.substrate.SetFault("sandbox_ensure", "lose_response")
 	if e := f.controller.Drain(context.Background()); e == nil {
 		t.Fatal("expected lost external response")
 	}
-	if f.scalar("SELECT count(*) FROM external_effects WHERE operation_id=$1", oid) != 2 {
-		t.Fatal("write-ahead effects missing")
+	if f.scalar("SELECT count(*) FROM external_effects WHERE operation_id=$1", oid) != 1 {
+		t.Fatal("write-ahead effect missing")
 	}
-	f.substrate.SetFault("worktree_ensure", "")
+	f.substrate.SetFault("sandbox_ensure", "")
 	deferred := f.call("GET", f.path("/operations/"+oid), nil, "", 200)
 	if deferred.S("state") != "retry_wait" || deferred.S("errorCode") != "substrate_timeout" {
 		t.Fatal("response loss was not deferred", deferred)
 	}
-	f.call("POST", f.path("/operations/"+oid+"/retry"), core.Object{"version": deferred.N("version")}, "worktree-retry", 202)
+	f.call("POST", f.path("/operations/"+oid+"/retry"), core.Object{"version": deferred.N("version")}, "sandbox-retry", 202)
 	f.drain()
 	ready := f.ws(wid)
-	if ready.S("observedState") != "ready" {
+	if ready.S("observedState") != "ready" || ready.S("baseCommitId") != f.commit || ready.S("requestedRef") != "main" {
 		t.Fatal(ready)
 	}
-	checkout := filepath.Join(f.substrate.Root, "projects", pid, "workspaces", wid, "checkout")
+	// The Workspace's own Node cloned into the Workspace's data; nothing is shared per Project.
+	checkout := filepath.Join(f.substrate.WorkspaceData(wid), "home", "checkout")
 	if runGit(t, "-C", checkout, "rev-parse", "HEAD") != f.commit {
 		t.Fatal("real commit not resolved")
 	}
-	if !strings.Contains(runGit(t, "--git-dir", filepath.Join(f.substrate.Root, "projects", pid, "repository.git"), "worktree", "list", "--porcelain"), wid) {
-		t.Fatal("main is not linked worktree")
+	if f.scalar("SELECT count(*) FROM project_storage WHERE project_id=$1", pid)+f.scalar("SELECT count(*) FROM workspace_worktrees WHERE workspace_id=$1", wid) != 0 {
+		t.Fatal("retired storage or worktree rows written for a new project")
 	}
 	isolated := f.call("POST", f.path("/projects/"+pid+"/workspaces"), core.Object{"title": "Task", "baseRef": "main"}, "isolated", 202)
 	iwid := isolated.O("resource").S("id")
@@ -308,11 +396,11 @@ func TestHTTPProjectLifecycleAndDurableRecovery(t *testing.T) {
 	if f.scalar("SELECT count(*) FROM tasks WHERE workspace_id=$1", iwid) != 1 {
 		t.Fatal("task display identity missing")
 	}
-	f.call("DELETE", f.path("/workspaces/"+wid), core.Object{"version": f.ws(wid).N("version")}, "main-delete", 409)
-	data := filepath.Join(f.substrate.Root, "projects", pid, "workspaces", iwid, "runtime", "state.txt")
+	f.call("DELETE", f.path("/workspaces/"+wid), f.lifecycleBody(wid, f.ws(wid).N("version")), "main-delete", 409)
+	data := filepath.Join(f.substrate.WorkspaceData(iwid), "home", "state.txt")
 	must(t, os.WriteFile(data, []byte("persistent"), 0o600))
 	oldNode := f.node(iwid)
-	stop := f.call("POST", f.path("/workspaces/"+iwid+"/stop"), core.Object{"version": f.ws(iwid).N("version")}, "stop", 202)
+	stop := f.call("POST", f.path("/workspaces/"+iwid+"/stop"), f.lifecycleBody(iwid, f.ws(iwid).N("version")), "stop", 202)
 	f.drain()
 	if f.ws(iwid).S("observedState") != "stopped" {
 		t.Fatal("not stopped")
@@ -321,12 +409,12 @@ func TestHTTPProjectLifecycleAndDurableRecovery(t *testing.T) {
 		t.Fatal("stop deleted persistent data")
 	}
 	// Same key is checked before the now-stale version.
-	retryStop := f.call("POST", f.path("/workspaces/"+iwid+"/stop"), core.Object{"version": isolated.O("resource").N("version") + 3}, "different-stop", 409)
+	retryStop := f.call("POST", f.path("/workspaces/"+iwid+"/stop"), f.lifecycleBody(iwid, isolated.O("resource").N("version")+3), "different-stop", 409)
 	_ = retryStop
 	if stop.O("operation").S("id") == "" {
 		t.Fatal(stop)
 	}
-	f.call("POST", f.path("/workspaces/"+iwid+"/start"), core.Object{"version": f.ws(iwid).N("version")}, "restart", 202)
+	f.call("POST", f.path("/workspaces/"+iwid+"/start"), f.lifecycleBody(iwid, f.ws(iwid).N("version")), "restart", 202)
 	f.drain()
 	if f.ws(iwid).N("runtimeGeneration") != 2 {
 		t.Fatal("generation not advanced")
@@ -334,33 +422,41 @@ func TestHTTPProjectLifecycleAndDurableRecovery(t *testing.T) {
 	if _, e := os.Stat(data); e != nil {
 		t.Fatal("replacement lost data")
 	}
+	if f.scalar("SELECT count(*) FROM clone_executions WHERE workspace_id=$1", iwid) != 1 {
+		t.Fatal("start cloned again instead of reusing the Workspace's data")
+	}
 	_, status, e := f.client.Call(context.Background(), "POST", "/internal/v1/nodes/status", "node", oldNode, nil, "", core.Object{"version": 1, "connectionState": "connected", "initialized": true})
 	must(t, e)
 	if status != 409 {
 		t.Fatal("late old Node accepted", status)
 	}
-	del := f.call("DELETE", f.path("/workspaces/"+iwid), core.Object{"version": f.ws(iwid).N("version")}, "delete-isolated", 202)
-	f.substrate.SetFault("worktree_delete", "fail")
+	del := f.call("DELETE", f.path("/workspaces/"+iwid), f.lifecycleBody(iwid, f.ws(iwid).N("version")), "delete-isolated", 202)
+	f.substrate.SetFault("workspace_data_delete", "fail")
+	// Explicit simulated binding acknowledgement; the cleanup fault assertion below is retained.
+	f.acknowledgeSimulatorBindings()
 	if e = f.controller.Drain(context.Background()); e == nil {
 		t.Fatal("expected cleanup failure")
 	}
 	op := f.call("GET", f.path("/operations/"+del.O("operation").S("id")), nil, "", 200)
-	if op.S("state") != "retry_wait" || op.S("errorCode") != "git_cleanup_failed" {
+	if op.S("state") != "retry_wait" || op.S("errorCode") != "substrate_timeout" {
 		t.Fatal("cleanup failure was not deferred", op)
 	}
 	if _, e = os.Stat(data); e != nil {
 		t.Fatal("failed cleanup lost tracking/data")
 	}
-	f.substrate.SetFault("worktree_delete", "")
+	f.substrate.SetFault("workspace_data_delete", "")
 	f.call("POST", f.path("/operations/"+op.S("id")+"/retry"), core.Object{"version": op.N("version")}, "isolated-cleanup-retry", 202)
 	f.drain()
 	f.call("GET", f.path("/workspaces/"+iwid), nil, "", 404)
 	p := f.call("GET", f.path("/projects/"+pid), nil, "", 200)
+	f.releaseRuntimeControl(wid)
 	f.call("DELETE", f.path("/projects/"+pid), core.Object{"version": p.N("version")}, "delete-project", 202)
 	f.drain()
 	f.call("GET", f.path("/projects/"+pid), nil, "", 404)
-	if _, e = os.Stat(filepath.Join(f.substrate.Root, "projects", pid)); !os.IsNotExist(e) {
-		t.Fatal("project storage survived delete", e)
+	for _, id := range []string{wid, iwid} {
+		if _, e = os.Stat(f.substrate.WorkspaceData(id)); !os.IsNotExist(e) {
+			t.Fatal("workspace data survived delete", id, e)
+		}
 	}
 }
 
@@ -401,21 +497,21 @@ func TestIdentityConcurrencyMembershipAndIsolation(t *testing.T) {
 		t.Fatal("orphan users from login race")
 	}
 	f.call("POST", f.path("/projects"), core.Object{"name": "Denied", "repositoryUrl": "https://example.invalid/repo.git"}, "no-member", 403)
+	f.internal("/internal/v1/access", core.Object{"tenantId": f.tid, "workspaceId": uuid.NewString(), "action": "read"}, 403)
 	f.user.Subject = "alice"
-	f.call("PUT", f.path("/members/"+id), core.Object{"role": "member", "status": "active", "version": 0}, "", 200)
+	f.addMemberID(id, "member")
 	created := f.create("owner-project")
 	f.drain()
 	pid, wid := created.O("resource").S("id"), created.O("workspace").S("id")
 	f.user.Subject = "new-user"
-	// Joining the tenant grants default-space membership, so the project and its
-	// runtime workspace become shared; operations stay scoped to their actor, and
-	// the tenant-level project list keeps its owner filter (the shared project
-	// appears in the default space's own view, not in the personal list).
+	// Joining grants shared project visibility. Runtime content and its operations
+	// still require the creating user or a current administrator.
 	f.call("GET", f.path("/projects/"+pid), nil, "", 200)
-	f.call("GET", f.path("/workspaces/"+wid), nil, "", 200)
-	f.call("GET", f.path("/operations/"+created.O("operation").S("id")), nil, "", 404)
+	f.call("GET", f.path("/workspaces/"+wid), nil, "", 403)
+	f.call("GET", f.path("/operations/"+created.O("operation").S("id")), nil, "", 403)
+	f.internal("/internal/v1/access", core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "epoch": f.controller.Epoch}, 403)
 	list := f.call("GET", f.path("/projects"), nil, "", 200)
-	if len(list["items"].([]any)) != 0 {
+	if len(list["items"].([]any)) != 1 {
 		t.Fatal("list owner filter missing")
 	}
 	f.user.Subject = "alice"
@@ -426,15 +522,17 @@ func TestIdentityConcurrencyMembershipAndIsolation(t *testing.T) {
 	if bytes.Contains(encoded, []byte("repository")) || bytes.Contains(encoded, []byte("secret")) || bytes.Contains(encoded, []byte("result")) {
 		t.Fatal("admin view leaks", string(encoded))
 	}
-	adminStop := f.call("POST", f.path("/workspaces/"+wid+"/administrative-stop"), core.Object{"version": f.scalar("SELECT version FROM workspaces WHERE id=$1", wid)}, "admin-stop", 202)
-	f.drain()
-	adminOp := f.call("GET", f.path("/operations/"+adminStop.O("operation").S("id")), nil, "", 200)
-	for _, o := range []core.Object{adminStop.O("operation"), adminOp} {
-		if _, exists := o["request"]; exists {
-			t.Fatal("admin operation leaks request")
-		}
-		if _, exists := o["result"]; exists {
-			t.Fatal("admin operation leaks result")
+	forced := f.call("POST", f.path("/workspaces/"+wid+"/force-stop"), core.Object{"version": f.scalar("SELECT version FROM workspaces WHERE id=$1", wid), "reason": "Administrative test stop", "impactConfirmed": true}, "admin-stop", 202)
+	f.confirmForceStopInjected()
+	adminIntent := f.call("GET", f.path("/workspaces/"+wid+"/force-stop"), nil, "", 200).O("forceStop")
+	if adminIntent.S("id") != forced.O("forceStop").S("id") || adminIntent.S("state") != "succeeded" {
+		t.Fatal("administrative intent was not retained", adminIntent)
+	}
+	for _, view := range []core.Object{forced.O("resource"), adminIntent} {
+		for _, key := range []string{"request", "result", "repositoryUrl", "secretRef"} {
+			if _, exists := view[key]; exists {
+				t.Fatal("administrative projection leaks", key)
+			}
 		}
 	}
 	other, e := f.store.Bootstrap(context.Background(), "Other", "corp", "other", "Other")
@@ -451,11 +549,12 @@ func TestStopAdmissionRaceAndIdleEvidence(t *testing.T) {
 	f.drain()
 	wid := created.O("workspace").S("id")
 	node := f.node(wid)
+	sid := f.controlSession(wid)
 	ticketID := uuid.NewString()
-	body := core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "kind": "interaction", "ticketId": ticketID, "epoch": f.controller.Epoch}
-	f.internal("/internal/v1/access", core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "epoch": f.controller.Epoch}, 200)
+	body := core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "kind": "interaction", "ticketId": ticketID, "epoch": f.controller.Epoch, "sessionId": sid}
+	f.internal("/internal/v1/access", core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "epoch": f.controller.Epoch, "sessionId": sid}, 200)
 	ticket := f.internal("/internal/v1/admissions", body, 200)
-	f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": f.ws(wid).N("version")}, "busy-stop", 409)
+	f.call("POST", f.path("/workspaces/"+wid+"/stop"), f.lifecycleBody(wid, f.ws(wid).N("version")), "busy-stop", 409)
 	if !f.ws(wid).B("admissionOpen") {
 		t.Fatal("rejected stop closed admission")
 	}
@@ -476,7 +575,7 @@ func TestStopAdmissionRaceAndIdleEvidence(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		_, stopStatus, _ = f.client.Call(context.Background(), "POST", f.path("/workspaces/"+wid+"/stop"), "gateway", core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "gateway-a"}}, &f.user, "race-stop", core.Object{"version": version})
+		_, stopStatus, _ = f.client.Call(context.Background(), "POST", f.path("/workspaces/"+wid+"/stop"), "gateway", core.Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "gateway-a"}}, &f.user, "race-stop", core.Object{"version": version, "sessionId": sid})
 	}()
 	body["ticketId"] = uuid.NewString()
 	go func() {
@@ -489,10 +588,11 @@ func TestStopAdmissionRaceAndIdleEvidence(t *testing.T) {
 	}
 	if admitStatus == 200 {
 		f.finishTicket(body.S("ticketId"), node)
-		f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": f.ws(wid).N("version")}, "final-stop", 202)
+		f.call("POST", f.path("/workspaces/"+wid+"/stop"), f.lifecycleBody(wid, f.ws(wid).N("version")), "final-stop", 202)
 	}
 	claimed := f.internal("/internal/v1/operations/claim", core.Object{"epoch": f.controller.Epoch}, 200).O("operation")
 	f.internal("/internal/v1/operations/"+claimed.S("id")+"/advance", core.Object{"epoch": f.controller.Epoch, "version": claimed.N("version")}, 409)
+	f.acknowledgeSimulatorBindings()
 	var nv int64
 	must(t, f.store.Pool.QueryRow("SELECT version FROM node_instances WHERE id=$1", node.Subject).Scan(&nv))
 	_, status, e = f.client.Call(context.Background(), "POST", "/internal/v1/nodes/idle", "node", node, nil, "", core.Object{"version": nv, "admissionEpoch": f.ws(wid).N("admissionEpoch"), "operationId": claimed.S("id"), "idle": false})

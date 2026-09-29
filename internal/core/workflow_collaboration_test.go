@@ -46,13 +46,13 @@ func descriptorForIssue(t *testing.T, variables []any, issue IssueFormContext, p
 // with the workflow's published snapshots alongside.
 func projectGraph(t *testing.T, graph Object, snapshots []Object, issue IssueFormContext) FormDescriptor {
 	t.Helper()
-	return formDescriptorFromGraph(workflowFormSource{
+	return formDescriptorFromGraph(&workflowFormSource{
 		Ref:         reviewRef,
 		Title:       "Review flow",
 		Description: "Reviews a change",
 		Graph:       encodeGraph(t, graph),
 		Snapshots:   snapshots,
-	}, issue)
+	}, &issue)
 }
 
 // encodeGraph renders a graph to the bytes the column stores, so a test reads the document the way
@@ -297,9 +297,9 @@ func TestFormDescriptorProjectionBounds(t *testing.T) {
 		"data": Object{"kind": "start", "inputVariables": []any{Object{"name": "field", "valueType": "string"}}},
 	}}})
 	// The name column is capped at 200 by the schema; the description is not capped anywhere.
-	long := formDescriptorFromGraph(workflowFormSource{
+	long := formDescriptorFromGraph(&workflowFormSource{
 		Ref: reviewRef, Title: strings.Repeat("好", 100), Description: strings.Repeat("好", 1000), Graph: raw,
-	}, IssueFormContext{})
+	}, &IssueFormContext{})
 	if len(long.Title) > 200 || len(long.Description) > 2000 {
 		t.Fatalf("descriptor identity was not clipped: title=%d description=%d", len(long.Title), len(long.Description))
 	}
@@ -345,7 +345,7 @@ func TestWorkflowStartVariablesReadsTheDocument(t *testing.T) {
 	}
 
 	// An unreadable column value is an empty form, not a failed request.
-	if d := formDescriptorFromGraph(workflowFormSource{Ref: reviewRef, Graph: []byte("not json")}, IssueFormContext{}); len(d.Fields) != 0 {
+	if d := formDescriptorFromGraph(&workflowFormSource{Ref: reviewRef, Graph: []byte("not json")}, &IssueFormContext{}); len(d.Fields) != 0 {
 		t.Fatalf("an unreadable graph produced fields: %+v", d.Fields)
 	}
 }

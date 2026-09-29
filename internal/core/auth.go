@@ -14,14 +14,15 @@ import (
 // Claims is the only accepted internal identity format. User claims bind the calling service.
 type Claims struct {
 	jwt.RegisteredClaims
-	Kind        string `json:"kind"`
-	Role        string `json:"role,omitempty"`
-	Caller      string `json:"caller,omitempty"`
-	Source      string `json:"source,omitempty"`
-	DisplayName string `json:"displayName,omitempty"`
-	WorkspaceID string `json:"workspaceId,omitempty"`
-	SandboxID   string `json:"sandboxId,omitempty"`
-	Generation  int64  `json:"generation,omitempty"`
+	Kind         string `json:"kind"`
+	Role         string `json:"role,omitempty"`
+	Caller       string `json:"caller,omitempty"`
+	Source       string `json:"source,omitempty"`
+	DisplayName  string `json:"displayName,omitempty"`
+	GlobalUserID string `json:"globalUserId,omitempty"`
+	WorkspaceID  string `json:"workspaceId,omitempty"`
+	SandboxID    string `json:"sandboxId,omitempty"`
+	Generation   int64  `json:"generation,omitempty"`
 }
 
 // TrustedKey pins issuer, purpose, and service role as well as the signing key.

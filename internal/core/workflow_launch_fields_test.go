@@ -7,7 +7,7 @@ import (
 
 // platformLaunchDefaults is the platform's own answer for each field: asked for, and required — or not.
 // It is written out here rather than read back out of the code under test, so the assertions below say
-// what the behaviour must be instead of restating whatever the catalogue happens to say.
+// what the behavior must be instead of restating whatever the catalog happens to say.
 var platformLaunchDefaults = []struct {
 	Key      string
 	Required bool
@@ -44,11 +44,11 @@ func launchDescriptor(t *testing.T, launchFields []any, snapshots []Object) Form
 	return projectGraph(t, launchGraph(launchFields), snapshots, issueContext())
 }
 
-// TestLaunchFieldsDefaultToTheWholeCatalogue covers the back-compatibility rule and the shape of the
-// catalogue at once: a workflow that declares nothing is asked exactly the five platform fields, with
+// TestLaunchFieldsDefaultToTheWholeCatalog covers the back-compatibility rule and the shape of the
+// catalog at once: a workflow that declares nothing is asked exactly the five platform fields, with
 // the platform's own requiredness — and one that spells those defaults out field by field is asked
 // precisely the same form, which is what makes the declaration a narrowing rather than a redefinition.
-func TestLaunchFieldsDefaultToTheWholeCatalogue(t *testing.T) {
+func TestLaunchFieldsDefaultToTheWholeCatalog(t *testing.T) {
 	undeclared := projectGraph(t, startGraph(nil, ""), snapshotRows(2, 1), issueContext())
 	explicit := launchDescriptor(t, explicitLaunchDefaults(), snapshotRows(2, 1))
 	validateFormDescriptor(undeclared)
@@ -163,7 +163,7 @@ func TestLaunchFieldsReadsTheDeclarationDefensively(t *testing.T) {
 		[]any{Object{"key": fieldKeyPrompt, "required": "true"}},
 		[]any{Object{"key": fieldKeyVersion, "required": nil}},
 		// A key the platform does not have cannot be withdrawn, and cannot be added either: the
-		// declaration names the catalogue, it does not extend it.
+		// declaration names the catalog, it does not extend it.
 		[]any{Object{"key": "deploy_target", "enabled": false, "required": true}},
 		[]any{Object{"key": "launchFields", "enabled": false}},
 	}
@@ -181,7 +181,7 @@ func TestLaunchFieldsReadsTheDeclarationDefensively(t *testing.T) {
 // TestLaunchFieldsCannotOfferWhatThePlatformDoesNotHave covers the rule that outranks the declaration: a
 // field with nothing to offer is dropped however plainly the author asks for it. The version field needs
 // a published snapshot and the context-refs field needs an issue that can name a reference, and a select
-// with no options fails descriptor validation closed — so honouring the request would turn every confirm
+// with no options fails descriptor validation closed — so honoring the request would turn every confirm
 // into a 500 rather than producing the field.
 func TestLaunchFieldsCannotOfferWhatThePlatformDoesNotHave(t *testing.T) {
 	// Nothing published, and the author asked for the version field all the same.

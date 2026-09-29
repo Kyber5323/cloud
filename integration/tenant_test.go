@@ -11,7 +11,7 @@ import (
 
 // TestSelfServeTenantProvisioning covers POST /api/v1/tenants: a user who
 // belongs to no tenant provisions one for themselves, becomes its
-// administrator and the first space's owner, replays through the idempotency
+// administrator of its sole space, replays through the idempotency
 // key, and cannot reuse the key with a different body.
 //
 // Evidence for specs/test-cases/cloud/tenancy/self-serve-provisioning.md
@@ -66,8 +66,8 @@ func TestSelfServeTenantProvisioning(t *testing.T) {
 	if uid != 1 {
 		t.Fatalf("tenant must have exactly one administrator, got %d", uid)
 	}
-	if f.scalar("SELECT count(*) FROM collab_workspace_members WHERE workspace_id=$1 AND role='owner' AND status='active'", sid) != 1 {
-		t.Fatal("space must have exactly one owner")
+	if f.scalar("SELECT count(*) FROM collab_workspaces WHERE id=$1 AND tenant_id=$2", sid, tid) != 1 {
+		t.Fatal("tenant must own exactly one visible space")
 	}
 
 	// The tenant is visible to its creator and usable through space-scoped APIs.
@@ -96,8 +96,11 @@ func TestSelfServeTenantProvisioning(t *testing.T) {
 		t.Fatal("replay or conflict created another tenant")
 	}
 
-	// Tenants are independent slug namespaces: a second tenant may reuse the slug.
-	second, status := post(core.Object{"name": "Acme", "slug": "acme-team"}, "tenant-create-2")
+	// Visible slugs are globally reserved, including across tenants.
+	if _, status = post(core.Object{"name": "Acme", "slug": "acme-team"}, "tenant-duplicate-slug"); status != 409 {
+		t.Fatalf("reused global slug: want 409 got %d", status)
+	}
+	second, status := post(core.Object{"name": "Acme", "slug": "acme-team-2"}, "tenant-create-2")
 	if status != 201 || second.O("tenant").S("id") == tid {
 		t.Fatalf("second tenant: want fresh 201 got %d %v", status, second)
 	}

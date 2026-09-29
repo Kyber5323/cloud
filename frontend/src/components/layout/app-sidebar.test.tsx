@@ -16,11 +16,12 @@ import { renderRoutes } from '@/test/render'
 import { server } from '@/test/msw-server'
 
 const SECOND_SPACE_ID = '77777777-7777-7777-7777-777777777777'
+const SECOND_TENANT_ID = '88888888-8888-8888-8888-888888888888'
 
 function space(id: string, name: string, slug: string) {
   return {
     id,
-    tenantId: TEST_TENANT_ID,
+    tenantId: id === SECOND_SPACE_ID ? SECOND_TENANT_ID : TEST_TENANT_ID,
     name,
     slug,
     description: '',
@@ -29,20 +30,14 @@ function space(id: string, name: string, slug: string) {
     createdAt: '2026-09-20T10:00:00+08:00',
     updatedAt: '2026-09-20T10:00:00+08:00',
     archivedAt: null,
-    role: 'owner',
+    role: 'admin',
   }
 }
 
 function installTwoSpaces() {
   installSignedInSession()
   server.use(
-    http.get('/api/v1/me/tenants', () =>
-      HttpResponse.json({
-        items: [{ id: TEST_TENANT_ID, name: '研发组织', status: 'active', role: 'admin' }],
-        nextCursor: '',
-      }),
-    ),
-    http.get(`/api/v1/tenants/${TEST_TENANT_ID}/spaces`, () =>
+    http.get('/api/v1/me/spaces', () =>
       HttpResponse.json({
         items: [
           space(TEST_SPACE_ID, 'Cloud Dev', 'cloud-dev'),
@@ -65,7 +60,10 @@ function renderDashboard(initialPath: string) {
             <DashboardLayout />
           </RequireSession>
         ),
-        children: [{ path: 'issues', element: <div>Issues screen</div> }],
+        children: [
+          { path: 'issues', element: <div>Issues screen</div> },
+          { path: 'plugins', element: <div>Plugins screen</div> },
+        ],
       },
     ],
     initialPath,
@@ -100,6 +98,21 @@ describe('AppSidebar workspace switcher', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Ops/ })).toBeInTheDocument()
     })
+  })
+
+  it('offers the plugin entry beside skills and routes to the plugin page', async () => {
+    installTwoSpaces()
+    const user = userEvent.setup()
+    renderDashboard('/w/cloud-dev/issues')
+    await screen.findByText('Issues screen')
+
+    const skills = screen.getByRole('link', { name: /技能/ })
+    const plugins = screen.getByRole('link', { name: /插件/ })
+    expect(plugins).toHaveAttribute('href', '/w/cloud-dev/plugins')
+    expect(plugins.closest('[data-sidebar="group"]')).toBe(skills.closest('[data-sidebar="group"]'))
+
+    await user.click(plugins)
+    expect(await screen.findByText('Plugins screen')).toBeInTheDocument()
   })
 
   it('signs out through the gateway and returns to the login screen', async () => {

@@ -8,6 +8,8 @@ Requires Go 1.27.1, Git, PostgreSQL 17, optionally Task, and `buf` (≥ 1.73; `t
 
 ## Local validation
 
+The tenant-as-space migration is `0017_tenant_membership_and_join.sql`, following upstream 0014 clone coordination, 0015 plugins and 0016 independent runtimes. Published migrations remain unchanged. Active tenant members share project and runtime access; each runtime independently clones its repository through the upstream lifecycle. Lifecycle operations on one project remain serialized; shared access does not merge simultaneous edits to one directory. Rebuild test databases that applied the old PR's 0014 tenant migration; other incompatible test data is never silently rewritten.
+
 On Windows, PostgreSQL 17.11 can be installed and started in isolation under the project's `.local/` directory without creating a system service:
 
 ```powershell
@@ -77,7 +79,7 @@ go run ./cmd/cloudctl -command migrate
 go run ./cmd/simulator
 ```
 
-The demo starts isolated loopback HTTP cloud and Substrate services, creates a test tenant, bare repository, main linked worktree, simulated sandbox, and Node, and then outputs the ready Workspace. Disk state remains under `.local/demo/`, and PostgreSQL records are retained; each subsequent run creates another demo tenant. The simulator has no production infrastructure credentials, does not deploy Kubernetes, and does not start real Agent or Deno runtimes.
+The demo starts isolated loopback HTTP cloud and Substrate services, creates a test tenant, a simulated sandbox and Node, and a real clone into the main Workspace's own data, and then outputs the ready Workspace. Disk state remains under `.local/demo/`, and PostgreSQL records are retained; each subsequent run creates another demo tenant. The simulator has no production infrastructure credentials, does not deploy Kubernetes, and does not start real Agent or Deno runtimes.
 
 ## Frontend
 
@@ -135,4 +137,6 @@ Every subsystem, service command, and tool follows the same rigorous architectur
 
 Phase one serializes core transactions with a database-level global advisory lock and permits only one unfinished operation per Project. HTTP, Git, and Substrate calls never hold a database transaction. This choice suits the initial single-cluster, active-singleton deployment and trades write throughput for simpler concurrency invariants. Locks may later be partitioned by tenant or Project, but the existing concurrency tests must continue to pass.
 
-The container packages server, gateway, and cloudctl and runs as a non-root user. Build it with `docker build -f scripts/Dockerfile -t ora-cloud:phase-one .`, mount your own configuration and public keys, run migrations separately from the same image with `--entrypoint /app/cloudctl`, and run the authentication Gateway with `--entrypoint /app/gateway` (see `docs/gateway.md`). Repository CI is split into two workflows: `Backend` runs formatting, static checks and race-enabled integration tests against a PostgreSQL service; `Frontend` runs only when `frontend/`, `api/` or `internal/contract/` change, verifies the generated client matches the contract and runs the format, lint, type, coverage, module docs/tests, dead-code, duplication and build gates (see `frontend/AGENTS.md`). Docker images and real deployment are outside the locally validated scope.
+The container packages server, gateway, and cloudctl and runs as a non-root user. Build it with `docker build -f scripts/Dockerfile -t ora-cloud:phase-one .`, mount your own configuration and public keys, run migrations separately from the same image with `--entrypoint /app/cloudctl`, and run the authentication Gateway with `--entrypoint /app/gateway` (see `docs/gateway.md`). The image also carries the built frontend at `/app/web`; with `GATEWAY_WEB_DIST_DIR=/app/web` the Gateway serves it on the same origin as `/auth` and `/api` (see `docs/gateway.md`). A separate `devsetup` target (`cmd/devsetup`, local key generation and migrations only, never part of the service image) serves the `ora-space/cluster` Compose file. Repository CI is split into two workflows: `Backend` runs formatting, static checks and race-enabled integration tests against a PostgreSQL service; `Frontend` runs only when `frontend/`, `api/` or `internal/contract/` change, verifies the generated client matches the contract and runs the format, lint, type, coverage, module docs/tests, dead-code, duplication and build gates (see `frontend/AGENTS.md`). Docker images and real deployment are outside the locally validated scope.
+
+The in-process simulator explicitly uses the development-only retired clone fixture. Its plugin selection remains durable pending because no real plugin executor is available. It is not evidence of runtime control, management authentication or workload isolation; use cluster Compose and the real acceptance script.

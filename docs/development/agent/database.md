@@ -21,6 +21,9 @@ applied file; add a new `NNNN_*.sql`.
 | `0011_issue_interactions.sql` | new table `issue_interactions` (the `@` interaction spine) — one row per selected collaboration target: `id, tenant_id, issue_id, comment_id, target_type, target_id, mode, task, run_id, created_at` — formerly `0009_issue_interactions.sql` |
 | `0012_issue_interaction_input.sql` | one generic additive column: `ALTER TABLE issue_interactions ADD COLUMN input jsonb NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(input)='object')` — the confirmed form values ([§38.30](../../migrations/multica-issue-board/12-collaboration-architecture.md#3830-does-3b-2-need-a-migration--yes-one-additive-column)). Deliberately excludes `version`, a `status` enum, `confirmed_at` and a separate inputs table. `0011` is not modified. — formerly `0010_issue_interaction_input.sql` |
 | `0013_project_space_optional.sql` | **Project Space optional (append-only compatibility)**: `projects.space_id` back to **NULLABLE** — upstream `0007` imposed `NOT NULL` + full project binding; PS3/D2=C keeps Space an optional grouping. `0013` only relaxes the constraint; it deliberately **does NOT unbind** projects `0007` already assigned (no data change, no scope shrink). Space-scoped projects stay workspace-shared (Step 3 access model); new unscoped projects stay owner-only |
+| `0015_plugins.sql` | **Plugin marketplace**: `plugin_sources` (deployment-global source, default `official` namespace), `plugin_catalog_entries` (catalog snapshot; reads never leave the DB), `space_plugins` (authoritative per-space selection, PK `(space_id, source_namespace, identifier)`), `workspace_plugin_instances` (fan-out facts, composite FKs). Widens `operations.kind` (+install_plugin/remove_plugin), `operations.step` (+plugin), `external_effects.kind` (+plugin_ensure/plugin_delete). See [plugins.md](../../plugins.md) |
+| `0016_workspace_runtime_follows_node.sql` | **Workspace runtime follows the desktop Node**: steps `+clone`, effect kind `+workspace_data_delete`; fails in-flight storage/worktree operations (`lifecycle_flow_retired`) and rewinds `storage_delete` to `cleanup`; triggers refuse new retired steps/effects and new `project_storage` / `workspace_worktrees` rows; `workspaces.requested_ref` (backfilled) + `base_commit_id`; `node_instances.node_id` / `node_incarnation_id`; `clone_executions.workspace_id` so one table registers tenant clone requests and Workspace clone steps |
+| `0017_tenant_membership_and_join.sql` | **Current model**: one space per tenant, globally reserved slug, tenant membership as the only role source; `projects.space_id` is mandatory again. Adds verified Huawei association and private invite/application records. Incompatible test data requires rebuilding rather than silent rewriting. |
 
 ## Table inventory
 
@@ -36,30 +39,28 @@ applied file; add a new `NNNN_*.sql`.
 ### Projects / workspaces / operations
 | Table | Purpose | Key columns |
 | --- | --- | --- |
-| `projects` | dev-environment repo | tenant_id, owner_user_id (creator), name, repository_url, default_branch, lifecycle, **space_id?** (nullable FK → collab_workspaces; set = workspace-shared, NULL = legacy owner-only) |
-| `project_storage` | per-project volume state | project_id, observed_state |
-| `workspaces` | main/isolated worktree env | project_id, tenant_id, owner_user_id, kind, desired/observed_state, runtime_generation |
-| `workspace_worktrees` | git worktree metadata | workspace_id, branch_name, base_commit_id |
+| `projects` | dev-environment repo | tenant_id, owner_user_id (creator), name, repository_url, default_branch, lifecycle, **space_id** (mandatory FK to the tenant's sole space) |
+| `project_storage` | retired per-project volume state (history only, inserts refused since 0016) | project_id, observed_state |
+| `workspaces` | main/isolated runtime env with its own data | project_id, tenant_id, owner_user_id, kind, desired/observed_state, runtime_generation, requested_ref, base_commit_id |
+| `workspace_worktrees` | retired linked-worktree metadata (history only, inserts refused since 0016) | workspace_id, branch_name, base_commit_id |
 | `tasks` | isolated workspace title | workspace_id, title |
 | `operations` | durable async work | tenant_id, project_id, workspace_id, kind, state, step, version |
 | `external_effects` | external-action plan/evidence | operation_id, kind, state, external_id, request, result |
 | `execution_tickets` | node execution lease | workspace_id, state |
 | `sandbox_instances` | running sandbox | workspace_id, … |
-| `node_instances` | registered nodes | connection_state, initialized, heartbeat |
+| `node_instances` | registered Node incarnations | node_id, node_incarnation_id, connection_state, initialized, heartbeat |
 | `controller_leases` | controller leadership | epoch fencing |
 | `idempotency_records` | POST/DELETE replay | tenant_id, user_id, key, request_hash, response, status |
 
-### Collaboration Spaces (0006) — the resource-sharing boundary
+### Collaboration Spaces (current after 0014)
 | Table | Purpose | Key columns |
 | --- | --- | --- |
-| `collab_workspaces` | the Workspace that groups and shares resources | id, tenant_id, name, slug, description, created_by, version, archived_at · `UNIQUE(tenant_id,slug)` |
-| `collab_workspace_members` | Workspace membership (the sharing boundary) | (workspace_id,user_id) PK, role owner/admin/member, status active/disabled, version, joined_at |
+| `collab_workspaces` | the tenant's sole visible space | id, tenant_id (unique), name, slug (globally unique), description, created_by, version, archived_at |
+| `tenant_invitations` / `tenant_join_links` / `tenant_join_requests` | private admission | tenant_id, token_hash for links, expiry, revocation, decision, version |
 
-**Workspace = resource-sharing boundary** (Step 2B model; implemented on Projects in Step 3):
-`projects.space_id → collab_workspaces` opts a project into a Workspace; any **active member** of that
-Workspace may read the project and its runtime workspaces; the **creator or a workspace owner/admin**
-may delete it. Per-resource membership (`project_members` / …) is **NOT used**. Not every
-`collab_workspaces` column implies an exposed feature — the DB is ahead of the HTTP surface by design.
+**Tenant membership is authoritative**: every active member may read the tenant's projects and runtime
+workspaces; project deletion requires an active tenant administrator. Disabled memberships lose new
+access immediately. Earlier 0006–0013 entries above describe immutable migration history, not current policy.
 
 ### Issue board (0008–0012)
 | Table | Purpose | Key columns |

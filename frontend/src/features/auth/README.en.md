@@ -20,7 +20,7 @@ It does not resolve tenants or spaces (`features/spaces`) and never holds a toke
 | `api.ts` | `fetchLoginProviders` (the gateway's provider list, filtered to `huawei-idaas` / `github` / `dev`), `isExternalProvider`, `startLogin` (fetches `authorizationUrl`, then `navigateExternal`), `logoutSession`, `GITHUB_SIGN_OUT_URL` (GitHub's own sign-out page), `fetchSessionUser` (401 → signed out, 403 → disabled, anything else throws) |
 | `providers.ts` | `useLoginProviders`: the provider list as a query cached for the tab; shared by the login page and the sidebar |
 | `session.tsx` | `SessionProvider` (session query + `onUnauthorized` subscription), `useSession` with `signOut` and `signOutOfGitHub` (sign out, then GitHub's sign-out page in a new tab so this tab stays on Ora), the `Session` type, `SESSION_QUERY_KEY` |
-| `require-session.tsx` | `RequireSession`: renders nothing while loading; redirects a signed-out tab to `loginPath(current location)`; reports a disabled account and an unreachable backend in place |
+| `require-session.tsx` | `RequireSession`: renders nothing while loading; redirects a signed-out tab to login, storing a private join link in the current tab so Gateway receives only a tokenless return path; reports a disabled account and an unreachable backend in place |
 | `login-page.tsx` | With exactly one provider and it external (the production shape, e.g. `huawei-idaas`), starts that login by itself once and shows only a retry after a failure; otherwise one button per provider the gateway offers, plus a "sign out of GitHub first" link when GitHub login exists (GitHub otherwise reuses the browser's current account); a disabled account is told so and never sent to log in again: "sign in with GitHub" and, on a local gateway with `login.development_provider`, "developer login" (the gateway's own form where any typed identity signs in); `?returnTo=` is narrowed by `safeReturnTo`; a signed-in tab is redirected straight away |
 | `auth.test.tsx` | Tests for all of the above |
 
@@ -34,6 +34,7 @@ May be consumed by: `main.tsx` (mounts `SessionProvider`), `routes.tsx`, layout 
 
 - `SessionProvider` is mounted exactly once, outside the router and inside the QueryClient.
 - `fetchSessionUser` treats only 401 as "signed out" and only 403 as "disabled"; network errors and 5xx are `unavailable`, so `RequireSession` never mistakes them for a sign-out and never loses `returnTo` over them.
+- Invitation and application tokens never enter Gateway's `returnTo`; the provider round trip stores only `/join/continue` while the full link stays in this browser tab.
 - The automatic login start happens at most once per mount: a failed start shows an explicit retry, never a redirect loop.
 - `signOut` calls the gateway first, then clears the cache: the session becomes null and every other query is removed, so the next member never sees the previous one's data.
 - Ora cannot end a github.com session: the gateway never holds a GitHub token (it discards it right after reading the profile), so "sign out of GitHub" can only open GitHub's own sign-out page, always after revoking the Ora session, and in a new tab so the member returns to the login screen in this one. The URL is public github.com; a GitHub Enterprise Server deployment would need it made configurable.

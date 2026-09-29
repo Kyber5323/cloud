@@ -10,7 +10,8 @@ tasks:
     aliases: [fmt]
     cmds:
       - go tool gofumpt -w -extra .
-      - go tool goimports -w -local github.com/wanglongan587/cloud .
+      # internal/controlpb is generated and drift-checked; goimports would regroup its imports.
+      - go tool goimports -w -local github.com/wanglongan587/cloud $(go list -f '{{"{{"}}.Dir{{"}}"}}' ./... | grep -v /internal/controlpb)
   format:check:
     cmds: [go run ./cmd/checkformat]
   lint:

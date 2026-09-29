@@ -139,8 +139,8 @@ func insertSession(ctx context.Context, tx *sql.Tx, token string, identity Verif
 		name = sql.NullString{String: identity.DisplayName, Valid: true}
 	}
 	_, e := tx.ExecContext(ctx,
-		"INSERT INTO gateway_sessions(id,token_hash,source,subject,display_name,expires_at) VALUES($1,$2,$3,$4,$5,now()+$6*interval '1 second')",
-		uuid.NewString(), Digest(token), identity.Source, identity.Subject, name, int64(ttl/time.Second))
+		"INSERT INTO gateway_sessions(id,token_hash,source,subject,display_name,global_user_id,expires_at) VALUES($1,$2,$3,$4,$5,$6,now()+$7*interval '1 second')",
+		uuid.NewString(), Digest(token), identity.Source, identity.Subject, name, sql.NullString{String: identity.GlobalUserID, Valid: identity.GlobalUserID != ""}, int64(ttl/time.Second))
 	if e != nil {
 		return fmt.Errorf("create session: %w", e)
 	}
@@ -151,10 +151,10 @@ func insertSession(ctx context.Context, tx *sql.Tx, token string, identity Verif
 // lifetime; expiry is decided by database time so every replica agrees.
 func (s *Store) Resolve(ctx context.Context, token string) (Session, error) {
 	var out Session
-	var name sql.NullString
+	var name, globalID sql.NullString
 	e := s.pool.QueryRowContext(ctx,
-		"SELECT id,source,subject,display_name,created_at,expires_at FROM gateway_sessions WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at>clock_timestamp()",
-		Digest(token)).Scan(&out.ID, &out.Identity.Source, &out.Identity.Subject, &name, &out.CreatedAt, &out.ExpiresAt)
+		"SELECT id,source,subject,display_name,global_user_id,created_at,expires_at FROM gateway_sessions WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at>clock_timestamp()",
+		Digest(token)).Scan(&out.ID, &out.Identity.Source, &out.Identity.Subject, &name, &globalID, &out.CreatedAt, &out.ExpiresAt)
 	if errors.Is(e, sql.ErrNoRows) {
 		return Session{}, ErrNotFound
 	}
@@ -162,6 +162,7 @@ func (s *Store) Resolve(ctx context.Context, token string) (Session, error) {
 		return Session{}, fmt.Errorf("resolve session: %w", e)
 	}
 	out.Identity.DisplayName = name.String
+	out.Identity.GlobalUserID = globalID.String
 	return out, nil
 }
 

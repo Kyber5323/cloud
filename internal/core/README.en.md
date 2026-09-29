@@ -7,15 +7,17 @@
 ## Module map
 
 - [migrations](migrations/README.en.md) defines the forward-only, linear PostgreSQL schema migration scripts and checksum verification.
+- [plugins.go](plugins.go) persists and reads the plugin catalog snapshot (the `pluginmarket.CatalogSink` implementation) and owns the space plugin selection state machine (install/remove fan-out, the aggregation rule, SSE invalidation broadcasts).
 
 ## Architecture and runtime model
 
 ### Aggregates and relationships
-- **Users & Identities**: Users are identified by stable IdP claims (`source`, `subject`). User creation is tied to first authenticated access or administrative bootstrap.
-- **Tenants & Memberships**: Tenants isolate organizational boundaries. Users belong to tenants with either `admin` or `member` roles.
-- **Projects**: Owned by `(tenant_id, owner_user_id)`. Each project has an associated repository URL and default branch, linked to a single `project_storage` row.
+- **Users & Identities**: Users are identified by stable IdP claims (`source`, `subject`). Huawei login keeps the IDaaS `uuid` as its subject and associates a directory-selected person through the verified `globalUserId`; employee numbers grant no access. Conflicting identity mappings are never merged automatically.
+- **Tenants, Spaces & Memberships**: Each tenant has exactly one visible collaboration space, and a user may join and switch among many tenants. `tenant_memberships` is the sole authority for the peer `admin` and `member` roles and membership status. Public deployments use invitation or application links; corporate deployments verify active employees through Tianzhou.
+- **Projects**: Each project belongs to a tenant and its sole collaboration space. `(tenant_id, owner_user_id)` remains the durable resource and credential ownership boundary, while any active tenant member can access tenant projects. Each Workspace clones the project repository into its own data at its `requested_ref`; `project_storage` rows are retained history only.
 - **Workspaces & Tasks**: Each project has at most one active `main` workspace (enforced by the `one_main` partial unique index). Additional workspaces are `isolated` and map 1:1 with `tasks`.
 - **Operations & Effects**: Mutations (such as project creation, workspace start/stop, or deletion) execute as durable `operations` (`queued`, `running`, `retry_wait`, `blocked`, `done`, `failed`). Operations decompose into durable `effects` representing external tasks executed by Substrate and Controller.
+- **Clone Requests**: independent work items accepted idempotently by `(tenant_id, actor_user_id, request_id)`, outside the operation/effect model; a Controller claims them over the internal control contract, registers the dispatch (`clone_executions`) and takes over the Node result (`clone_event_receipts`). The public `/clones` routes are visible to the submitting user only; `state` is projected from the request state and the execution result.
 - **Nodes & Sessions**: `workspace_nodes` represent active execution containers bound to a workspace. `sessions` track user conversational threads.
 
 ### Concurrency and locking
@@ -25,7 +27,7 @@
 - **Controller leases**: Controller workers acquire exclusive leases via `/internal/v1/controller-lease/acquire`, renewed periodically. Work dispatching uses monotonic `epoch` fencing to reject stale controller instances.
 
 ### Idempotency
-- Requests modifying state accept an optional `Idempotency-Key` header scoped to `(tenant_id, user_id)`.
+- Creation and joining writes require an `Idempotency-Key` header. Tenant-scoped records use `(tenant_id, user_id)`; pre-membership join records use `user_id`.
 - Requests compute a SHA256 hash of the method, path, and normalized body.
 - An identical request replaying an existing key returns the previously stored HTTP response.
 - A differing request using the same key is rejected with `409 idempotency_conflict`.
@@ -43,6 +45,6 @@
 
 - **No long-lived transactions**: Transactions must never encompass network calls, Git operations, Substrate calls, or child process execution.
 - **No in-memory state**: All state transitions must be committed to PostgreSQL before returning success.
-- **Tenant isolation**: Every query enforces `tenant_id` and `owner_user_id` filtering. Cross-tenant leakage is prevented at the SQL constraint level.
+- **Tenant isolation**: Project and runtime reads verify active tenant membership and scope queries by a trusted `tenant_id`. `owner_user_id` remains for resource, credential, and execution ownership; it does not exclude another member of the same tenant.
 
 See [Database migrations](migrations/README.en.md), [Core contract](../../docs/core-contract.md), and [Authentication](../../docs/authentication.md).

@@ -73,6 +73,11 @@ type databaseFailure struct{ err error }
 type Store struct {
 	Pool *sql.DB
 
+	// PluginExecution is unavailable in production until a fenced real executor is delivered.
+	// The simulation mode exists only for explicitly wired integration fixtures.
+	PluginExecution    PluginExecutionCapability
+	legacyCloneFixture bool
+
 	// Collaboration ports (consuming-side seams; see collaboration.go). NewStore wires the real
 	// workflow-backed Directory and Forms, because Cloud owns the workflow document and needs no
 	// external backend to serve those two. The remaining three stay nil ("Unavailable") until a
@@ -94,11 +99,13 @@ type Store struct {
 	Simulator WorkflowRunSimulator
 
 	// Events broadcasts committed collaboration-space invalidation notices to live
-	// SSE subscribers. Space association is optional (projects.space_id is nullable):
-	// a space-scoped project gates visibility to active space members (the
-	// resource-sharing boundary), while an unscoped project keeps owner-based
-	// authorization.
+	// SSE subscribers. Every project belongs to its tenant's sole collaboration
+	// space; current tenant membership gates visibility and authorization.
 	Events *SpaceHub
+
+	// Signals carries at-most-once work hints to the lease-holding Controller's Watch stream;
+	// clone requests stay durable in PostgreSQL whether or not a hint is delivered.
+	Signals *ControlHub
 }
 
 // WorkflowRunSimulator produces the execution trace for one workflow run. Cloud has no
@@ -120,9 +127,21 @@ func NewStore(db *gorm.DB) (*Store, error) {
 	return &Store{
 		Pool:      pool,
 		Events:    NewSpaceHub(),
+		Signals:   NewControlHub(),
 		Directory: WorkflowDirectory{Pool: pool},
 		Forms:     WorkflowFormDescriptors{Pool: pool},
 	}, nil
+}
+
+// NewDevelopmentStore explicitly enables the retired unscoped clone test contract. Production
+// NewStore remains runtime-scoped; this constructor must never be used by the production server.
+func NewDevelopmentStore(db *gorm.DB) (*Store, error) {
+	s, err := NewStore(db)
+	if err != nil {
+		return nil, err
+	}
+	s.legacyCloneFixture = true
+	return s, nil
 }
 
 type transaction struct {
@@ -134,6 +153,10 @@ type transaction struct {
 	forms          FormDescriptorProvider
 	assist         InputAssistProvider
 	simulator      WorkflowRunSimulator
+	// queued names operations this transaction made claimable; they are published only after commit.
+	legacyCloneFixture bool
+	pluginExecution    PluginExecutionCapability
+	queued             []string
 }
 
 func (t *transaction) exec(q string, args ...any) {
@@ -234,10 +257,12 @@ func (s *Store) transact(ctx context.Context, fn func(*transaction) Object) (out
 			}
 		}
 	}()
-	t := &transaction{tx: tx, ctx: ctx, directory: s.Directory, contextBuilder: s.Context, forms: s.Forms, assist: s.Assist, simulator: s.Simulator}
+	t := &transaction{tx: tx, ctx: ctx, pluginExecution: s.PluginExecution, legacyCloneFixture: s.legacyCloneFixture, directory: s.Directory, contextBuilder: s.Context, forms: s.Forms, assist: s.Assist, simulator: s.Simulator}
 	t.exec("SELECT pg_advisory_xact_lock(67420911)")
 	out = fn(t)
-	err = tx.Commit()
+	if err = tx.Commit(); err == nil {
+		s.signalOperations(t.queued)
+	}
 	return out, err
 }
 
@@ -337,13 +362,55 @@ func identity(t *transaction, source, subject, name string) Object {
 	return u
 }
 
+// identityWithAlias binds the two independently verified Huawei identifiers to
+// one user. A conflicting binding is never merged by name or employee number.
+func identityWithAlias(t *transaction, c *Claims) Object {
+	if c.Source != "huawei-corp" || c.GlobalUserID == "" {
+		return identity(t, c.Source, c.Subject, c.DisplayName)
+	}
+	globalID := canonicalGlobalID(c.GlobalUserID)
+	require(globalID != "", 401, "invalid_identity")
+	byUUID := t.one("SELECT u.* FROM users u JOIN user_identities i ON i.user_id=u.id WHERE i.source='huawei-corp' AND i.subject=$1", c.Subject)
+	byGlobal := t.one("SELECT u.* FROM users u JOIN user_identities i ON i.user_id=u.id WHERE i.source='huawei-global' AND i.subject=$1", globalID)
+	require(byUUID == nil || byGlobal == nil || byUUID.S("id") == byGlobal.S("id"), 409, "identity_conflict")
+	u := byUUID
+	if u == nil {
+		u = byGlobal
+	}
+	if u == nil {
+		u = identity(t, c.Source, c.Subject, c.DisplayName)
+		byUUID = u
+	}
+	if byUUID == nil {
+		t.exec("INSERT INTO user_identities(user_id,source,subject) VALUES($1,'huawei-corp',$2)", u.S("id"), c.Subject)
+	}
+	if byGlobal == nil {
+		t.exec("INSERT INTO user_identities(user_id,source,subject) VALUES($1,'huawei-global',$2)", u.S("id"), globalID)
+	}
+	require(u.S("status") == "active" && u["deletedAt"] == nil, 403, "user_disabled")
+	return u
+}
+
+func canonicalGlobalID(s string) string {
+	if s == "" || len(s) > 20 {
+		return ""
+	}
+	for _, ch := range s {
+		if ch < '0' || ch > '9' {
+			return ""
+		}
+	}
+	s = strings.TrimLeft(s, "0")
+	return s
+}
+
 // Bootstrap atomically provisions a tenant, its initial administrator, and the
-// tenant's default collaboration space from a deployment command.
+// tenant's sole collaboration space from a deployment command.
 func (s *Store) Bootstrap(ctx context.Context, name, source, subject, display string) (Object, error) {
 	return s.transact(ctx, func(t *transaction) Object {
 		require(name != "" && len(name) <= 200, 400, "invalid_name")
 		u := identity(t, source, subject, display)
-		tenant, space := provisionTenant(t, u.S("id"), name, "Default", "default")
+		tenant, space := provisionTenant(t, u.S("id"), name, "default-"+strings.ReplaceAll(newID(), "-", ""))
 		return Object{"tenantId": tenant.S("id"), "userId": u.S("id"), "spaceId": space.S("id")}
 	})
 }
@@ -434,42 +501,21 @@ func membership(t *transaction, tid, uid string, admin bool) Object {
 	return m
 }
 
-// project loads a live project in the tenant and applies project access:
-// a space-scoped project (space_id set) is reachable by any active member of
-// that workspace (the resource-sharing boundary), while an unscoped (legacy)
-// project keeps owner-only access. Non-members stay hidden (404, no existence
-// leak), identically to the previous owner-filtered lookup.
+// project loads a tenant project only when the caller is an active tenant
+// member of its sole collaboration space. Unknown projects stay hidden.
 func project(t *transaction, tid, uid, pid string) Object {
-	require(validID(pid), 404, "not_found")
-	p := t.one("SELECT * FROM projects WHERE id=$1 AND tenant_id=$2 AND deleted_at IS NULL", pid, tid)
-	require(p != nil, 404, "not_found")
-	if sid := p.S("spaceId"); sid != "" {
-		require(workspaceRole(t, sid, uid) != "", 404, "not_found")
-	} else if p.S("ownerUserId") != uid {
-		reject(404, "not_found")
-	}
+	p, _ := projectInSpace(t, tid, uid, pid)
 	return p
 }
 
-// workspace loads a live runtime workspace in the tenant. Non-admin access
-// inherits the parent project's access: a runtime workspace of a space-scoped
-// project is reachable by any active member of that workspace, while a runtime
-// workspace of an unscoped (legacy) project keeps owner-only access. The admin
-// form (administrative-stop) requires tenant administration.
+// workspace loads authorized runtime content. Safe summaries use runtimeOverview instead.
 func workspace(t *transaction, tid, uid, wid string, admin bool) Object {
 	require(validID(wid), 404, "not_found")
-	if admin {
-		w := t.one("SELECT * FROM workspaces WHERE id=$1 AND tenant_id=$2 AND deleted_at IS NULL", wid, tid)
-		require(w != nil, 404, "not_found")
-		return w
-	}
 	w := t.one("SELECT * FROM workspaces WHERE id=$1 AND tenant_id=$2 AND deleted_at IS NULL", wid, tid)
 	require(w != nil, 404, "not_found")
-	proj := t.one("SELECT space_id FROM projects WHERE id=$1 AND tenant_id=$2", w.S("projectId"), tid)
-	if proj == nil || proj.S("spaceId") == "" {
-		require(w.S("ownerUserId") == uid, 404, "not_found")
-	} else {
-		require(workspaceRole(t, proj.S("spaceId"), uid) != "", 404, "not_found")
+	require(runtimeUsable(t, w, uid), 403, "runtime_use_forbidden")
+	if admin {
+		membership(t, tid, uid, true)
 	}
 	return w
 }

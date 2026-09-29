@@ -12,8 +12,13 @@ their own clients; they never copy the `.proto` files.
 |---|---|
 | `errors.proto` | `ErrorDetail{ErrorCode}` attached as a `google.rpc.Status` detail; the gRPC status code is the primary classification, the enum refines it |
 | `lease.proto` | `ControllerLeaseService`: the global coordination lease whose `epoch` fences every write |
-| `executions.proto` | `ExecutionService`: claim work, register before dispatch, take over Node events, store queried results, recovery reads; the first version covers the clone closed loop only |
-| `signals.proto` | `ControlSignalService.Watch`: a Controller-opened server stream carrying `WorkAvailable` / `Drain` / `NodeAssignment` |
+| `executions.proto` | `ExecutionService`: claim work, register before dispatch, take over Node events, store queried results, recovery reads; execution kinds are clone, plugin install/remove, Agent session and Revision delivery, and session and delivery work items carry their target Node (`WorkTarget`) |
+| `plugin_executions.proto` | Input of plugin install/remove executions (downloads and SHA-256 assembled by Cloud from its catalog snapshot) and per-plugin results |
+| `agent_executions.proto` | Input and results of Agent session and Revision delivery executions, the git identity, user turns, and the memory-only upload grant `UploadGrant` |
+| `agent_runs.proto` | `AgentRunService`: ordered batch takeover of Thread events, claiming and recording Thread commands, issuing Revision upload grants |
+| `operations.proto` | `WorkspaceOperationService`: claim, plan effects, record effect results, advance and defer Workspace lifecycle operations |
+| `nodes.proto` | `NodeReportService`: the Controller registers the desktop Nodes it holds sessions with (`node_id` + `node_incarnation_id`) and reports their status, end and idle |
+| `signals.proto` | `ControlSignalService.Watch`: a Controller-opened server stream carrying `WorkAvailable` / `OperationAvailable` / `ThreadCommandAvailable` / `Drain` / `NodeAssignment` |
 
 ## Semantics
 
@@ -25,9 +30,10 @@ their own clients; they never copy the `.proto` files.
   `TakeOverNodeEvent` succeeds may it acknowledge that event sequence; `RecordQueriedResult` never
   authorizes an acknowledgement.
 - **Signal stream**: at-most-once, not persisted, changes no ownership; after a stream loss the Controller
-  falls back to periodic `ClaimWork`.
-- **No tenant fields**: the contract carries only opaque identities Cloud has already authorized; review
-  rejects changes that add tenant / user / membership fields.
+  falls back to periodic `ClaimWork`, `ClaimOperation` and `ClaimThreadCommands`.
+- **Upload grants are not input**: an `UploadGrant` is a short-lived bearer credential; it never enters an
+  execution input, a registration or any log. Execution input carries object keys only.
+- **Authorization source**: Cloud/PostgreSQL decides business authorization. Runtime control carries confirmed tenant, actor, session and target scope; execution endpoints never expand it from caller-asserted identity.
 
 ## Generation and checks
 
@@ -49,3 +55,7 @@ their own clients; they never copy the `.proto` files.
 The semantics belong to specs
 `decisions/cloud/controller-integration/0-cloud-owned-internal-grpc-contract.md`; this directory only
 carries the fields.
+
+## Approved runtime control contract
+
+RuntimeControlService carries Cloud-decided target bindings, closure acknowledgement, fresh dispatch permits and independent force-stop plans. Tenant/workspace, actor/server session and control epoch bind trusted execution scope; they do not authorize caller-asserted membership. User control epoch, Controller lease epoch, runtime generation, Node incarnation, execution ID and Node operation ID remain distinct. Components without runtime_control capability are refused. Idempotent history cannot revive eligibility: Controller refreshes before dispatch and Node checks acceptance and first execution. Cloud–Controller uses mutual TLS. New file/terminal/plugin/Agent execution entry points stay closed until equally protected. Authority: specs/decisions/cloud/controller-integration/20260927-fenced-runtime-control-delivery.md.

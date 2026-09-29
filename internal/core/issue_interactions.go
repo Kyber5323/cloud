@@ -103,7 +103,8 @@ func confirmInteraction(t *transaction, r *PublicRequest, uid string, dispatches
 	require(it["runId"] == nil, 409, "interaction_already_confirmed")
 	i := issue(t, r.TenantID, r.IssueID)
 	targetType, targetID := it.S("targetType"), it.S("targetId")
-	descriptor := workflowFormDescriptor(t, r.TenantID, targetType, targetID, formContextForIssue(t, r.TenantID, i))
+	issueContext := formContextForIssue(t, r.TenantID, i)
+	descriptor := workflowFormDescriptor(t, r.TenantID, targetType, targetID, &issueContext)
 	values := interactionValues(r.Body)
 	validateFormValues(descriptor, values, true)
 
@@ -124,7 +125,8 @@ func assistWorkflow(t *transaction, r *PublicRequest) Object {
 	i := issue(t, r.TenantID, r.IssueID)
 	targetID := r.Body.S("targetId")
 	require(validID(targetID), 400, "invalid_target")
-	descriptor := workflowFormDescriptor(t, r.TenantID, "workflow", targetID, formContextForIssue(t, r.TenantID, i))
+	issueContext := formContextForIssue(t, r.TenantID, i)
+	descriptor := workflowFormDescriptor(t, r.TenantID, "workflow", targetID, &issueContext)
 	// Assist is requested while the form is still being filled, so shape is validated but requiredness
 	// is not — an incomplete form is exactly when a suggestion is useful.
 	current := interactionValues(r.Body)

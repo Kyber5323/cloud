@@ -93,6 +93,8 @@ type WorkflowFormDescriptors struct{ Pool *sql.DB }
 // ResolveFormDescriptor resolves `formRef`, which is a workflow id. A ref that is not an id, or names
 // no live workflow in this tenant, is not-found. `issue` tailors the form to the issue it was opened
 // from; its zero value projects the graph exactly as it would be projected without any issue at all.
+//
+//nolint:gocritic // value-typed issue context mirrors the FormDescriptorProvider port this provider satisfies
 func (p WorkflowFormDescriptors) ResolveFormDescriptor(ctx context.Context, tenantID, formRef string, issue IssueFormContext) (FormDescriptor, bool, error) {
 	if !validID(formRef) {
 		return FormDescriptor{}, false, nil
@@ -115,7 +117,7 @@ func (p WorkflowFormDescriptors) ResolveFormDescriptor(ctx context.Context, tena
 			return FormDescriptor{}, false, err
 		}
 	}
-	return formDescriptorFromGraph(source, issue), true, nil
+	return formDescriptorFromGraph(&source, &issue), true, nil
 }
 
 // snapshots lists the workflow's published versions, newest first, capped at the number of options a
@@ -163,7 +165,7 @@ type workflowFormSource struct {
 // variables, then the graph's global variables. The platform fields are injected only when there is an
 // issue to inject them for: a caller with no issue context gets the author's own form, byte for byte
 // what it was before the fields existed.
-func formDescriptorFromGraph(source workflowFormSource, issue IssueFormContext) FormDescriptor {
+func formDescriptorFromGraph(source *workflowFormSource, issue *IssueFormContext) FormDescriptor {
 	graph := Object{}
 	// The column is a NOT NULL jsonb object, so a decode failure means the row was not written by the
 	// workflow API. An unreadable graph yields an empty form rather than a failed request.
@@ -203,16 +205,16 @@ const (
 )
 
 // launchFieldKeys is every key the platform injects, and the only set a workflow's `launchFields`
-// declaration may name: a declaration cannot conjure a field the catalogue does not have, so an
-// unrecognised key is dropped rather than remembered. The order the fields are *injected* in lives in
-// the catalogue below, where each field is actually built.
+// declaration may name: a declaration cannot conjure a field the catalog does not have, so an
+// unrecognized key is dropped rather than remembered. The order the fields are *injected* in lives in
+// the catalog below, where each field is actually built.
 var launchFieldKeys = []string{fieldKeyRepository, fieldKeyBranch, fieldKeyVersion, fieldKeyPrompt, fieldKeyContextRefs}
 
 // launchFieldOverride is one entry of a workflow's `launchFields` declaration (§38.37d): whether the
 // form asks for that field, and whether it insists on an answer.
 type launchFieldOverride struct {
 	Enabled bool
-	// Required is nil when the author said nothing, which keeps the catalogue's own answer rather than
+	// Required is nil when the author said nothing, which keeps the catalog's own answer rather than
 	// defaulting to false — "optional" and "unstated" are different, and only the author may pick the
 	// former.
 	Required *bool
@@ -220,8 +222,8 @@ type launchFieldOverride struct {
 
 // launchFieldsFromGraph reads the workflow's declaration of which launch fields its form asks for.
 //
-// The declaration is read *per key*: one it does not mention keeps the catalogue's own answer. That is
-// what makes a field added to the catalogue later appear for every workflow without re-saving one, and
+// The declaration is read *per key*: one it does not mention keeps the catalog's own answer. That is
+// what makes a field added to the catalog later appear for every workflow without re-saving one, and
 // what keeps a workflow written before this declaration existed rendering exactly the form it always
 // did. An unreadable entry contributes nothing rather than failing the request, the way the globals
 // projection reads the same document.
@@ -267,7 +269,7 @@ func launchFieldEnabled(declaration map[string]launchFieldOverride, key string) 
 }
 
 // launchFieldRequired resolves a field's requiredness: the author's answer when they gave one, the
-// catalogue's otherwise.
+// catalog's otherwise.
 func launchFieldRequired(declaration map[string]launchFieldOverride, key string, fallback bool) bool {
 	if override, ok := declaration[key]; ok && override.Required != nil {
 		return *override.Required
@@ -275,7 +277,7 @@ func launchFieldRequired(declaration map[string]launchFieldOverride, key string,
 	return fallback
 }
 
-// platformFormFields is the ordered catalogue of fields every workflow form carries once it is opened
+// platformFormFields is the ordered catalog of fields every workflow form carries once it is opened
 // for an issue: what this run is *about*. It answers, in order, which repository, which branch of it,
 // which published version of the workflow, what prompt, and which extra context travels with it.
 //
@@ -295,13 +297,13 @@ func launchFieldRequired(declaration map[string]launchFieldOverride, key string,
 // offer is dropped even when the author asked for it, because the contract has no way to express a
 // select with no choices (§38.37c).
 //
-// This is the catalogue rather than the form. A workflow's declaration narrows it in
+// This is the catalog rather than the form. A workflow's declaration narrows it in
 // injectPlatformFields, and only there, because a key the author declared in their own Start node is
 // not the platform's to withdraw (§38.37d).
-func platformFormFields(issue IssueFormContext, startPrompt string, snapshots []Object) []FormField {
+func platformFormFields(issue *IssueFormContext, startPrompt string, snapshots []Object) []FormField {
 	version, hasVersion := versionField(snapshots)
 	refs, hasRefs := contextRefsField(issue)
-	catalogue := []struct {
+	catalog := []struct {
 		field   FormField
 		offered bool
 	}{
@@ -339,11 +341,11 @@ func platformFormFields(issue IssueFormContext, startPrompt string, snapshots []
 		{refs, hasRefs},
 	}
 	fields := []FormField{}
-	for _, entry := range catalogue {
-		if !entry.offered {
+	for i := range catalog {
+		if !catalog[i].offered {
 			continue
 		}
-		fields = append(fields, entry.field)
+		fields = append(fields, catalog[i].field)
 	}
 	return fields
 }
@@ -385,7 +387,7 @@ func versionField(snapshots []Object) (FormField, bool) {
 // Only the two references an issue can name for itself are offered — its project and its parent —
 // because a picker over arbitrary issues, pull requests and files does not exist yet. An issue that
 // can name neither gets no field at all.
-func contextRefsField(issue IssueFormContext) (FormField, bool) {
+func contextRefsField(issue *IssueFormContext) (FormField, bool) {
 	options := []FormOption{}
 	if validID(issue.ProjectID) {
 		options = append(options, FormOption{Value: contextRefValue("project", issue.ProjectID), Label: "本项目"})
@@ -438,13 +440,15 @@ func platformDefault(value string) any {
 // *adding*. A field the author asked for in their own Start node is asked for because they asked for
 // it, so no declaration withdraws it: for that key the declaration is inert, control and requiredness
 // alike, and the platform contributes nothing but the default.
-func injectPlatformFields(fields []FormField, issue IssueFormContext, startPrompt string, snapshots []Object, declaration map[string]launchFieldOverride) []FormField {
+func injectPlatformFields(fields []FormField, issue *IssueFormContext, startPrompt string, snapshots []Object, declaration map[string]launchFieldOverride) []FormField {
 	declared := map[string]int{}
 	for i := range fields {
 		declared[fields[i].Key] = i
 	}
+	offered := platformFormFields(issue, startPrompt, snapshots)
 	platform := []FormField{}
-	for _, field := range platformFormFields(issue, startPrompt, snapshots) {
+	for i := range offered {
+		field := &offered[i]
 		if i, ok := declared[field.Key]; ok {
 			fillDefault(&fields[i], field)
 			continue
@@ -458,7 +462,7 @@ func injectPlatformFields(fields []FormField, issue IssueFormContext, startPromp
 		if len(fields)+len(platform) >= maxFormFields {
 			break
 		}
-		platform = append(platform, field)
+		platform = append(platform, *field)
 	}
 	if len(platform) == 0 {
 		return fields
@@ -530,7 +534,7 @@ func globalVariableField(variable Object) (FormField, bool) {
 
 // fillDefault hands the platform default to an author-declared field, but only when the author left the
 // value empty and the default is legal for *their* control.
-func fillDefault(field *FormField, platform FormField) {
+func fillDefault(field, platform *FormField) {
 	if field.DefaultValue != nil || platform.DefaultValue == nil {
 		return
 	}

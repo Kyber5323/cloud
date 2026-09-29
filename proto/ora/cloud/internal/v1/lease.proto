@@ -18,7 +18,7 @@ service ControllerLeaseService {
 }
 
 message Lease {
-  // Service principal of the current holder, as verified from the caller's credential.
+  // ControllerId of the current holder, as the caller named itself in x-ora-controller-id metadata.
   string holder_id = 1;
   // Monotonic fencing token; increases every time the lease changes hands.
   int64 epoch = 2;

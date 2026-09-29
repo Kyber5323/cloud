@@ -41,6 +41,19 @@
 - **`0011_issue_interactions.sql`**：新表 `issue_interactions`（`@` 交互脊）——每个选中的协作目标一行：`id, tenant_id, issue_id, comment_id, target_type, target_id, mode, task, run_id, created_at`。（原 `0009_issue_interactions.sql`）
 - **`0012_issue_interaction_input.sql`**：一个通用增量列：`ALTER TABLE issue_interactions ADD COLUMN input jsonb NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(input)='object')` —— 已确认的表单值。刻意排除 `version`、`status` 枚举、`confirmed_at` 与独立 inputs 表；`0011` 不被修改。（原 `0010_issue_interaction_input.sql`）
 - **`0013_project_space_optional.sql`**（append-only 兼容迁移）：`projects.space_id` 恢复为**可空**——upstream `0007` 施加了 `NOT NULL` 并对既有项目做了全量绑定；产品决策（PS3 / D2=C）要求 Space 保持**可选**分组。`0013` 仅放开约束；刻意**不解绑** `0007` 已分配给默认 Space 的项目（无数据改动、无作用域收缩）。
+- **`0014_clone_coordination.sql`**（append-only，排在 upstream `0008–0013` 之后）：经内部控制契约的 clone 协调（与 Effect 级 `operations` 模型独立）：
+  - `clone_requests`：Cloud 在业务事务中接受的工作项，`(tenant, user, request_id)` 幂等，状态 `queued→dispatched→succeeded/failed`。
+  - `clone_executions`：Controller 派发前登记的执行（每个请求恰一个执行，身份为 Controller 选择的 opaque 字符串）、输入与终态结果、登记时的租约 epoch。
+  - `clone_event_receipts`：Node 原事件的精确收据 `(execution, sequence, event)`，是确认 Node 的唯一依据。
+  - `control_submissions`：每个状态变更提交的身份、请求摘要与记录的响应；同身份同内容回放响应，不重新应用。
+- **`0015_plugins.sql`**：增加插件目录、空间级选择和运行时安装记录。
+- **`0016_workspace_runtime_follows_node.sql`**：停用旧存储卷与工作树创建流程，采用独立 Workspace 数据、Node 和仓库克隆初始化，保留历史记录供读取。
+- **`0017_tenant_membership_and_join.sql`**：收敛为一租户一空间，租户成员身份成为唯一权限来源；恢复项目必须归属空间的约束，空间 slug 在全平台唯一且归档后不复用；为 IDaaS 关联身份、邀请和加入申请增加持久化表。历史多空间、无空间项目、重复 slug 或租户与空间名称不一致的测试数据必须重建；迁移不会静默拆分或改名。
+- **`0024_workflows.sql`**（append-only，工作流编辑器移植）：工作流图文档 `workflows`——租户拥有的整份图（`graph jsonb`：nodes / edges / viewport / annotations / global variables），刻意只有一张表和一个图列：图是文档而不是关系聚合，没有逐节点/逐边表，也没有 draft/published 拆分。
+- **`0025_workflow_snapshots.sql`**：不可变的版本化快照 `workflow_snapshots`。发布把实时图冻结成一行并递增每个工作流的版本号，恢复把选中的快照写回实时图；快照 append-only，一次编辑不会重写任何历史版本。
+- **`0026_workflow_runs.sql`**：一次执行对应一个冻结快照的 `workflow_runs`。运行视图只需要快照图（画布）与逐节点状态（着色），图本身经 `snapshot_id` 从 `workflow_snapshots.graph` 读取而不复制。Cloud 没有工作流引擎：新建的运行停在 `pending`，只有经 `Store.WorkflowRunSimulator` 显式接入的开发夹具才会推进状态——与 `issue_runs` 一样，绝不谎称真实执行发生过。
+
+> 编号说明：这三个迁移原为 `0014–0016`，与 upstream 的同号迁移（`0014_clone_coordination` / `0015_plugins` / `0016_workspace_runtime_follows_node`）撞号。合入 `upstream/main` 时按 append-only 规则顺延到 `0024–0026`。`schema_migrations.version` 是**完整文件名**，所以重命名会改变迁移身份：已经跑过旧名字的数据库必须重建或手工改 `schema_migrations`，否则 `CheckSchema` 会以「内嵌迁移缺失」拒绝启动。
 
 ## 校验和完整性与不可变性
 
@@ -53,3 +66,12 @@
 - **不使用 AutoMigrate**：生产服务器守护进程启动时**从不**执行 DDL 或修改表结构。迁移必须使用专用数据库管理员凭据通过 `cloudctl migrate` 应用。
 
 参见 [core 总览](../README.md)、[cloudctl CLI 工具](../../../cmd/cloudctl/README.md) 与 [核心不变量与契约](../../../docs/core-contract.md)。
+- **`0015_plugins.sql`**（append-only）：插件市场三张表与枚举放宽：
+  - `plugin_sources`（部署全局源，默认 `official` 命名空间）、`plugin_catalog_entries`（目录快照，读取永远不出网）、`space_plugins`（工作区选择状态权威，`UNIQUE(space_id, source_namespace, identifier)`）、`workspace_plugin_instances`（fan-out 执行事实，复合外键继承 tenant/owner/project/workspace）。
+  - 放宽 `operations.kind`（+install_plugin/remove_plugin）、`operations.step`（+plugin）、`external_effects.kind`（+plugin_ensure/plugin_delete）；原 CHECK 在 0001 定义，PG 命名为 `表_列_check`，0015 DROP 后以扩展集合重建。
+
+## 多人运行时控制的追加迁移
+
+0018–0023 在已发布 0017 后追加，不改写旧迁移：0018 单独保存经可靠记录证明的创建者，未知保持 NULL；0019 保存 PostgreSQL 操作会话、控制代次与审计；0020 保存独立强停意图、目标及重启阶段；0021 区分 Node operation ID 和 Cloud operation ID，保留重试历史；0022 保存插件请求者、固定版本与持久 pending（待执行）；0023 保存凭据引用归属依据、可用性、范围、能力和版本。旧 owner 外键、凭据关联与操作记录继续保留。历史个人/未知引用在关联成员已停用时冻结；不猜测团队身份或有效绑定。
+
+真实 PostgreSQL 新库与 0017 升级证据见 integration/runtime_upgrade_test.go、runtime_control_test.go、repository_credentials_test.go 和 plugin_pending_test.go。业务事务只有数据库操作，不跨执行程序、网络或文件调用持锁。Node 的本地恢复日志不替代此业务权威。

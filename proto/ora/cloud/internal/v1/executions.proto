@@ -2,7 +2,11 @@ syntax = "proto3";
 
 package ora.cloud.internal.v1;
 
-// Durable coordination of Node executions, starting with the clone closed loop. Every call that
+import "ora/cloud/internal/v1/agent_executions.proto";
+import "ora/cloud/internal/v1/plugin_executions.proto";
+
+// Durable coordination of Node executions: clones, plugin installs of a Workspace operation, and
+// the Agent session and Revision deliveries of an IssueRun. Every call that
 // changes state returns only after Cloud committed it, and each such call carries a caller-chosen
 // `submission_id`: repeating a submission with identical content returns the original response
 // without reapplying anything; the same identity with different content fails with ABORTED
@@ -47,6 +51,10 @@ message CloneSpec {
 message ExecutionInput {
   oneof spec {
     CloneSpec clone = 1;
+    InstallPluginsSpec install_plugins = 2;
+    RemovePluginsSpec remove_plugins = 3;
+    AgentSessionSpec agent_session = 4;
+    DeliverRevisionSpec deliver_revision = 5;
   }
 }
 
@@ -67,6 +75,9 @@ enum CloneFailureReason {
   CLONE_FAILURE_REASON_BRANCH_NOT_FOUND = 2;
   CLONE_FAILURE_REASON_DESTINATION_CONFLICT = 3;
   CLONE_FAILURE_REASON_OPERATION_FAILED = 4;
+  // The attempt was terminated before Git reached its own verdict (Node stop, command deadline,
+  // or an external signal) and its cleanup was confirmed; a new execution may simply retry.
+  CLONE_FAILURE_REASON_INTERRUPTED = 5;
 }
 
 // Terminal fact reported by a Node for one execution.
@@ -75,13 +86,31 @@ message ExecutionResult {
   oneof outcome {
     CloneReady clone_ready = 2;
     CloneFailed clone_failed = 3;
+    PluginsResult plugins_result = 4;
+    PluginsFailed plugins_failed = 5;
+    AgentSessionEnded agent_session_ended = 6;
+    RevisionDelivered revision_delivered = 7;
+    RevisionUnchanged revision_unchanged = 8;
+    RevisionFailed revision_failed = 9;
   }
+}
+
+// The run Workspace sandbox a work item must be dispatched to, as of its current generation.
+message WorkTarget {
+  string workspace_id = 1;
+  string sandbox_instance_id = 2;
+  // RecordDispatch must name exactly this Node.
+  string node_id = 3;
 }
 
 // Work Cloud accepted in its own business transaction and handed to Controllers.
 message WorkItem {
+  // The IssueRun ID for Agent session and Revision delivery work.
   string operation_id = 1;
   ExecutionInput input = 2;
+  // Set for Agent session and Revision delivery work; unset for a tenant-level clone, whose Node
+  // the Controller chooses.
+  optional WorkTarget target = 3;
 }
 
 // One registered execution and its durable state. No result means awaiting reconciliation, never
@@ -92,6 +121,8 @@ message ExecutionRecord {
   string node_id = 3;
   ExecutionInput input = 4;
   optional ExecutionResult result = 5;
+  // Stable Node operation for this execution attempt; distinct from the durable business intent.
+  string node_operation_id = 6;
 }
 
 message ClaimWorkRequest {

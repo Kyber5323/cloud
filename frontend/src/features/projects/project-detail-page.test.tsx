@@ -61,7 +61,7 @@ function renderDetail() {
 
 describe('ProjectDetailPage', () => {
   it('renames the project with the optimistic version', async () => {
-    installProjectHandlers('owner')
+    installProjectHandlers('admin')
     let patchBody: Record<string, unknown> | null = null
     server.use(
       http.patch(
@@ -88,7 +88,7 @@ describe('ProjectDetailPage', () => {
   })
 
   it('deletes the project through the lifecycle state machine', async () => {
-    installProjectHandlers('owner')
+    installProjectHandlers('admin')
     let deleted = false
     server.use(
       http.delete(`/api/v1/tenants/${TEST_TENANT_ID}/projects/${PROJECT_ID}`, () => {
@@ -109,11 +109,11 @@ describe('ProjectDetailPage', () => {
     await waitFor(() => expect(deleted).toBe(true))
   })
 
-  it('shows delete for the member who created the project (creator rule)', async () => {
+  it('hides delete from a member even when they created the project', async () => {
     installProjectHandlers('member', cloudProject('Demo', 'active', 1, TEST_USER_ID))
     renderDetail()
     await screen.findAllByText('Demo')
-    expect(screen.getByRole('button', { name: '删除项目' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '删除项目' })).not.toBeInTheDocument()
   })
 
   it('hides delete from a member who is not the creator', async () => {
@@ -131,10 +131,10 @@ describe('ProjectDetailPage', () => {
     expect(screen.getByRole('button', { name: '删除项目' })).toBeInTheDocument()
   })
 
-  it('shows delete for a workspace owner who is not the creator', async () => {
+  it('does not grant delete from a legacy owner role', async () => {
     installProjectHandlers('owner', cloudProject('Demo', 'active', 1, OTHER_USER_ID))
     renderDetail()
     await screen.findAllByText('Demo')
-    expect(screen.getByRole('button', { name: '删除项目' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '删除项目' })).not.toBeInTheDocument()
   })
 })

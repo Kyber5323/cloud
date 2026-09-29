@@ -28,8 +28,12 @@ const (
 //
 // Cloud-to-Controller notifications over a stream the Controller opens. Signals are at-most-once
 // accelerators: Cloud neither persists nor replays them, and none of them changes ownership or
-// state. A Controller that loses the stream falls back to periodic ClaimWork and reopens it.
+// state. A Controller that loses the stream falls back to periodic ClaimWork, ClaimOperation and
+// ClaimThreadCommands and reopens it.
 type ControlSignalServiceClient interface {
+	// Ends with OK only when the serving instance drains, after it has tried to send Drain; every other
+	// end, including a refused subscription, carries an error status. A holder may therefore treat a
+	// clean end as Drain even when the Drain message itself was dropped.
 	Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WatchResponse], error)
 }
 
@@ -66,8 +70,12 @@ type ControlSignalService_WatchClient = grpc.ServerStreamingClient[WatchResponse
 //
 // Cloud-to-Controller notifications over a stream the Controller opens. Signals are at-most-once
 // accelerators: Cloud neither persists nor replays them, and none of them changes ownership or
-// state. A Controller that loses the stream falls back to periodic ClaimWork and reopens it.
+// state. A Controller that loses the stream falls back to periodic ClaimWork, ClaimOperation and
+// ClaimThreadCommands and reopens it.
 type ControlSignalServiceServer interface {
+	// Ends with OK only when the serving instance drains, after it has tried to send Drain; every other
+	// end, including a refused subscription, carries an error status. A holder may therefore treat a
+	// clean end as Drain even when the Drain message itself was dropped.
 	Watch(*WatchRequest, grpc.ServerStreamingServer[WatchResponse]) error
 	mustEmbedUnimplementedControlSignalServiceServer()
 }

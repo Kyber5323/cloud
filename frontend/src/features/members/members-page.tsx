@@ -1,27 +1,6 @@
-import { format } from 'date-fns'
 import { useState } from 'react'
-import { ActorAvatar } from '@/components/common/actor-avatar'
-import { DialogFormField } from '@/components/common/dialog-form-field'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -29,413 +8,318 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
+import { useLoginProviders } from '@/features/auth/providers'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
-  useAddSpaceMemberByEmail,
+  newJoinToken,
+  useAddHuaweiMember,
+  useCreateInvitation,
+  useCreateJoinLink,
+  useDecideJoinRequest,
+  useInvitations,
+  useJoinLinks,
+  useJoinRequests,
   useMembers,
-  useRemoveSpaceMember,
-  type MemberWithUser,
+  usePeopleSearch,
+  useRevokeInvitation,
+  useRevokeJoinLink,
+  useUpdateMember,
+  type TenantMember,
 } from '@/features/members/api'
-import { normalizeSpaceRole, useUpdateSpaceMember, type SpaceRole } from '@/features/spaces/api'
+import { normalizeSpaceRole } from '@/features/spaces/api'
 import { useCurrentSpace } from '@/features/spaces/current-space'
+import { joinUrl } from '@/lib/paths'
+import { faultCode } from '@/lib/api-client'
 
-const ROLE_LABELS: Record<string, string> = {
-  owner: '所有者',
-  admin: '管理员',
-  member: '成员',
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  active: '已加入',
-  invited: '待加入',
-}
-const SKELETON_KEYS = ['one', 'two', 'three', 'four', 'five']
-
-/**
- * Roles the member API may grant. The owner role is immutable through this API
- * (Step 3A, ownership transfer NOT implemented), so it is never offered.
- */
-const GRANTABLE_ROLES: SpaceRole[] = ['admin', 'member']
-
-/**
- * Members page. Cloud sessions render the real membership list with
- * admin/owner management controls (role changes, disable/enable, add member);
- * mock sessions keep the demo store table.
- */
+/** Tenant roster with deployment-specific entry points for new members. */
 export function MembersPage({ slug }: { slug: string }) {
-  const { data: members, isPending } = useMembers(slug)
   const { tenantId, space } = useCurrentSpace()
-  const cloudSpace = space?.slug === slug ? space : undefined
-
-  if (cloudSpace) {
-    return (
-      <CloudMembersView
-        tenantId={tenantId ?? ''}
-        spaceId={cloudSpace.id}
-        members={members ?? []}
-        isPending={isPending}
-        myRole={normalizeSpaceRole(cloudSpace.role)}
-      />
-    )
-  }
-
+  const { data: providers } = useLoginProviders()
+  const activeTenant = space?.slug === slug ? tenantId : undefined
+  const members = useMembers(activeTenant)
+  if (!activeTenant || !space) return null
+  const canManage = normalizeSpaceRole(space.role) === 'admin'
   return (
-    <div className="p-4">
-      {isPending && (
+    <div className="space-y-6 p-4">
+      <h1 className="text-lg font-semibold">空间成员</h1>
+      {canManage &&
+        providers &&
+        (providers.includes('huawei-idaas') ? (
+          <HuaweiAdd tenantId={activeTenant} />
+        ) : (
+          <ExternalInvites tenantId={activeTenant} />
+        ))}
+      {members.isError && <p className="text-sm text-destructive">成员列表加载失败</p>}
+      {members.isPending && <p className="text-sm text-muted-foreground">正在加载成员…</p>}
+      {members.data && (
         <div className="space-y-2">
-          {SKELETON_KEYS.map((key) => (
-            <Skeleton key={key} className="h-10 w-full" />
+          {members.data.items.map((member) => (
+            <MemberRow
+              key={member.userId}
+              tenantId={activeTenant}
+              member={member}
+              canManage={canManage}
+            />
           ))}
         </div>
-      )}
-      {members && (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>成员</TableHead>
-              <TableHead>角色</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>加入时间</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {members.map((member) => (
-              <MemberCells key={member.id} member={member} />
-            ))}
-          </TableBody>
-        </Table>
       )}
     </div>
   )
 }
 
-/** Read-only member row for the mock store. */
-function MemberCells({ member }: { member: MemberWithUser }) {
-  return (
-    <TableRow>
-      <TableCell>
-        <div className="flex items-center gap-2">
-          <ActorAvatar actor={member} size="sm" />
-          <div>
-            <p className="text-sm font-medium">{member.name}</p>
-            <p className="text-xs text-muted-foreground">{member.email}</p>
-          </div>
-        </div>
-      </TableCell>
-      <TableCell>{ROLE_LABELS[member.role] ?? member.role}</TableCell>
-      <MemberStatusCells member={member} />
-    </TableRow>
-  )
-}
-
-/** Status badge and join-date cells shared by both member tables. */
-function MemberStatusCells({ member }: { member: MemberWithUser }) {
-  return (
-    <>
-      <TableCell>
-        <Badge variant={member.status === 'active' ? 'secondary' : 'outline'}>
-          {STATUS_LABELS[member.status] ?? member.status}
-        </Badge>
-      </TableCell>
-      <TableCell className="text-muted-foreground">
-        {format(new Date(member.joinedAt), 'yyyy年M月d日')}
-      </TableCell>
-    </>
-  )
-}
-
-/**
- * Dialog for adding an already-registered user to the space by email. Only
- * admin/owner actors see the trigger; the new member is always created with the
- * fixed `member` role (role management is out of scope). The dialog closes on
- * success and the membership list refreshes via query invalidation. An unknown
- * email surfaces the backend `user_not_registered` fault as a friendly hint.
- */
-function AddMemberDialog({
-  open,
-  onOpenChange,
+/** One member's current role and status, guarded by the row version. */
+function MemberRow({
   tenantId,
-  spaceId,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  tenantId: string
-  spaceId: string
-}) {
-  const [email, setEmail] = useState('')
-  const [attempted, setAttempted] = useState(false)
-  const addMember = useAddSpaceMemberByEmail(tenantId, spaceId)
-  const errorCode = addMember.error?.response?.data?.code
-
-  // Local validation only: empty or malformed addresses stop before the request.
-  // `attempted` gates the hints so a pristine field stays quiet until first submit.
-  let localHint: string | undefined
-  if (attempted && email.trim() === '') {
-    localHint = '请输入邮箱地址。'
-  } else if (attempted && !email.includes('@')) {
-    localHint = '请输入有效的邮箱地址。'
-  }
-  let serverHint: string | undefined
-  if (errorCode === 'user_not_registered') {
-    serverHint = '该邮箱尚未注册，请先完成注册。'
-  } else if (errorCode === 'space_role_required') {
-    serverHint = '你没有权限添加成员。'
-  } else if (errorCode) {
-    serverHint = `添加失败：${errorCode}`
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>添加成员</DialogTitle>
-          <DialogDescription>输入已注册用户的邮箱，将其添加为普通成员。</DialogDescription>
-        </DialogHeader>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (!attempted) setAttempted(true)
-            if (email.trim() === '' || !email.includes('@') || addMember.isPending) return
-            addMember.mutate(
-              { email: email.trim() },
-              {
-                onSuccess: () => {
-                  onOpenChange(false)
-                  setEmail('')
-                  setAttempted(false)
-                },
-              },
-            )
-          }}
-          noValidate
-          className="space-y-4"
-        >
-          <DialogFormField
-            id="new-member-email"
-            label="成员邮箱"
-            value={email}
-            onChange={setEmail}
-            placeholder="member@example.com"
-            hint={localHint ?? serverHint}
-            required
-          />
-          <Button type="submit" className="w-full" disabled={addMember.isPending}>
-            {addMember.isPending ? '添加中…' : '添加'}
-          </Button>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-/**
- * Cloud membership table with management controls (Step 3A). Adding members is
- * open to admins and owners; changing roles and removing members is owner-only.
- * Members and admins see a read-only table with the add trigger preserved for
- * admins. The owner role is immutable: it is never offered in the role selector
- * and owner rows carry no management actions.
- */
-function CloudMembersView({
-  tenantId,
-  spaceId,
-  members,
-  isPending,
-  myRole,
-}: {
-  tenantId: string
-  spaceId: string
-  members: MemberWithUser[]
-  isPending: boolean
-  myRole: SpaceRole
-}) {
-  const [addOpen, setAddOpen] = useState(false)
-  const updateMember = useUpdateSpaceMember(tenantId, spaceId)
-  const removeMember = useRemoveSpaceMember(tenantId, spaceId)
-  const canAdd = myRole === 'admin' || myRole === 'owner'
-  const isOwner = myRole === 'owner'
-  const errorCode =
-    updateMember.error?.response?.data?.code ?? removeMember.error?.response?.data?.code
-
-  function update(role: SpaceRole, status: 'active' | 'disabled', member: MemberWithUser) {
-    updateMember.mutate({ userId: member.id, role, status, version: member.version ?? 0 })
-  }
-
-  return (
-    <div className="p-4">
-      {canAdd && (
-        <div className="mb-4">
-          <Button onClick={() => setAddOpen(true)}>添加成员</Button>
-          <AddMemberDialog
-            open={addOpen}
-            onOpenChange={setAddOpen}
-            tenantId={tenantId}
-            spaceId={spaceId}
-          />
-        </div>
-      )}
-      {errorCode && <p className="mb-3 text-xs text-destructive">操作失败：{errorCode}</p>}
-      {isPending && (
-        <div className="space-y-2">
-          {SKELETON_KEYS.map((key) => (
-            <Skeleton key={key} className="h-10 w-full" />
-          ))}
-        </div>
-      )}
-      {members.length > 0 && (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>成员</TableHead>
-              <TableHead>角色</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>加入时间</TableHead>
-              {isOwner && <TableHead>操作</TableHead>}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {members.map((member) => (
-              <CloudMemberRow
-                key={member.id}
-                member={member}
-                isOwner={isOwner}
-                pending={updateMember.isPending || removeMember.isPending}
-                onUpdate={update}
-                onRemove={(userId, version) => removeMember.mutate({ userId, version })}
-              />
-            ))}
-          </TableBody>
-        </Table>
-      )}
-    </div>
-  )
-}
-
-/** One cloud membership row. Owners manage roles and removals; owner rows are read-only. */
-function CloudMemberRow({
   member,
-  isOwner,
-  pending,
-  onUpdate,
-  onRemove,
+  canManage,
 }: {
-  member: MemberWithUser
-  isOwner: boolean
-  pending: boolean
-  onUpdate: (role: SpaceRole, status: 'active' | 'disabled', member: MemberWithUser) => void
-  onRemove: (userId: string, version: number) => void
+  tenantId: string
+  member: TenantMember
+  canManage: boolean
 }) {
+  const update = useUpdateMember(tenantId)
   const role = normalizeSpaceRole(member.role)
-  const isOwnerRow = role === 'owner'
   return (
-    <TableRow>
-      <TableCell>
-        <div className="flex items-center gap-2">
-          <ActorAvatar actor={member} size="sm" />
-          <div>
-            <p className="text-sm font-medium">{member.name}</p>
-            <p className="text-xs text-muted-foreground">{member.id}</p>
-          </div>
-        </div>
-      </TableCell>
-      <TableCell>
-        {isOwner && !isOwnerRow ? (
+    <div className="flex flex-wrap items-center gap-3 rounded-md border p-3">
+      <div className="min-w-0 flex-1">
+        <p className="font-medium">{member.displayName || member.userId}</p>
+        <p className="text-xs text-muted-foreground">
+          {member.status === 'active' ? '已加入' : '已停用'}
+        </p>
+      </div>
+      {canManage ? (
+        <>
           <Select
+            disabled={member.status === 'disabled' || update.isPending}
             value={role}
             onValueChange={(value) =>
-              onUpdate(normalizeSpaceRole(value ?? 'member'), 'active', member)
+              update.mutate({
+                userId: member.userId,
+                role: normalizeSpaceRole(value ?? 'member'),
+                status: member.status === 'disabled' ? 'disabled' : 'active',
+                version: member.version,
+              })
             }
           >
-            <SelectTrigger className="w-28" aria-label={`${member.name} 的角色`}>
+            <SelectTrigger className="w-28" aria-label={`${member.displayName} 的角色`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {GRANTABLE_ROLES.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {ROLE_LABELS[option]}
-                </SelectItem>
-              ))}
+              <SelectItem value="admin">管理员</SelectItem>
+              <SelectItem value="member">成员</SelectItem>
             </SelectContent>
           </Select>
-        ) : (
-          (ROLE_LABELS[role] ?? role)
-        )}
-      </TableCell>
-      <MemberStatusCells member={member} />
-      {isOwner && (
-        <TableCell>
-          {isOwnerRow ? null : (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={pending}
-                onClick={() =>
-                  onUpdate(role, member.status === 'active' ? 'disabled' : 'active', member)
-                }
-              >
-                {member.status === 'active' ? '禁用' : '启用'}
-              </Button>
-              <RemoveMemberDialog
-                member={member}
-                pending={pending}
-                onRemove={() => onRemove(member.id, member.version ?? 0)}
-              />
-            </div>
+          {member.status === 'active' ? (
+            <Button
+              variant="outline"
+              disabled={update.isPending}
+              onClick={() =>
+                update.mutate({
+                  userId: member.userId,
+                  role,
+                  status: 'disabled',
+                  version: member.version,
+                })
+              }
+            >
+              移除
+            </Button>
+          ) : (
+            <span className="text-xs text-muted-foreground">重新加入需再次核验或邀请</span>
           )}
-        </TableCell>
+        </>
+      ) : (
+        <span className="text-sm">{role === 'admin' ? '管理员' : '成员'}</span>
       )}
-    </TableRow>
+      {update.isError && (
+        <p className="basis-full text-xs text-destructive">
+          操作失败：{faultCode(update.error) ?? 'unknown'}
+        </p>
+      )}
+    </div>
   )
 }
 
-/**
- * Owner-only removal of a member's workspace membership, confirmed in a dialog.
- * Removal is a hard delete of the workspace membership alone — the user
- * account, their tenant membership and any resources they created are
- * untouched and remain in the workspace. The owner row can never be removed
- * (the backend rejects it with 409 cannot_remove_workspace_owner, surfaced
- * above the table).
- */
-function RemoveMemberDialog({
-  member,
-  pending,
-  onRemove,
+/** Searches Tianzhou through Ora and rechecks the selected employee on add. */
+function HuaweiAdd({ tenantId }: { tenantId: string }) {
+  const [keyword, setKeyword] = useState('')
+  const [role, setRole] = useState<'admin' | 'member'>('member')
+  const people = usePeopleSearch(tenantId, keyword)
+  const add = useAddHuaweiMember(tenantId)
+  return (
+    <section className="space-y-3 rounded-md border p-4">
+      <h2 className="font-medium">从华为人员目录添加</h2>
+      <div className="flex gap-2">
+        <Input
+          aria-label="搜索姓名或工号"
+          value={keyword}
+          onChange={(event) => setKeyword(event.target.value)}
+          placeholder="姓名或工号，至少两个字符"
+        />
+        <Select
+          value={role}
+          onValueChange={(value) => setRole(value === 'admin' ? 'admin' : 'member')}
+        >
+          <SelectTrigger className="w-28" aria-label="新成员角色">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="member">成员</SelectItem>
+            <SelectItem value="admin">管理员</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {people.isError && <p className="text-sm text-destructive">人员目录暂不可用，请稍后再试</p>}
+      {people.data?.items.map((person) => (
+        <div key={person.globalUserId} className="flex items-center gap-2 border-b py-2 text-sm">
+          <span className="min-w-0 flex-1">
+            {person.name} · {person.employeeNumber} · {person.departmentName}
+          </span>
+          <Button
+            size="sm"
+            disabled={add.isPending}
+            onClick={() => add.mutate({ person, keyword, role })}
+          >
+            添加
+          </Button>
+        </div>
+      ))}
+      {add.isError && (
+        <p className="text-xs text-destructive">添加失败：{faultCode(add.error) ?? 'unknown'}</p>
+      )}
+    </section>
+  )
+}
+
+/** Creates private links and handles approvals in public-network deployments. */
+function ExternalInvites({ tenantId }: { tenantId: string }) {
+  const invitation = useCreateInvitation(tenantId)
+  const application = useCreateJoinLink(tenantId)
+  const invitations = useInvitations(tenantId)
+  const links = useJoinLinks(tenantId)
+  const requests = useJoinRequests(tenantId)
+  const revokeInvitation = useRevokeInvitation(tenantId)
+  const revokeLink = useRevokeJoinLink(tenantId)
+  const decide = useDecideJoinRequest(tenantId)
+  const [shareUrl, setShareUrl] = useState('')
+
+  return (
+    <section className="space-y-4 rounded-md border p-4">
+      <h2 className="font-medium">邀请与加入申请</h2>
+      <p className="text-sm text-muted-foreground">
+        邀请链接 7 天有效且只能兑换一次；申请链接 30
+        天有效，可供多人申请。创建后请立即复制链接，服务端不会保存原文。
+      </p>
+      <div className="flex gap-2">
+        <Button
+          onClick={() => {
+            const token = newJoinToken()
+            invitation.mutate(token, { onSuccess: () => setShareUrl(joinUrl('invite', token)) })
+          }}
+          disabled={invitation.isPending}
+        >
+          生成邀请链接
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => {
+            const token = newJoinToken()
+            application.mutate(token, { onSuccess: () => setShareUrl(joinUrl('apply', token)) })
+          }}
+          disabled={application.isPending}
+        >
+          生成申请链接
+        </Button>
+      </div>
+      {shareUrl && (
+        <Input
+          aria-label="新生成的链接"
+          readOnly
+          value={shareUrl}
+          onFocus={(event) => event.target.select()}
+        />
+      )}
+      {(invitation.isError || application.isError) && (
+        <p className="text-sm text-destructive">生成链接失败</p>
+      )}
+      <LinkRows
+        title="邀请链接"
+        rows={invitations.data?.items ?? []}
+        revoke={(id, version) => revokeInvitation.mutate({ id, version })}
+      />
+      <LinkRows
+        title="申请链接"
+        rows={links.data?.items ?? []}
+        revoke={(id, version) => revokeLink.mutate({ id, version })}
+      />
+      <h3 className="font-medium">待审批申请</h3>
+      {requests.data?.items
+        .filter((request) => request.status === 'pending')
+        .map((request) => (
+          <div key={request.id} className="flex items-center gap-2 text-sm">
+            <span className="flex-1">{request.displayName || request.userId}</span>
+            <Button
+              size="sm"
+              disabled={decide.isPending}
+              onClick={() =>
+                decide.mutate({ id: request.id, version: request.version, decision: 'approve' })
+              }
+            >
+              批准
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={decide.isPending}
+              onClick={() =>
+                decide.mutate({ id: request.id, version: request.version, decision: 'reject' })
+              }
+            >
+              拒绝
+            </Button>
+          </div>
+        ))}
+      {(revokeInvitation.isError || revokeLink.isError || decide.isError) && (
+        <p className="text-sm text-destructive">操作失败，请刷新后重试</p>
+      )}
+    </section>
+  )
+}
+
+/** Shows revocable metadata without attempting to retrieve plaintext tokens. */
+function LinkRows({
+  title,
+  rows,
+  revoke,
 }: {
-  member: MemberWithUser
-  pending: boolean
-  onRemove: () => void
+  title: string
+  rows: {
+    id: string
+    expiresAt: string
+    revokedAt?: string | null
+    consumedAt?: string | null
+    version: number
+  }[]
+  revoke: (id: string, version: number) => void
 }) {
   return (
-    <AlertDialog>
-      <AlertDialogTrigger
-        render={
-          <Button variant="destructive" size="sm">
-            移除
-          </Button>
-        }
-      />
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>从工作区移除「{member.name}」？</AlertDialogTitle>
-          <AlertDialogDescription>
-            该成员将无法再访问此工作区及其项目。其创建的资源会保留在工作区中，账号与租户成员关系不受影响。
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>取消</AlertDialogCancel>
-          <AlertDialogAction disabled={pending} onClick={onRemove}>
-            确认移除
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <div className="space-y-1">
+      <h3 className="font-medium">{title}</h3>
+      {rows.map((row) => (
+        <div key={row.id} className="flex items-center gap-2 text-sm">
+          <span className="flex-1">
+            {row.consumedAt && '已兑换'}
+            {!row.consumedAt && row.revokedAt && '已撤销'}
+            {!row.consumedAt &&
+              !row.revokedAt &&
+              `到期于 ${new Date(row.expiresAt).toLocaleDateString()}`}
+          </span>
+          {!row.revokedAt && !row.consumedAt && (
+            <Button size="sm" variant="outline" onClick={() => revoke(row.id, row.version)}>
+              撤销
+            </Button>
+          )}
+        </div>
+      ))}
+    </div>
   )
 }

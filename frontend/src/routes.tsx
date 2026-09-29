@@ -13,8 +13,11 @@ import { IssuesPage } from '@/features/issues/issues-page'
 import { MembersPage } from '@/features/members/members-page'
 import { MyIssuesPage } from '@/features/my-issues/my-issues-page'
 import { OnboardingPage } from '@/features/onboarding/onboarding-page'
+import { JoinContinue, JoinPage } from '@/features/onboarding/join-page'
+import { PluginsPage } from '@/features/plugins/plugins-page'
 import { ProjectDetailPage } from '@/features/projects/project-detail-page'
 import { ProjectsPage } from '@/features/projects/projects-page'
+import { RepositoriesPage } from '@/features/clones/repositories-page'
 import { RuntimesPage } from '@/features/runtimes/runtimes-page'
 import { GeneralSettingsPage } from '@/features/settings/general-settings-page'
 import { SettingsLayout } from '@/features/settings/settings-layout'
@@ -63,10 +66,34 @@ export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/onboarding" replace /> },
   { path: '/login', element: <LoginPage /> },
   {
+    path: '/join/continue',
+    element: (
+      <RequireSession>
+        <JoinContinue />
+      </RequireSession>
+    ),
+  },
+  {
     path: '/onboarding',
     element: (
       <RequireSession>
         <OnboardingPage />
+      </RequireSession>
+    ),
+  },
+  {
+    path: '/join/invite/:token',
+    element: (
+      <RequireSession>
+        <JoinPage kind="invite" />
+      </RequireSession>
+    ),
+  },
+  {
+    path: '/join/apply/:token',
+    element: (
+      <RequireSession>
+        <JoinPage kind="apply" />
       </RequireSession>
     ),
   },
@@ -84,6 +111,7 @@ export const router = createBrowserRouter([
       { path: 'my-issues', element: <CloudScope component={MyIssuesPage} /> },
       { path: 'projects', element: <WithSlug component={ProjectsPage} /> },
       { path: 'projects/:projectId', element: <WithSlug component={ProjectDetailPage} /> },
+      { path: 'repositories', element: <WithSlug component={RepositoriesPage} /> },
       { path: 'workflows', element: <CloudScope component={WorkflowsPage} /> },
       {
         path: 'workflows/:workflowId',
@@ -98,6 +126,7 @@ export const router = createBrowserRouter([
       { path: 'agents', element: <WithSlug component={AgentsPage} /> },
       { path: 'agents/:agentId', element: <WithSlug component={AgentDetailPage} /> },
       { path: 'skills', element: <WithSlug component={SkillsPage} /> },
+      { path: 'plugins', element: <CloudScope component={PluginsPage} /> },
       { path: 'runtimes', element: <WithSlug component={RuntimesPage} /> },
       { path: 'chat', element: <WithSlug component={ChatPage} /> },
       { path: 'chat/:sessionId', element: <WithSlug component={ChatPage} /> },

@@ -15,7 +15,7 @@ import (
 // nothing the viewer shows can be read as a real engine's result.
 type MockWorkflowRunSimulator struct{}
 
-func (MockWorkflowRunSimulator) SimulateWorkflowRun(graph, input core.Object) (core.Object, []core.Object, string) {
+func (MockWorkflowRunSimulator) SimulateWorkflowRun(graph, input core.Object) (nodeStates core.Object, rounds []core.Object, status string) {
 	byID := map[string]core.Object{}
 	nodes, _ := graph["nodes"].([]any)
 	for _, raw := range nodes {
@@ -28,7 +28,7 @@ func (MockWorkflowRunSimulator) SimulateWorkflowRun(graph, input core.Object) (c
 	order := reachableOrder(edges, byID)
 
 	clock := time.Now().UTC()
-	nodeStates := core.Object{}
+	nodeStates = core.Object{}
 	for _, id := range order {
 		node := byID[id]
 		data := node.O("data")
@@ -53,7 +53,7 @@ func (MockWorkflowRunSimulator) SimulateWorkflowRun(graph, input core.Object) (c
 		}
 		nodeStates[id] = state
 	}
-	rounds := []core.Object{{
+	rounds = []core.Object{{
 		"id":         uuid.NewString(),
 		"number":     1,
 		"input":      input,

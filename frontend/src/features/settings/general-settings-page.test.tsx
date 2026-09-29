@@ -27,12 +27,12 @@ function renderSettingsPage() {
 }
 
 describe('GeneralSettingsPage', () => {
-  it('shows the archive danger zone to owners and archives on confirmation', async () => {
-    installCloudSpaceHandlers('owner')
-    let deleted = false
+  it('lets an administrator rename the sole tenant space', async () => {
+    installCloudSpaceHandlers('admin')
+    let changed = false
     server.use(
-      http.delete(`/api/v1/tenants/${TEST_TENANT_ID}/spaces/${TEST_SPACE_ID}`, () => {
-        deleted = true
+      http.patch(`/api/v1/tenants/${TEST_TENANT_ID}/spaces/${TEST_SPACE_ID}`, () => {
+        changed = true
         return HttpResponse.json({
           id: TEST_SPACE_ID,
           tenantId: TEST_TENANT_ID,
@@ -43,29 +43,27 @@ describe('GeneralSettingsPage', () => {
           version: 2,
           createdAt: '2026-09-20T10:00:00+08:00',
           updatedAt: '2026-09-20T10:00:00+08:00',
-          archivedAt: '2026-09-20T11:00:00+08:00',
+          archivedAt: null,
         })
       }),
     )
     renderSettingsPage()
     const user = userEvent.setup()
 
-    expect(
-      await screen.findByRole('button', { name: '归档工作区' }, { timeout: 5000 }),
-    ).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '归档工作区' }))
-    await user.click(await screen.findByRole('button', { name: '确认归档' }))
-
-    await waitFor(() => expect(deleted).toBe(true))
+    const name = await screen.findByLabelText('工作区名称')
+    await user.clear(name)
+    await user.type(name, 'Renamed')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(changed).toBe(true))
   })
 
-  it('hides the danger zone from non-owners', async () => {
+  it('prevents non-admins from renaming the tenant', async () => {
     installCloudSpaceHandlers('member')
     renderSettingsPage()
 
     expect(
       await screen.findByLabelText('工作区名称', undefined, { timeout: 5000 }),
     ).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '归档工作区' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('工作区名称')).toBeDisabled()
   })
 })

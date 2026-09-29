@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { SpaceEvent } from '@/api/generated.schemas'
-import { getGetApiV1TenantsTidSpacesQueryKey } from '@/api/spaces/spaces'
+import { getGetApiV1MeSpacesQueryKey } from '@/api/me/me'
 
 /**
  * Narrows an unknown value to a property bag; JSON.parse and network payloads
@@ -60,11 +60,21 @@ function invalidateForEvent(
     })
   } else if (event.type === 'space.member_updated') {
     void queryClient.invalidateQueries({
-      queryKey: [`/api/v1/tenants/${tenantId}/spaces/${spaceId}/members`],
+      queryKey: [`/api/v1/tenants/${tenantId}/members`],
+    })
+  } else if (event.type === 'space.plugins_updated') {
+    void queryClient.invalidateQueries({
+      queryKey: [`/api/v1/tenants/${tenantId}/spaces/${spaceId}/plugins`],
+    })
+  } else if (event.type === 'plugins.catalog_updated') {
+    // The catalog is shared across spaces; this stream's subscriber refetches
+    // its own copy, which is enough until a broker fans the notice out.
+    void queryClient.invalidateQueries({
+      queryKey: [`/api/v1/tenants/${tenantId}/spaces/${spaceId}/plugins/catalog`],
     })
   } else {
     void queryClient.invalidateQueries({
-      queryKey: getGetApiV1TenantsTidSpacesQueryKey(tenantId),
+      queryKey: getGetApiV1MeSpacesQueryKey(),
     })
   }
 }
@@ -120,8 +130,9 @@ async function drain(
  * The stream rides the gateway session cookie like every other request. A
  * dropped connection is reconnected with exponential backoff, and each
  * reconnect refetches the space's lists so nothing missed while offline
- * stays stale. A 401 ends the subscription: the session is gone and the
- * signed-out screen takes over. The subscription ends with the component.
+ * stays stale. A 401 ends the subscription; a 403 or 404 refreshes the joined
+ * space list and ends it, so a revoked member leaves that space's route.
+ * The subscription also ends with the component.
  */
 export function useSpaceEvents(tenantId: string | undefined, spaceId: string | undefined): void {
   const queryClient = useQueryClient()
@@ -130,10 +141,12 @@ export function useSpaceEvents(tenantId: string | undefined, spaceId: string | u
     const controller = new AbortController()
     const url = `/api/v1/tenants/${tenantId}/spaces/${spaceId}/events`
     const onEvent = (event: SpaceEvent) => invalidateForEvent(event, tenantId, spaceId, queryClient)
-    const refetchAll = () =>
-      queryClient.invalidateQueries({
+    const refetchAll = () => {
+      void queryClient.invalidateQueries({ queryKey: getGetApiV1MeSpacesQueryKey() })
+      return queryClient.invalidateQueries({
         predicate: (query) => String(query.queryKey[0]).startsWith(`/api/v1/tenants/${tenantId}/`),
       })
+    }
     void (async () => {
       let failures = 0
       while (!controller.signal.aborted) {
@@ -141,6 +154,10 @@ export function useSpaceEvents(tenantId: string | undefined, spaceId: string | u
           // oxlint-disable-next-line no-await-in-loop -- one connection at a time is the reconnect loop
           const response = await fetch(url, { signal: controller.signal })
           if (response.status === 401) return
+          if (response.status === 403 || response.status === 404) {
+            void queryClient.invalidateQueries({ queryKey: getGetApiV1MeSpacesQueryKey() })
+            return
+          }
           if (!response.ok || !response.body) throw new Error(`event stream ${response.status}`)
           if (failures > 0) void refetchAll()
           failures = 0

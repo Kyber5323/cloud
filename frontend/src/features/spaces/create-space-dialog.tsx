@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { DialogFormField } from '@/components/common/dialog-form-field'
-import { Button } from '@/components/ui/button'
+import { CreateFormSubmit } from '@/components/common/create-form-submit'
 import {
   Dialog,
   DialogContent,
@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { useCreateSpace } from '@/features/spaces/api'
+import { useCreateTenant } from '@/features/spaces/api'
 import { isValidSlug } from '@/features/spaces/slug'
 
 /**
@@ -20,13 +20,12 @@ function CreateSpaceFields({
   pending,
   errorCode,
 }: {
-  onSubmit: (input: { name: string; slug: string; description: string }) => void
+  onSubmit: (input: { name: string; slug: string }) => void
   pending: boolean
   errorCode: string | undefined
 }) {
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
-  const [description, setDescription] = useState('')
   const slugValid = slug === '' || isValidSlug(slug)
   const submittable = name.trim() !== '' && slugValid && !pending
 
@@ -35,7 +34,7 @@ function CreateSpaceFields({
       onSubmit={(e) => {
         e.preventDefault()
         if (!submittable) return
-        onSubmit({ name: name.trim(), slug, description })
+        onSubmit({ name: name.trim(), slug })
       }}
       className="space-y-4"
     >
@@ -56,16 +55,7 @@ function CreateSpaceFields({
         hint={slugValid ? undefined : '小写字母、数字与连字符，以字母或数字开头'}
         required
       />
-      <DialogFormField
-        id="new-space-description"
-        label="描述（可选）"
-        value={description}
-        onChange={setDescription}
-      />
-      {errorCode && <p className="text-xs text-destructive">创建失败：{errorCode}</p>}
-      <Button type="submit" className="w-full" disabled={!submittable}>
-        {pending ? '创建中…' : '创建'}
-      </Button>
+      <CreateFormSubmit pending={pending} submittable={submittable} errorCode={errorCode} />
     </form>
   )
 }
@@ -78,32 +68,30 @@ function CreateSpaceFields({
 export function CreateSpaceDialog({
   open,
   onOpenChange,
-  tenantId,
   onCreated,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  tenantId: string | undefined
   onCreated: (slug: string) => void
 }) {
-  const createSpace = useCreateSpace(tenantId)
+  const createSpace = useCreateTenant()
   const errorCode = createSpace.error?.response?.data?.code
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>新建工作区</DialogTitle>
-          <DialogDescription>创建后你自动成为所有者（owner）。</DialogDescription>
+          <DialogTitle>新建协作空间</DialogTitle>
+          <DialogDescription>创建后你成为这个空间的管理员。</DialogDescription>
         </DialogHeader>
         <CreateSpaceFields
           pending={createSpace.isPending}
           errorCode={errorCode}
           onSubmit={(input) =>
             createSpace.mutate(input, {
-              onSuccess: (space) => {
+              onSuccess: (created) => {
                 onOpenChange(false)
-                onCreated(space.slug)
+                onCreated(created.space.slug)
               },
             })
           }

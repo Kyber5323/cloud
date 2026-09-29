@@ -148,7 +148,7 @@ func TestConcurrentIdempotencyAndLastAdminProtection(t *testing.T) {
 	f.user.Subject = "bob"
 	bob := f.call("GET", "/api/v1/me", nil, "", 200)
 	f.user.Subject = "alice"
-	f.call("PUT", f.path("/members/"+bob.S("id")), core.Object{"role": "admin", "status": "active", "version": 0}, "", 200)
+	f.addMemberID(bob.S("id"), "admin")
 	subjects := []string{"alice", "bob"}
 	ids := []string{f.uid, bob.S("id")}
 	statuses := make(chan int, 2)
@@ -200,7 +200,7 @@ func TestControllerTakeoverReconcilesAndFences(t *testing.T) {
 	must(t, e)
 	replacementClient := *f.client
 	replacementClient.Subject = "controller-b"
-	replacement := &simulator.Controller{Client: &replacementClient, SubstrateURL: f.controller.SubstrateURL}
+	replacement := &simulator.Controller{Client: &replacementClient, SubstrateURL: f.controller.SubstrateURL, Executions: f.executions}
 	must(t, replacement.Acquire(context.Background()))
 	if replacement.Epoch != oldEpoch+1 {
 		t.Fatal("takeover epoch not advanced")
@@ -229,9 +229,10 @@ func TestTerminationUnknownRetryAndVersionedReplay(t *testing.T) {
 	f.drain()
 	wid := created.O("workspace").S("id")
 	oldVersion := f.ws(wid).N("version")
-	stopped := f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": oldVersion}, "stop", 202)
+	stopped := f.call("POST", f.path("/workspaces/"+wid+"/stop"), f.lifecycleBody(wid, oldVersion), "stop", 202)
 	oid := stopped.O("operation").S("id")
 	f.substrate.SetFault("sandbox_terminate", "unconfirmed")
+	f.acknowledgeSimulatorBindings() // Explicit fixture evidence; termination assertions below remain unchanged.
 	if e := f.controller.Drain(context.Background()); e == nil {
 		t.Fatal("termination must block")
 	}
@@ -243,7 +244,7 @@ func TestTerminationUnknownRetryAndVersionedReplay(t *testing.T) {
 	if deferred.S("state") != "blocked" || deferred.S("errorCode") != "termination_unconfirmed" {
 		t.Fatal("unconfirmed termination was not blocked", deferred)
 	}
-	replay := f.call("POST", f.path("/workspaces/"+wid+"/stop"), core.Object{"version": oldVersion}, "stop", 202)
+	replay := f.call("POST", f.path("/workspaces/"+wid+"/stop"), f.lifecycleBody(wid, oldVersion), "stop", 202)
 	if replay.O("operation").S("id") != oid {
 		t.Fatal("stale-version replay not original operation")
 	}
@@ -302,7 +303,7 @@ func TestWrongWorkspaceNodeCannotRefuseAnotherStop(t *testing.T) {
 	if status != 200 {
 		t.Fatal(out)
 	}
-	stop := f.call("POST", f.path("/workspaces/"+main+"/stop"), core.Object{"version": f.ws(main).N("version")}, "stop-main", 202)
+	stop := f.call("POST", f.path("/workspaces/"+main+"/stop"), f.lifecycleBody(main, f.ws(main).N("version")), "stop-main", 202)
 	_, status, e = f.client.Call(context.Background(), "POST", "/internal/v1/nodes/idle", "node", n, nil, "", core.Object{"version": out.N("version"), "operationId": stop.O("operation").S("id"), "admissionEpoch": f.ws(wid).N("admissionEpoch"), "idle": false})
 	must(t, e)
 	if status != 409 {
@@ -327,7 +328,7 @@ func TestPostgresAggregateConstraints(t *testing.T) {
 		{"project must have main", "INSERT INTO projects(id,tenant_id,owner_user_id,name,repository_url,default_branch,lifecycle) VALUES($1,$2,$3,'missing main','https://x','main','active')", []any{uuid.NewString(), f.tid, f.uid}},
 		{"main cannot vanish", "UPDATE workspaces SET deleted_at=now() WHERE id=$1", []any{wid}},
 		{"main cannot change aggregate", "UPDATE workspaces SET project_id=$1 WHERE id=$2", []any{uuid.NewString(), wid}},
-		{"cross-tenant owner", "INSERT INTO workspaces(id,tenant_id,owner_user_id,project_id,kind,desired_state,observed_state) VALUES($1,$2,$3,$4,'isolated','running','provisioning')", []any{uuid.NewString(), other.S("tenantId"), other.S("userId"), pid}},
+		{"cross-tenant owner", "INSERT INTO workspaces(id,tenant_id,owner_user_id,project_id,kind,desired_state,observed_state,requested_ref) VALUES($1,$2,$3,$4,'isolated','running','provisioning','main')", []any{uuid.NewString(), other.S("tenantId"), other.S("userId"), pid}},
 		{"task requires isolated", "INSERT INTO tasks(id,workspace_id,title) VALUES($1,$2,'wrong main task')", []any{uuid.NewString(), wid}},
 		{"last admin user cannot disable", "UPDATE users SET status='disabled' WHERE id=$1", []any{f.uid}},
 		{"last admin member cannot disable", "UPDATE tenant_memberships SET status='disabled' WHERE tenant_id=$1 AND user_id=$2", []any{f.tid, f.uid}},
@@ -348,10 +349,10 @@ func TestPostgresAggregateConstraints(t *testing.T) {
 	f.user.Subject = "bob"
 	bob := f.call("GET", "/api/v1/me", nil, "", 200)
 	f.user.Subject = "alice"
-	f.call("PUT", f.path("/members/"+bob.S("id")), core.Object{"role": "member", "status": "active", "version": 0}, "", 200)
+	f.addMemberID(bob.S("id"), "member")
 	ref, e := f.store.ConfigureCredential(context.Background(), f.tid, bob.S("id"), "secret://bob/git")
 	must(t, e)
-	f.call("POST", f.path("/projects"), core.Object{"name": "wrong credential", "repositoryUrl": "https://example.invalid/repo.git", "credentialRefId": ref.S("id")}, "credential-owner", 404)
+	f.call("POST", f.path("/projects"), core.Object{"name": "wrong credential", "repositoryUrl": "https://example.invalid/repo.git", "defaultBranch": "main", "credentialRefId": ref.S("id")}, "credential-owner", 404)
 }
 
 func TestListPaginationAndErrorShape(t *testing.T) {

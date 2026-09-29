@@ -20,7 +20,7 @@
 | `api.ts` | `fetchLoginProviders`（Gateway 的 provider 列表，过滤为 `huawei-idaas` / `github` / `dev`）、`isExternalProvider`、`startLogin`（拿 `authorizationUrl` 后 `navigateExternal`）、`logoutSession`、`GITHUB_SIGN_OUT_URL`（GitHub 自己的注销页）、`fetchSessionUser`（401 → 未登录，403 → 已停用，其它错误抛出） |
 | `providers.ts` | `useLoginProviders`：provider 列表的 query，整个 tab 内缓存；登录页与侧栏共用 |
 | `session.tsx` | `SessionProvider`（会话查询 + 订阅 `onUnauthorized`）、`useSession` 提供 `signOut` 与 `signOutOfGitHub`（先退出，再在新标签页打开 GitHub 注销页，当前页留在 Ora）、`Session` 类型、`SESSION_QUERY_KEY` |
-| `require-session.tsx` | `RequireSession`：加载中不渲染；未登录跳 `loginPath(当前地址)`；账号停用与后端不可达就地提示 |
+| `require-session.tsx` | `RequireSession`：加载中不渲染；未登录跳登录页，私有加入链接先存当前标签、网关只接收无令牌的返回路径；账号停用与后端不可达就地提示 |
 | `login-page.tsx` | 只有一个 provider 且是外部 provider 时（生产形态，如 `huawei-idaas`）自动发起一次登录，失败后只显示重试；否则 Gateway 提供几种登录方式就显示几个按钮，存在 GitHub 登录时再加一条"先退出 GitHub"链接（否则 GitHub 会复用浏览器当前账号）；账号已停用时就地提示，不再发起登录："使用 GitHub 登录"，以及本地 Gateway 开启 `login.development_provider` 时的"开发者登录"（Gateway 自己的表单，输入任意身份即可登录）；`?returnTo=` 经 `safeReturnTo` 收窄；已登录直接跳转 |
 | `auth.test.tsx` | 上述全部行为的测试 |
 
@@ -34,6 +34,7 @@
 
 - `SessionProvider` 在应用里只挂载一次，位于 router 之外、QueryClient 之内。
 - `fetchSessionUser` 只把 401 当作"未登录"、只把 403 当作"已停用"；网络错误或 5xx 是 `unavailable`，`RequireSession` 不会把它误判为未登录而丢掉 `returnTo`。
+- 私有邀请和申请链接里的令牌不写入 Gateway 的 `returnTo`；外部登录往返只保存 `/join/continue`，原链接暂存在当前浏览器标签。
 - 自动登录每次挂载最多发起一次：失败后显示显式重试，绝不形成跳转循环。
 - `signOut` 先调 Gateway 再清缓存：会话置空，其余查询全部移除，避免下一个登录者看到上一个人的数据。
 - Ora 无法结束 github.com 的会话：Gateway 从不持有 GitHub token（读完资料立刻丢弃），所以"退出 GitHub"只能打开 GitHub 自己的注销页，且总是先吊销 Ora 会话，并在新标签页打开，让成员在当前页直接回到登录界面。该 URL 是公网 github.com；GitHub Enterprise Server 部署需要把它做成可配置。
