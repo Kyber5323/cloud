@@ -165,18 +165,20 @@ func TestProjectDeleteClosesEveryWorkspaceAndWaitsForCleanup(t *testing.T) {
 	wid := side.O("resource").S("id")
 	n := f.node(wid)
 	ticket := uuid.NewString()
-	f.internal("/internal/v1/admissions", core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "ticketId": ticket, "kind": "task", "epoch": f.controller.Epoch}, 200)
+	f.internal("/internal/v1/admissions", core.Object{"tenantId": f.tid, "workspaceId": wid, "action": "execute", "ticketId": ticket, "kind": "task", "epoch": f.controller.Epoch, "sessionId": f.controlSession(wid)}, 200)
 	project := f.call("GET", f.path("/projects/"+pid), nil, "", 200)
 	f.call("DELETE", f.path("/projects/"+pid), core.Object{"version": project.N("version")}, "busy-delete", 409)
 	if !f.ws(main).B("admissionOpen") || !f.ws(wid).B("admissionOpen") {
 		t.Fatal("busy cascade partially closed admission")
 	}
 	f.finishTicket(ticket, n)
+	f.releaseRuntimeControl(wid)
 	deleting := f.call("DELETE", f.path("/projects/"+pid), core.Object{"version": project.N("version")}, "delete", 202)
 	for _, id := range []string{main, wid} {
 		f.internal("/internal/v1/admissions", core.Object{"tenantId": f.tid, "workspaceId": id, "action": "execute", "ticketId": uuid.NewString(), "kind": "task", "epoch": f.controller.Epoch}, 409)
 	}
 	f.substrate.SetFault("workspace_data_delete", "fail")
+	f.acknowledgeSimulatorBindings()
 	if err := f.controller.Drain(context.Background()); err == nil {
 		t.Fatal("expected data deletion failure")
 	}

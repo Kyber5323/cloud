@@ -90,10 +90,16 @@ func Document() map[string]any {
 	s["JoinRequest"] = object(obj{"id": uuid(), "tenantId": uuid(), "userId": uuid(), "linkId": uuid(), "status": enumeration("pending", "approved", "rejected"), "createdAt": timestamp(), "decidedAt": optional(timestamp()), "decidedBy": optional(uuid()), "version": number(), "name": str(), "displayName": str()}, "id", "tenantId", "userId", "linkId", "status", "createdAt", "version")
 	s["SpaceEvent"] = object(obj{"type": enumeration("space.updated", "space.member_updated", "project.created", "project.updated", "project.archived", "space.plugins_updated", "plugins.catalog_updated"), "spaceId": uuid(), "projectId": optional(uuid()), "version": number()}, "type", "spaceId")
 	s["Project"] = resource("id tenantId ownerUserId spaceId name repositoryUrl defaultBranch credentialRefId lifecycle version createdAt deletedAt", "credentialRefId deletedAt")
-	s["Workspace"] = resource("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version admissionOpen admissionEpoch createdAt deletedAt requestedRef baseCommitId", "deletedAt baseCommitId")
+	properties(s, "Project")["repositoryCredentialRefId"] = optional(uuid())
+	s["Workspace"] = resource("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version admissionOpen admissionEpoch createdAt deletedAt requestedRef baseCommitId creatorUserId creatorOperationId creatorEvidence", "deletedAt baseCommitId creatorUserId creatorOperationId")
 	// branchName is the retired linked-worktree branch; only Workspaces created before the Node
 	// clone flow have one.
-	s["WorkspaceListItem"] = resource("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version admissionOpen admissionEpoch createdAt deletedAt requestedRef baseCommitId branchName title", "deletedAt baseCommitId branchName title")
+	s["WorkspaceListItem"] = object(fields("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version createdAt deletedAt creatorUserId creatorOperationId creatorEvidence canUse requestedRef baseCommitId branchName title admissionOpen admissionEpoch"), strings.Fields("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version createdAt deletedAt creatorUserId creatorEvidence canUse")...)
+	for _, key := range []string{"deletedAt", "creatorUserId", "creatorOperationId", "branchName", "title"} {
+		properties(s, "WorkspaceListItem")[key] = optional(asObject(properties(s, "WorkspaceListItem")[key]))
+	}
+	properties(s, "WorkspaceListItem")["canUse"] = boolean()
+
 	s["Comment"] = resource("id tenantId issueId authorUserId authorType authorId parentId body seq version createdAt updatedAt deletedAt", "authorUserId authorId parentId deletedAt")
 	commentProps := properties(s, "Comment")
 	commentProps["seq"] = number()
@@ -174,6 +180,10 @@ func Document() map[string]any {
 	s["PluginCatalog"] = object(obj{"items": array(ref("PluginCatalogEntry")), "syncedAt": optional(timestamp())}, "items")
 	s["SpacePlugin"] = resource("id spaceId tenantId sourceNamespace identifier desiredState desiredVersion observedState observedVersion installError version createdAt updatedAt", "observedVersion installError")
 	spacePluginProps := properties(s, "SpacePlugin")
+	for _, key := range []string{"affectedCount", "completedCount", "waitingStartCount", "waitingControlCount", "unavailableCount", "failedCount", "desiredRevision"} {
+		spacePluginProps[key] = number()
+	}
+	spacePluginProps["requestedByUserId"] = optional(uuid())
 	spacePluginProps["desiredState"] = enumeration("installed", "removed")
 	spacePluginProps["observedState"] = enumeration("pending", "installing", "installed", "failed", "removing", "removed")
 	spacePluginProps["observedVersion"] = optional(str())
@@ -182,8 +192,8 @@ func Document() map[string]any {
 	s["PluginUniversalRelease"] = object(obj{"url": str(), "sha256": str()}, "url", "sha256")
 	s["PluginReleaseTarget"] = object(obj{"target": str(), "url": str(), "sha256": str()}, "target", "url", "sha256")
 	s["PluginLogoCandidate"] = object(obj{"role": enumeration("universal", "light", "dark"), "extension": enumeration("svg", "png", "webp", "jpg", "jpeg")}, "role", "extension")
-	s["OperationRequest"] = object(obj{"previous": obj{"type": "object", "additionalProperties": ref("Workspace")}, "pluginId": str(), "version": str()})
-	s["OperationResult"] = object(obj{"resourceId": uuid()})
+	s["OperationRequest"] = object(obj{"previous": obj{"type": "object", "additionalProperties": ref("Workspace")}, "pluginId": str(), "version": str(), "desiredRevision": number(), "release": ref("PluginCatalogEntry")})
+	s["OperationResult"] = object(obj{"resourceId": uuid(), "forceStopId": uuid()})
 	s["Operation"] = resource("id tenantId actorUserId projectId workspaceId kind state step request result errorCode idempotencyKey requestHash controllerEpoch retryAt version createdAt updatedAt", "workspaceId errorCode controllerEpoch retryAt")
 	opProps := properties(s, "Operation")
 	opProps["request"] = ref("OperationRequest")
@@ -197,6 +207,8 @@ func Document() map[string]any {
 		p["desiredState"] = enumeration("running", "stopped", "deleted")
 		p["observedState"] = enumeration("provisioning", "starting", "ready", "stopping", "stopped", "unavailable", "deleting", "deleted")
 	}
+	s["RuntimeForceStop"] = object(obj{"id": uuid(), "tenantId": uuid(), "workspaceId": uuid(), "actorUserId": uuid(), "reason": str(), "state": enumeration("registered", "terminating", "succeeded"), "controlEpoch": number(), "runtimeGeneration": number(), "version": number(), "controllerEpoch": optional(number()), "createdAt": timestamp(), "confirmedAt": optional(timestamp())}, "id", "tenantId", "workspaceId", "actorUserId", "reason", "state", "controlEpoch", "runtimeGeneration", "version", "createdAt")
+	s["RuntimeControl"] = object(obj{"workspaceId": uuid(), "state": enumeration("idle", "acquiring", "held", "draining", "reconciling", "maintenance"), "controlEpoch": number(), "holderUserId": optional(uuid()), "expiresAt": optional(timestamp()), "version": number(), "sessionId": optional(uuid())}, "workspaceId", "state", "controlEpoch", "holderUserId", "expiresAt", "version")
 	s["Lease"] = resource("name holderId epoch expiresAt", "")
 	properties(s, "Lease")["holderId"] = str()
 	properties(s, "Lease")["epoch"] = number()
@@ -205,25 +217,30 @@ func Document() map[string]any {
 	s["Node"] = resource("id sandboxInstanceId serviceSubject connectionState protocolVersion initialized lastSeenAt endedAt idleAdmissionEpoch version workspaceId nodeId nodeIncarnationId", "endedAt idleAdmissionEpoch nodeId nodeIncarnationId")
 	properties(s, "Node")["nodeId"] = optional(str())
 	properties(s, "Node")["nodeIncarnationId"] = optional(str())
-	s["Ticket"] = resource("id tenantId workspaceId nodeInstanceId actorUserId admissionEpoch kind state createdAt finishedAt version", "finishedAt")
+	s["Ticket"] = resource("id tenantId workspaceId nodeInstanceId actorUserId admissionEpoch kind state createdAt finishedAt version controlSessionId controlEpoch terminatedByForceStopId", "finishedAt controlSessionId controlEpoch terminatedByForceStopId")
+	properties(s, "Ticket")["controlEpoch"] = optional(number())
 	// storage_ensure, worktree_ensure, worktree_delete and storage_delete are retired kinds that only
 	// historical effects carry.
 	s["EffectRequest"] = object(obj{"kind": enumeration("storage_ensure", "worktree_ensure", "sandbox_ensure", "sandbox_terminate", "worktree_delete", "storage_delete", "workspace_data_delete", "plugin_ensure", "plugin_delete"), "projectId": uuid(), "workspaceId": uuid(), "repositoryUrl": str(), "requestedRef": str(), "sandboxInstanceId": uuid(), "pluginId": str(), "version": str(), "universal": ref("PluginUniversalRelease"), "targets": array(ref("PluginReleaseTarget"))}, "kind", "projectId")
-	s["EffectResult"] = object(obj{"layoutVersion": number(), "commitId": obj{"type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"}, "jobTerminated": boolean(), "removed": boolean(), "terminated": boolean(), "installed": boolean(), "sandboxInstanceId": uuid(), "nodeId": str(), "version": str(), "error": str(), "diagnostic": str()})
+	s["EffectResult"] = object(obj{"layoutVersion": number(), "commitId": obj{"type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"}, "jobTerminated": boolean(), "removed": boolean(), "terminated": boolean(), "lateEnsureFenced": boolean(), "installed": boolean(), "sandboxInstanceId": uuid(), "nodeId": str(), "version": str(), "error": str(), "diagnostic": str()})
 	s["Effect"] = resource("id operationId projectId workspaceId kind state externalId request result reconciledEpoch createdAt version", "workspaceId externalId")
 	ep := properties(s, "Effect")
 	ep["externalId"] = optional(str())
 	ep["request"] = ref("EffectRequest")
 	ep["result"] = ref("EffectResult")
 	s["ControllerProject"] = resource("id tenantId ownerUserId spaceId name repositoryUrl defaultBranch credentialRefId lifecycle version createdAt deletedAt secretRef", "credentialRefId deletedAt secretRef")
-	s["ControllerWorkspace"] = resource("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version admissionOpen admissionEpoch createdAt deletedAt requestedRef baseCommitId", "deletedAt baseCommitId")
+	properties(s, "ControllerProject")["repositoryCredentialRefId"] = optional(uuid())
+	s["ControllerWorkspace"] = resource("id tenantId ownerUserId projectId kind desiredState observedState runtimeGeneration version admissionOpen admissionEpoch createdAt deletedAt requestedRef baseCommitId creatorUserId creatorOperationId creatorEvidence", "deletedAt baseCommitId creatorUserId creatorOperationId")
 	for _, name := range []string{"Workspace", "WorkspaceListItem", "ControllerWorkspace"} {
 		properties(s, name)["baseCommitId"] = optional(obj{"type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"})
 	}
 	// A Workspace operation's clone executions, registered through the gRPC ExecutionService.
-	s["CloneExecution"] = resource("executionId operationId workspaceId cloneRequestId nodeId input result dispatchedEpoch createdAt updatedAt", "workspaceId cloneRequestId result")
+	s["CloneExecution"] = resource("executionId operationId workspaceId cloneRequestId nodeId input result dispatchedEpoch createdAt updatedAt nodeOperationId terminatedByForceStopId", "workspaceId cloneRequestId result terminatedByForceStopId")
 	ce := properties(s, "CloneExecution")
+	ce["credentialRefId"] = optional(uuid())
+	ce["credentialRefVersion"] = optional(number())
 	ce["nodeId"] = str()
+	ce["nodeOperationId"] = str()
 	ce["executionId"] = str()
 	ce["input"] = obj{"type": "object", "additionalProperties": true}
 	ce["result"] = optional(obj{"type": "object", "additionalProperties": true})
@@ -538,6 +555,9 @@ func responseSchema(r router.Route) (schema obj, status string) {
 	case r.Path == "/api/v1/tenants" && r.Method == "POST":
 		return ref("TenantCreated"), "201"
 	}
+	if strings.Contains(r.Path, "/workspaces/") && (strings.HasSuffix(r.Path, "/control") || strings.Contains(r.Path, "/control/")) {
+		return ref("RuntimeControl"), "200"
+	}
 	name := "Project"
 	switch {
 	case r.Path == "/api/v1/me":
@@ -553,6 +573,11 @@ func responseSchema(r router.Route) (schema obj, status string) {
 		name = "Operation"
 	case strings.HasSuffix(r.Path, "/resource-status"):
 		name = "AdminResource"
+	case strings.HasSuffix(r.Path, "/force-stop"):
+		if r.Method == "GET" {
+			return object(obj{"forceStop": optional(ref("RuntimeForceStop"))}, "forceStop"), "200"
+		}
+		return object(obj{"resource": ref("AdminResource"), "forceStop": ref("RuntimeForceStop")}, "resource", "forceStop"), "202"
 	case strings.HasSuffix(r.Path, "/administrative-stop"):
 		name = "AdminResource"
 	case strings.Contains(r.Path, "/workspaces"):
@@ -605,7 +630,7 @@ func optionalField(name string, r router.Route) bool {
 		// Confirm must state what it is confirming; assist may be asked with a still-empty form.
 		return strings.HasSuffix(r.Path, "/assist")
 	}
-	return name == "credentialRefId" || name == "role" && strings.HasSuffix(r.Path, "/members/huawei") || name == "version" && r.Method == "PUT" || name == "epoch" && r.Action == "access" || name == "workspaceId" && r.Action == "plan" || name == "externalId" && r.Action == "effect_result"
+	return name == "version" && r.Method == "POST" && strings.HasSuffix(r.Path, "/plugins") || name == "credentialRefId" || name == "role" && strings.HasSuffix(r.Path, "/members/huawei") || name == "version" && r.Method == "PUT" || name == "epoch" && r.Action == "access" || name == "workspaceId" && r.Action == "plan" || name == "externalId" && r.Action == "effect_result"
 }
 
 func inputSchema(name string, r router.Route) obj {
@@ -616,7 +641,7 @@ func inputSchema(name string, r router.Route) obj {
 		return obj{"type": "integer", "minimum": 1, "maximum": 3600}
 	case "protocolVersion":
 		return obj{"type": "integer", "enum": []int{1}}
-	case "initialized", "idle":
+	case "initialized", "idle", "impactConfirmed":
 		return boolean()
 	case "result":
 		return ref("EffectResult")
@@ -700,7 +725,7 @@ func description(r router.Route) string {
 	case "/api/v1/tenants/:tid/members/huawei":
 		return "Tenant administrators add a selected Huawei person by stable globalUserId. Cloud searches Tianzhou again and verifies current employment before creating or reactivating membership."
 	}
-	base := "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. "
+	base := "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. "
 	if r.Action != "" {
 		base = "Controller requests require an independent controller service credential; holder, active database-time lease epoch and operation version are checked. "
 	}
@@ -738,7 +763,7 @@ func description(r router.Route) string {
 		base = "Public requests require a gateway service credential plus a caller-bound user credential. The verified identity authorizes self-service provisioning without prior membership. Atomically creates a tenant and its sole visible collaboration space with the same name and the given globally unique, immutable slug; the caller becomes its first administrator. The idempotency key is matched per user across tenants and recorded under the new tenant. "
 	}
 	if strings.Contains(r.Path, "/clones") {
-		base += "Clone requests are independent accepted work items outside the project/workspace operation model: Cloud accepts them in its own transaction, a Controller claims and dispatches them over the internal control contract, and only the submitting user can read them. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. "
+		base += "Unscoped clone submission is retired in production and returns 410 runtime_scope_required; existing requests remain readable by their original submitter. An explicit development store can exercise the legacy coordination fixture without enabling a production bypass. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. "
 	}
 	if strings.Contains(r.Path, "members") && !strings.Contains(r.Path, "/spaces") {
 		if r.Method == "GET" {

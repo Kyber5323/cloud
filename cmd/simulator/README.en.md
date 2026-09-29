@@ -25,3 +25,5 @@
 - **Real boundaries preserved**: Uses real HTTP framing, real PostgreSQL schema constraints, and real local Git CLI operations; it does not bypass the domain state machine.
 
 See [cmd overview](../README.en.md), [Simulator internals](../../internal/simulator/README.en.md), and [Execution contract](../../docs/execution-contract.md).
+
+The in-process simulator explicitly uses the development-only retired clone fixture. Its plugin selection remains durable pending because no real plugin executor is available. It is not evidence of runtime control, management authentication or workload isolation; use cluster Compose and the real acceptance script.

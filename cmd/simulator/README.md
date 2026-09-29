@@ -25,3 +25,5 @@
 - **保留真实边界**：使用真实的 HTTP 协议封装、PostgreSQL Schema 约束和本地 Git CLI 操作，不绕过领域状态机。
 
 参见 [cmd 入口总览](../README.md)、[模拟器内部实现](../../internal/simulator/README.md) 与 [执行契约与边界](../../docs/execution-contract.md)。
+
+进程内模拟器显式使用仅供开发的旧 clone 测试夹具；插件选择因缺少真实执行器保留持久 pending（待执行）。它不证明运行时独占、管理认证或工作负载隔离；这些保障须通过 cluster Compose 和真实验收脚本验证。

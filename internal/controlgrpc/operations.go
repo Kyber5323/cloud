@@ -252,7 +252,7 @@ func evidenceObject(ev *controlpb.EffectEvidence) (core.Object, bool) {
 	case *controlpb.EffectEvidence_SandboxEnsured:
 		return core.Object{"sandboxInstanceId": v.SandboxEnsured.GetSandboxInstanceId(), "nodeId": v.SandboxEnsured.GetNodeId()}, true
 	case *controlpb.EffectEvidence_SandboxTerminated:
-		return core.Object{"terminated": true}, true
+		return core.Object{"terminated": true, "lateEnsureFenced": v.SandboxTerminated.GetLateEnsureFenced()}, true
 	case *controlpb.EffectEvidence_WorkspaceDataDeleted:
 		return core.Object{"removed": true}, true
 	case *controlpb.EffectEvidence_PluginInstalled:
@@ -269,7 +269,7 @@ func evidence(kind controlpb.EffectKind, r core.Object) *controlpb.EffectEvidenc
 	case controlpb.EffectKind_EFFECT_KIND_SANDBOX_ENSURE:
 		return &controlpb.EffectEvidence{Evidence: &controlpb.EffectEvidence_SandboxEnsured{SandboxEnsured: &controlpb.SandboxEnsured{SandboxInstanceId: r.S("sandboxInstanceId"), NodeId: r.S("nodeId")}}}
 	case controlpb.EffectKind_EFFECT_KIND_SANDBOX_TERMINATE:
-		return &controlpb.EffectEvidence{Evidence: &controlpb.EffectEvidence_SandboxTerminated{SandboxTerminated: &controlpb.SandboxTerminated{}}}
+		return &controlpb.EffectEvidence{Evidence: &controlpb.EffectEvidence_SandboxTerminated{SandboxTerminated: &controlpb.SandboxTerminated{LateEnsureFenced: r.B("lateEnsureFenced")}}}
 	case controlpb.EffectKind_EFFECT_KIND_WORKSPACE_DATA_DELETE:
 		return &controlpb.EffectEvidence{Evidence: &controlpb.EffectEvidence_WorkspaceDataDeleted{WorkspaceDataDeleted: &controlpb.WorkspaceDataDeleted{}}}
 	case controlpb.EffectKind_EFFECT_KIND_PLUGIN_ENSURE:

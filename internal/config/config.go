@@ -57,11 +57,14 @@ type DirectoryConfig struct {
 	AppKeyFile  string `mapstructure:"app_key_file"`
 }
 
-// ControlConfig binds the Controller-facing gRPC listener. Until the authentication ADR adds TLS,
-// the address must stay on a loopback or private network; the contract carries bearer credentials
-// only.
+// ControlConfig binds the mutually authenticated Controller-facing gRPC listener.
+// Deployment files and the verified Controller identity remain separate from user credentials.
 type ControlConfig struct {
-	GRPCAddr string `mapstructure:"grpc_addr"`
+	GRPCAddr           string `mapstructure:"grpc_addr"`
+	CertificateFile    string `mapstructure:"certificate_file"`
+	PrivateKeyFile     string `mapstructure:"private_key_file"`
+	ClientCAFile       string `mapstructure:"client_ca_file"`
+	ControllerIdentity string `mapstructure:"controller_identity"`
 }
 
 // AuthConfig contains only internal verification keys, never an external login SDK.

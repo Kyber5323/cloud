@@ -56,7 +56,7 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
 };
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Active tenant members may inspect project operations; administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Active tenant members may inspect project operations; administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary GET /api/v1/tenants/:tid/operations/:oid
  */
 export const getApiV1TenantsTidOperationsOid = (
@@ -156,7 +156,7 @@ export function useGetApiV1TenantsTidOperationsOid<TData = Awaited<ReturnType<ty
 
 
 /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Active tenant members may inspect project operations; administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Active tenant members may inspect project operations; administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/operations/:oid/retry
  */
 export const postApiV1TenantsTidOperationsOidRetry = (

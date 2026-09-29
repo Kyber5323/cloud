@@ -36,6 +36,7 @@ func nodeReport(t *transaction, r *ControlRequest) Object {
 	default:
 		reject(404, "not_found")
 	}
+	refreshRuntimeControls(t)
 	return t.one("SELECT * FROM node_instances WHERE id=$1", id)
 }
 
@@ -57,6 +58,9 @@ func registerReportedNode(t *transaction, r *ControlRequest) Object {
 	require(w.S("desiredState") == "running", 409, "execution_closed")
 	ensuredNode(t, sid, nodeID)
 	require(t.one("SELECT id FROM node_instances WHERE sandbox_instance_id=$1 AND ended_at IS NULL", sid) == nil, 409, "node_already_registered")
+	if t.one("SELECT id FROM node_instances WHERE sandbox_instance_id=$1", sid) != nil {
+		t.exec("UPDATE runtime_controls SET control_epoch=control_epoch+1,binding_confirmed=false,bound_sandbox_id=NULL,version=version+1 WHERE workspace_id=$1 AND state='maintenance'", w.S("id"))
+	}
 	// The handshake is complete when the Controller reports: a desktop Node finishes its own
 	// recovery before it accepts a session, so the incarnation is initialized from the start.
 	id := newID()

@@ -112,7 +112,14 @@ func run() (runErr error) {
 	if e != nil {
 		return e
 	}
-	grpcServer := controlgrpc.New(store)
+	managementTLS, e := cfg.Control.TLS()
+	if e != nil {
+		return e
+	}
+	grpcServer, e := controlgrpc.NewSecure(store, managementTLS, cfg.Control.ControllerIdentity)
+	if e != nil {
+		return e
+	}
 	failed := make(chan error, 2)
 	go func() {
 		log.Info("Cloud listening", zap.String("address", server.Addr))

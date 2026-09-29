@@ -198,6 +198,16 @@
             "format": "date-time",
             "type": "string"
           },
+          "credentialRefId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "credentialRefVersion": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
           "dispatchedEpoch": {
             "format": "int64",
             "type": "integer"
@@ -212,6 +222,9 @@
           "nodeId": {
             "type": "string"
           },
+          "nodeOperationId": {
+            "type": "string"
+          },
           "operationId": {
             "format": "uuid",
             "type": "string"
@@ -220,6 +233,11 @@
             "additionalProperties": true,
             "nullable": true,
             "type": "object"
+          },
+          "terminatedByForceStopId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
           },
           "updatedAt": {
             "format": "date-time",
@@ -241,7 +259,9 @@
           "result",
           "dispatchedEpoch",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "nodeOperationId",
+          "terminatedByForceStopId"
         ],
         "type": "object"
       },
@@ -547,6 +567,11 @@
             "format": "uuid",
             "type": "string"
           },
+          "repositoryCredentialRefId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
           "repositoryUrl": {
             "type": "string"
           },
@@ -601,6 +626,19 @@
           },
           "createdAt": {
             "format": "date-time",
+            "type": "string"
+          },
+          "creatorEvidence": {
+            "type": "string"
+          },
+          "creatorOperationId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "creatorUserId": {
+            "format": "uuid",
+            "nullable": true,
             "type": "string"
           },
           "deletedAt": {
@@ -660,7 +698,10 @@
           "createdAt",
           "deletedAt",
           "requestedRef",
-          "baseCommitId"
+          "baseCommitId",
+          "creatorUserId",
+          "creatorOperationId",
+          "creatorEvidence"
         ],
         "type": "object"
       },
@@ -827,6 +868,9 @@
             "type": "boolean"
           },
           "jobTerminated": {
+            "type": "boolean"
+          },
+          "lateEnsureFenced": {
             "type": "boolean"
           },
           "layoutVersion": {
@@ -2111,6 +2155,10 @@
       "OperationRequest": {
         "additionalProperties": false,
         "properties": {
+          "desiredRevision": {
+            "format": "int64",
+            "type": "integer"
+          },
           "pluginId": {
             "type": "string"
           },
@@ -2119,6 +2167,9 @@
               "$ref": "#/components/schemas/Workspace"
             },
             "type": "object"
+          },
+          "release": {
+            "$ref": "#/components/schemas/PluginCatalogEntry"
           },
           "version": {
             "type": "string"
@@ -2129,6 +2180,10 @@
       "OperationResult": {
         "additionalProperties": false,
         "properties": {
+          "forceStopId": {
+            "format": "uuid",
+            "type": "string"
+          },
           "resourceId": {
             "format": "uuid",
             "type": "string"
@@ -2389,6 +2444,11 @@
             "format": "uuid",
             "type": "string"
           },
+          "repositoryCredentialRefId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
           "repositoryUrl": {
             "type": "string"
           },
@@ -2418,6 +2478,129 @@
           "version",
           "createdAt",
           "deletedAt"
+        ],
+        "type": "object"
+      },
+      "RuntimeControl": {
+        "additionalProperties": false,
+        "properties": {
+          "controlEpoch": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "holderUserId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "sessionId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "idle",
+              "acquiring",
+              "held",
+              "draining",
+              "reconciling",
+              "maintenance"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "workspaceId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "state",
+          "controlEpoch",
+          "holderUserId",
+          "expiresAt",
+          "version"
+        ],
+        "type": "object"
+      },
+      "RuntimeForceStop": {
+        "additionalProperties": false,
+        "properties": {
+          "actorUserId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "confirmedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "controlEpoch": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "controllerEpoch": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "runtimeGeneration": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "registered",
+              "terminating",
+              "succeeded"
+            ],
+            "type": "string"
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "workspaceId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "workspaceId",
+          "actorUserId",
+          "reason",
+          "state",
+          "controlEpoch",
+          "runtimeGeneration",
+          "version",
+          "createdAt"
         ],
         "type": "object"
       },
@@ -2672,9 +2855,21 @@
       "SpacePlugin": {
         "additionalProperties": false,
         "properties": {
+          "affectedCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "completedCount": {
+            "format": "int64",
+            "type": "integer"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "desiredRevision": {
+            "format": "int64",
+            "type": "integer"
           },
           "desiredState": {
             "enum": [
@@ -2685,6 +2880,10 @@
           },
           "desiredVersion": {
             "type": "string"
+          },
+          "failedCount": {
+            "format": "int64",
+            "type": "integer"
           },
           "id": {
             "format": "uuid",
@@ -2712,6 +2911,11 @@
             "nullable": true,
             "type": "string"
           },
+          "requestedByUserId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
           "sourceNamespace": {
             "type": "string"
           },
@@ -2723,11 +2927,23 @@
             "format": "uuid",
             "type": "string"
           },
+          "unavailableCount": {
+            "format": "int64",
+            "type": "integer"
+          },
           "updatedAt": {
             "format": "date-time",
             "type": "string"
           },
           "version": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "waitingControlCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "waitingStartCount": {
             "format": "int64",
             "type": "integer"
           }
@@ -2816,6 +3032,16 @@
             "format": "int64",
             "type": "integer"
           },
+          "controlEpoch": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "controlSessionId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -2843,6 +3069,11 @@
             "format": "uuid",
             "type": "string"
           },
+          "terminatedByForceStopId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
           "version": {
             "format": "int64",
             "type": "integer"
@@ -2863,7 +3094,10 @@
           "state",
           "createdAt",
           "finishedAt",
-          "version"
+          "version",
+          "controlSessionId",
+          "controlEpoch",
+          "terminatedByForceStopId"
         ],
         "type": "object"
       },
@@ -2998,6 +3232,19 @@
             "format": "date-time",
             "type": "string"
           },
+          "creatorEvidence": {
+            "type": "string"
+          },
+          "creatorOperationId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "creatorUserId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
           "deletedAt": {
             "format": "date-time",
             "nullable": true,
@@ -3074,7 +3321,10 @@
           "createdAt",
           "deletedAt",
           "requestedRef",
-          "baseCommitId"
+          "baseCommitId",
+          "creatorUserId",
+          "creatorOperationId",
+          "creatorEvidence"
         ],
         "type": "object"
       },
@@ -3097,8 +3347,24 @@
             "nullable": true,
             "type": "string"
           },
+          "canUse": {
+            "type": "boolean"
+          },
           "createdAt": {
             "format": "date-time",
+            "type": "string"
+          },
+          "creatorEvidence": {
+            "type": "string"
+          },
+          "creatorOperationId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "creatorUserId": {
+            "format": "uuid",
+            "nullable": true,
             "type": "string"
           },
           "deletedAt": {
@@ -3176,14 +3442,11 @@
           "observedState",
           "runtimeGeneration",
           "version",
-          "admissionOpen",
-          "admissionEpoch",
           "createdAt",
           "deletedAt",
-          "requestedRef",
-          "baseCommitId",
-          "branchName",
-          "title"
+          "creatorUserId",
+          "creatorEvidence",
+          "canUse"
         ],
         "type": "object"
       }
@@ -3492,7 +3755,7 @@
     },
     "/api/v1/me": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_me",
         "responses": {
           "200": {
@@ -3890,7 +4153,7 @@
     },
     "/api/v1/me/tenants": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists page in ascending creation order; the after cursor is an exclusive tenant UUID.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists page in ascending creation order; the after cursor is an exclusive tenant UUID.",
         "operationId": "get_api_v1_me_tenants",
         "parameters": [
           {
@@ -4181,7 +4444,7 @@
     },
     "/api/v1/tenants/{tid}/clones": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Clone requests are independent accepted work items outside the project/workspace operation model: Cloud accepts them in its own transaction, a Controller claims and dispatches them over the internal control contract, and only the submitting user can read them. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Unscoped clone submission is retired in production and returns 410 runtime_scope_required; existing requests remain readable by their original submitter. An explicit development store can exercise the legacy coordination fixture without enabling a production bypass. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_clones",
         "parameters": [
           {
@@ -4333,7 +4596,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Clone requests are independent accepted work items outside the project/workspace operation model: Cloud accepts them in its own transaction, a Controller claims and dispatches them over the internal control contract, and only the submitting user can read them. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Unscoped clone submission is retired in production and returns 410 runtime_scope_required; existing requests remain readable by their original submitter. An explicit development store can exercise the legacy coordination fixture without enabling a production bypass. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_clones",
         "parameters": [
           {
@@ -4490,7 +4753,7 @@
     },
     "/api/v1/tenants/{tid}/clones/{cloneId}": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Clone requests are independent accepted work items outside the project/workspace operation model: Cloud accepts them in its own transaction, a Controller claims and dispatches them over the internal control contract, and only the submitting user can read them. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Unscoped clone submission is retired in production and returns 410 runtime_scope_required; existing requests remain readable by their original submitter. An explicit development store can exercise the legacy coordination fixture without enabling a production bypass. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_clones_cloneId",
         "parameters": [
           {
@@ -4618,7 +4881,7 @@
     },
     "/api/v1/tenants/{tid}/collaboration/forms/{formRef}": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_collaboration_forms_formRef",
         "parameters": [
           {
@@ -4748,7 +5011,7 @@
     },
     "/api/v1/tenants/{tid}/collaboration/targets": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_collaboration_targets",
         "parameters": [
           {
@@ -4883,7 +5146,7 @@
     },
     "/api/v1/tenants/{tid}/invitations": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_invitations",
         "parameters": [
           {
@@ -5035,7 +5298,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_invitations",
         "parameters": [
           {
@@ -5184,7 +5447,7 @@
     },
     "/api/v1/tenants/{tid}/invitations/{iid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_invitations_iid",
         "parameters": [
           {
@@ -5344,7 +5607,7 @@
     },
     "/api/v1/tenants/{tid}/issue-groups": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issue-groups",
         "parameters": [
           {
@@ -5491,7 +5754,7 @@
     },
     "/api/v1/tenants/{tid}/issue-statuses": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issue-statuses",
         "parameters": [
           {
@@ -5643,7 +5906,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issue-statuses",
         "parameters": [
           {
@@ -5823,7 +6086,7 @@
     },
     "/api/v1/tenants/{tid}/issue-statuses/{sid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_issue-statuses_sid",
         "parameters": [
           {
@@ -5981,7 +6244,7 @@
         ]
       },
       "put": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "put_api_v1_tenants_tid_issue-statuses_sid",
         "parameters": [
           {
@@ -6155,7 +6418,7 @@
     },
     "/api/v1/tenants/{tid}/issue-views": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issue-views",
         "parameters": [
           {
@@ -6307,7 +6570,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issue-views",
         "parameters": [
           {
@@ -6469,7 +6732,7 @@
     },
     "/api/v1/tenants/{tid}/issue-views/{vid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_issue-views_vid",
         "parameters": [
           {
@@ -6627,7 +6890,7 @@
         ]
       },
       "put": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "put_api_v1_tenants_tid_issue-views_vid",
         "parameters": [
           {
@@ -6783,7 +7046,7 @@
     },
     "/api/v1/tenants/{tid}/issues": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues",
         "parameters": [
           {
@@ -6916,7 +7179,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues",
         "parameters": [
           {
@@ -7117,7 +7380,7 @@
     },
     "/api/v1/tenants/{tid}/issues/batch": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_batch",
         "parameters": [
           {
@@ -7303,7 +7566,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_issues_iid",
         "parameters": [
           {
@@ -7461,7 +7724,7 @@
         ]
       },
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid",
         "parameters": [
           {
@@ -7587,7 +7850,7 @@
         ]
       },
       "put": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "put_api_v1_tenants_tid_issues_iid",
         "parameters": [
           {
@@ -7779,7 +8042,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/collaboration/assist": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_iid_collaboration_assist",
         "parameters": [
           {
@@ -7942,7 +8205,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/comments": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid_comments",
         "parameters": [
           {
@@ -8103,7 +8366,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_iid_comments",
         "parameters": [
           {
@@ -8303,7 +8566,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/comments/{cid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_issues_iid_comments_cid",
         "parameters": [
           {
@@ -8470,7 +8733,7 @@
         ]
       },
       "put": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "put_api_v1_tenants_tid_issues_iid_comments_cid",
         "parameters": [
           {
@@ -8631,7 +8894,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/context-refs": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid_context-refs",
         "parameters": [
           {
@@ -8773,7 +9036,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_iid_context-refs",
         "parameters": [
           {
@@ -8954,7 +9217,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/context-refs/{crid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_issues_iid_context-refs_crid",
         "parameters": [
           {
@@ -9114,7 +9377,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/interactions": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid_interactions",
         "parameters": [
           {
@@ -9258,7 +9521,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/interactions/{ixid}/confirm": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_iid_interactions_ixid_confirm",
         "parameters": [
           {
@@ -9441,7 +9704,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/labels": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid_labels",
         "parameters": [
           {
@@ -9602,7 +9865,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_iid_labels",
         "parameters": [
           {
@@ -9770,7 +10033,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/labels/{lid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_issues_iid_labels_lid",
         "parameters": [
           {
@@ -9930,7 +10193,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/move": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_iid_move",
         "parameters": [
           {
@@ -10100,7 +10363,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/runs": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid_runs",
         "parameters": [
           {
@@ -10242,7 +10505,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_iid_runs",
         "parameters": [
           {
@@ -10423,7 +10686,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/runs/{rid}": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid_runs_rid",
         "parameters": [
           {
@@ -10560,7 +10823,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/subscribers": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_issues_iid_subscribers",
         "parameters": [
           {
@@ -10726,7 +10989,7 @@
         ]
       },
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid_subscribers",
         "parameters": [
           {
@@ -10887,7 +11150,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_issues_iid_subscribers",
         "parameters": [
           {
@@ -11055,7 +11318,7 @@
     },
     "/api/v1/tenants/{tid}/issues/{iid}/timeline": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_issues_iid_timeline",
         "parameters": [
           {
@@ -11199,7 +11462,7 @@
     },
     "/api/v1/tenants/{tid}/join-links": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_join-links",
         "parameters": [
           {
@@ -11351,7 +11614,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_join-links",
         "parameters": [
           {
@@ -11500,7 +11763,7 @@
     },
     "/api/v1/tenants/{tid}/join-links/{lid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_join-links_lid",
         "parameters": [
           {
@@ -11660,7 +11923,7 @@
     },
     "/api/v1/tenants/{tid}/join-requests": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_join-requests",
         "parameters": [
           {
@@ -11814,7 +12077,7 @@
     },
     "/api/v1/tenants/{tid}/join-requests/{rid}/approve": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_join-requests_rid_approve",
         "parameters": [
           {
@@ -11974,7 +12237,7 @@
     },
     "/api/v1/tenants/{tid}/join-requests/{rid}/reject": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_join-requests_rid_reject",
         "parameters": [
           {
@@ -12134,7 +12397,7 @@
     },
     "/api/v1/tenants/{tid}/labels": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_labels",
         "parameters": [
           {
@@ -12286,7 +12549,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_labels",
         "parameters": [
           {
@@ -12447,7 +12710,7 @@
     },
     "/api/v1/tenants/{tid}/labels/{lid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_labels_lid",
         "parameters": [
           {
@@ -12605,7 +12868,7 @@
         ]
       },
       "put": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "put_api_v1_tenants_tid_labels_lid",
         "parameters": [
           {
@@ -12760,7 +13023,7 @@
     },
     "/api/v1/tenants/{tid}/members": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Active tenant members may read the roster. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Active tenant members may read the roster. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_members",
         "parameters": [
           {
@@ -13074,7 +13337,7 @@
     },
     "/api/v1/tenants/{tid}/members/{uid}": {
       "put": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Administrator only. Existing memberships require matching version; new and disabled memberships must enter through a fresh directory check, invitation redemption or approved application. Last effective administrator cannot be disabled/demoted, including concurrent changes. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Administrator only. Existing memberships require matching version; new and disabled memberships must enter through a fresh directory check, invitation redemption or approved application. Last effective administrator cannot be disabled/demoted, including concurrent changes. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "put_api_v1_tenants_tid_members_uid",
         "parameters": [
           {
@@ -13238,7 +13501,7 @@
     },
     "/api/v1/tenants/{tid}/operations/{oid}": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Active tenant members may inspect project operations; administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Active tenant members may inspect project operations; administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_operations_oid",
         "parameters": [
           {
@@ -13373,7 +13636,7 @@
     },
     "/api/v1/tenants/{tid}/operations/{oid}/retry": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Active tenant members may inspect project operations; administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Active tenant members may inspect project operations; administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_operations_oid_retry",
         "parameters": [
           {
@@ -13690,7 +13953,7 @@
     },
     "/api/v1/tenants/{tid}/projects": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_projects",
         "parameters": [
           {
@@ -13842,7 +14105,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_projects",
         "parameters": [
           {
@@ -14020,7 +14283,7 @@
     },
     "/api/v1/tenants/{tid}/projects/{pid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_projects_pid",
         "parameters": [
           {
@@ -14191,7 +14454,7 @@
         ]
       },
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_projects_pid",
         "parameters": [
           {
@@ -14317,7 +14580,7 @@
         ]
       },
       "patch": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Only project name may change; version must match. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Only project name may change; version must match. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "patch_api_v1_tenants_tid_projects_pid",
         "parameters": [
           {
@@ -14470,7 +14733,7 @@
     },
     "/api/v1/tenants/{tid}/projects/{pid}/workspaces": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_projects_pid_workspaces",
         "parameters": [
           {
@@ -14631,7 +14894,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Creates one isolated Workspace and Task display identity. title/baseRef required; baseRef becomes the Workspace's requestedRef, which its Node clones; HEAD means the Project's defaultBranch. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Creates one isolated Workspace and Task display identity. title/baseRef required; baseRef becomes the Workspace's requestedRef, which its Node clones; HEAD means the Project's defaultBranch. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_projects_pid_workspaces",
         "parameters": [
           {
@@ -14806,7 +15069,7 @@
     },
     "/api/v1/tenants/{tid}/resource-status": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Administrator response explicitly excludes repository URL, worktree details, credentials, execution output and operation request/result/error details. Administrative stop still requires idle evidence. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Administrator response explicitly excludes repository URL, worktree details, credentials, execution output and operation request/result/error details. Administrative stop still requires idle evidence. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_resource-status",
         "parameters": [
           {
@@ -14960,7 +15223,7 @@
     },
     "/api/v1/tenants/{tid}/spaces": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_spaces",
         "parameters": [
           {
@@ -15114,7 +15377,7 @@
     },
     "/api/v1/tenants/{tid}/spaces/{spaceId}": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_spaces_spaceId",
         "parameters": [
           {
@@ -15240,7 +15503,7 @@
         ]
       },
       "patch": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Name and description may change; tenant and space names update together. Slug is immutable. Requires tenant admin and a matching version. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Name and description may change; tenant and space names update together. Slug is immutable. Requires tenant admin and a matching version. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "patch_api_v1_tenants_tid_spaces_spaceId",
         "parameters": [
           {
@@ -15474,7 +15737,7 @@
     },
     "/api/v1/tenants/{tid}/spaces/{spaceId}/plugins": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_spaces_spaceId_plugins",
         "parameters": [
           {
@@ -15645,7 +15908,7 @@
         ]
       },
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_spaces_spaceId_plugins",
         "parameters": [
           {
@@ -15771,7 +16034,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_spaces_spaceId_plugins",
         "parameters": [
           {
@@ -15815,6 +16078,11 @@
                   },
                   "pluginVersion": {
                     "type": "string"
+                  },
+                  "version": {
+                    "format": "int64",
+                    "minimum": 0,
+                    "type": "integer"
                   }
                 },
                 "required": [
@@ -15941,7 +16209,7 @@
     },
     "/api/v1/tenants/{tid}/spaces/{spaceId}/plugins/catalog": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Every tenant has one collaboration space. Active tenant members can read it. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_spaces_spaceId_plugins_catalog",
         "parameters": [
           {
@@ -16069,7 +16337,7 @@
     },
     "/api/v1/tenants/{tid}/spaces/{spaceId}/projects": {
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_spaces_spaceId_projects",
         "parameters": [
           {
@@ -16230,7 +16498,7 @@
         ]
       },
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Project collection scoped to the tenant's sole collaboration space; active tenant membership is required. Creates Project/main Workspace/operation atomically in the tenant's sole collaboration space. repositoryUrl allows HTTPS or SSH with no password/query/fragment. defaultBranch is required and must name a branch, not HEAD (Cloud never reads the remote repository); credentialRefId must belong to tenant and owner. Sandbox, Node and clone initialization is asynchronous. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_spaces_spaceId_projects",
         "parameters": [
           {
@@ -16417,7 +16685,7 @@
     },
     "/api/v1/tenants/{tid}/workspaces/{wid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_workspaces_wid",
         "parameters": [
           {
@@ -16456,6 +16724,9 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "sessionId": {
+                    "type": "string"
+                  },
                   "version": {
                     "format": "int64",
                     "minimum": 0,
@@ -16463,7 +16734,8 @@
                   }
                 },
                 "required": [
-                  "version"
+                  "version",
+                  "sessionId"
                 ],
                 "type": "object"
               }
@@ -16588,7 +16860,7 @@
         ]
       },
       "get": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "get_api_v1_tenants_tid_workspaces_wid",
         "parameters": [
           {
@@ -16714,10 +16986,138 @@
         ]
       }
     },
-    "/api/v1/tenants/{tid}/workspaces/{wid}/administrative-stop": {
+    "/api/v1/tenants/{tid}/workspaces/{wid}/control": {
+      "get": {
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "operationId": "get_api_v1_tenants_tid_workspaces_wid_control",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeControl"
+                }
+              }
+            },
+            "description": "Successful command or resource response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid JSON/field/input, missing idempotency key, invalid pagination or evidence"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource absent or outside authorized tenant/owner scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version/idempotency conflict, resource_in_use, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version precondition required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal error; no SQL or secret details are exposed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "External capability not wired in this deployment (a port is Unavailable), e.g. form_descriptor_unavailable or assist_unavailable"
+          }
+        },
+        "security": [
+          {
+            "serviceCredential": [],
+            "userCredential": []
+          }
+        ],
+        "summary": "GET /api/v1/tenants/:tid/workspaces/:wid/control",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tid}/workspaces/{wid}/control/acquire": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Administrator response explicitly excludes repository URL, worktree details, credentials, execution output and operation request/result/error details. Administrative stop still requires idle evidence. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
-        "operationId": "post_api_v1_tenants_tid_workspaces_wid_administrative-stop",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "operationId": "post_api_v1_tenants_tid_workspaces_wid_control_acquire",
         "parameters": [
           {
             "in": "path",
@@ -16771,6 +17171,815 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeControl"
+                }
+              }
+            },
+            "description": "Successful command or resource response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid JSON/field/input, missing idempotency key, invalid pagination or evidence"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource absent or outside authorized tenant/owner scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version/idempotency conflict, resource_in_use, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version precondition required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal error; no SQL or secret details are exposed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "External capability not wired in this deployment (a port is Unavailable), e.g. form_descriptor_unavailable or assist_unavailable"
+          }
+        },
+        "security": [
+          {
+            "serviceCredential": [],
+            "userCredential": []
+          }
+        ],
+        "summary": "POST /api/v1/tenants/:tid/workspaces/:wid/control/acquire",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tid}/workspaces/{wid}/control/release": {
+      "post": {
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "operationId": "post_api_v1_tenants_tid_workspaces_wid_control_release",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Scoped to tenant and user. Same key and canonical method/path/body returns the original response before version validation; changed request is 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "sessionId": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "format": "int64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "version",
+                  "sessionId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeControl"
+                }
+              }
+            },
+            "description": "Successful command or resource response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid JSON/field/input, missing idempotency key, invalid pagination or evidence"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource absent or outside authorized tenant/owner scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version/idempotency conflict, resource_in_use, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version precondition required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal error; no SQL or secret details are exposed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "External capability not wired in this deployment (a port is Unavailable), e.g. form_descriptor_unavailable or assist_unavailable"
+          }
+        },
+        "security": [
+          {
+            "serviceCredential": [],
+            "userCredential": []
+          }
+        ],
+        "summary": "POST /api/v1/tenants/:tid/workspaces/:wid/control/release",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tid}/workspaces/{wid}/control/renew": {
+      "post": {
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "operationId": "post_api_v1_tenants_tid_workspaces_wid_control_renew",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Scoped to tenant and user. Same key and canonical method/path/body returns the original response before version validation; changed request is 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "sessionId": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "format": "int64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "version",
+                  "sessionId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeControl"
+                }
+              }
+            },
+            "description": "Successful command or resource response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid JSON/field/input, missing idempotency key, invalid pagination or evidence"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource absent or outside authorized tenant/owner scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version/idempotency conflict, resource_in_use, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version precondition required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal error; no SQL or secret details are exposed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "External capability not wired in this deployment (a port is Unavailable), e.g. form_descriptor_unavailable or assist_unavailable"
+          }
+        },
+        "security": [
+          {
+            "serviceCredential": [],
+            "userCredential": []
+          }
+        ],
+        "summary": "POST /api/v1/tenants/:tid/workspaces/:wid/control/renew",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tid}/workspaces/{wid}/force-stop": {
+      "get": {
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "operationId": "get_api_v1_tenants_tid_workspaces_wid_force-stop",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "forceStop": {
+                      "$ref": "#/components/schemas/RuntimeForceStop",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "forceStop"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful command or resource response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid JSON/field/input, missing idempotency key, invalid pagination or evidence"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource absent or outside authorized tenant/owner scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version/idempotency conflict, resource_in_use, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version precondition required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal error; no SQL or secret details are exposed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "External capability not wired in this deployment (a port is Unavailable), e.g. form_descriptor_unavailable or assist_unavailable"
+          }
+        },
+        "security": [
+          {
+            "serviceCredential": [],
+            "userCredential": []
+          }
+        ],
+        "summary": "GET /api/v1/tenants/:tid/workspaces/:wid/force-stop",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "post": {
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "operationId": "post_api_v1_tenants_tid_workspaces_wid_force-stop",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Scoped to tenant and user. Same key and canonical method/path/body returns the original response before version validation; changed request is 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "impactConfirmed": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "format": "int64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "version",
+                  "reason",
+                  "impactConfirmed"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "forceStop": {
+                      "$ref": "#/components/schemas/RuntimeForceStop"
+                    },
+                    "resource": {
+                      "$ref": "#/components/schemas/AdminResource"
+                    }
+                  },
+                  "required": [
+                    "resource",
+                    "forceStop"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful command or resource response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid JSON/field/input, missing idempotency key, invalid pagination or evidence"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Disabled user, inactive/missing membership, wrong service role, or admin required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource absent or outside authorized tenant/owner scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version/idempotency conflict, resource_in_use, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version precondition required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal error; no SQL or secret details are exposed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "External capability not wired in this deployment (a port is Unavailable), e.g. form_descriptor_unavailable or assist_unavailable"
+          }
+        },
+        "security": [
+          {
+            "serviceCredential": [],
+            "userCredential": []
+          }
+        ],
+        "summary": "POST /api/v1/tenants/:tid/workspaces/:wid/force-stop",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tid}/workspaces/{wid}/restart": {
+      "post": {
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "operationId": "post_api_v1_tenants_tid_workspaces_wid_restart",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Scoped to tenant and user. Same key and canonical method/path/body returns the original response before version validation; changed request is 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "sessionId": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "format": "int64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "version",
+                  "sessionId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
           "202": {
             "content": {
               "application/json": {
@@ -16778,10 +17987,10 @@
                   "additionalProperties": false,
                   "properties": {
                     "operation": {
-                      "$ref": "#/components/schemas/AdminOperation"
+                      "$ref": "#/components/schemas/Operation"
                     },
                     "resource": {
-                      "$ref": "#/components/schemas/AdminResource"
+                      "$ref": "#/components/schemas/Workspace"
                     }
                   },
                   "required": [
@@ -16881,7 +18090,7 @@
             "userCredential": []
           }
         ],
-        "summary": "POST /api/v1/tenants/:tid/workspaces/:wid/administrative-stop",
+        "summary": "POST /api/v1/tenants/:tid/workspaces/:wid/restart",
         "tags": [
           "workspaces"
         ]
@@ -16889,7 +18098,7 @@
     },
     "/api/v1/tenants/{tid}/workspaces/{wid}/start": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_workspaces_wid_start",
         "parameters": [
           {
@@ -16928,6 +18137,9 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "sessionId": {
+                    "type": "string"
+                  },
                   "version": {
                     "format": "int64",
                     "minimum": 0,
@@ -16935,7 +18147,8 @@
                   }
                 },
                 "required": [
-                  "version"
+                  "version",
+                  "sessionId"
                 ],
                 "type": "object"
               }
@@ -17062,7 +18275,7 @@
     },
     "/api/v1/tenants/{tid}/workspaces/{wid}/stop": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup; project and runtime access is shared within that tenant. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Shared projects expose safe runtime summaries; runtime content and use require the verified creator or current tenant administrator. Conflicting mutations additionally require an effective server-confirmed control session. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_workspaces_wid_stop",
         "parameters": [
           {
@@ -17101,6 +18314,9 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "sessionId": {
+                    "type": "string"
+                  },
                   "version": {
                     "format": "int64",
                     "minimum": 0,
@@ -17108,7 +18324,8 @@
                   }
                 },
                 "required": [
-                  "version"
+                  "version",
+                  "sessionId"
                 ],
                 "type": "object"
               }
@@ -17298,6 +18515,9 @@
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "sessionId": {
+                    "type": "string"
+                  },
                   "tenantId": {
                     "format": "uuid",
                     "type": "string"
@@ -17310,7 +18530,8 @@
                 "required": [
                   "tenantId",
                   "workspaceId",
-                  "action"
+                  "action",
+                  "sessionId"
                 ],
                 "type": "object"
               }
@@ -17451,6 +18672,9 @@
                     ],
                     "type": "string"
                   },
+                  "sessionId": {
+                    "type": "string"
+                  },
                   "tenantId": {
                     "format": "uuid",
                     "type": "string"
@@ -17470,7 +18694,8 @@
                   "action",
                   "ticketId",
                   "kind",
-                  "epoch"
+                  "epoch",
+                  "sessionId"
                 ],
                 "type": "object"
               }

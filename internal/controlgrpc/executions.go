@@ -165,7 +165,7 @@ func result(o core.Object) *controlpb.ExecutionResult {
 }
 
 func record(row core.Object) *controlpb.ExecutionRecord {
-	out := &controlpb.ExecutionRecord{OperationId: row.S("operationId"), ExecutionId: row.S("executionId"), NodeId: row.S("nodeId"), Input: input(row.O("input"))}
+	out := &controlpb.ExecutionRecord{OperationId: row.S("operationId"), NodeOperationId: row.S("nodeOperationId"), ExecutionId: row.S("executionId"), NodeId: row.S("nodeId"), Input: input(row.O("input"))}
 	if res := row.O("result"); len(res) > 0 {
 		out.Result = result(res)
 	}

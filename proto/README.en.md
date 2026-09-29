@@ -33,8 +33,7 @@ their own clients; they never copy the `.proto` files.
   falls back to periodic `ClaimWork`, `ClaimOperation` and `ClaimThreadCommands`.
 - **Upload grants are not input**: an `UploadGrant` is a short-lived bearer credential; it never enters an
   execution input, a registration or any log. Execution input carries object keys only.
-- **No tenant fields**: the contract carries only opaque identities Cloud has already authorized; review
-  rejects changes that add tenant / user / membership fields.
+- **Authorization source**: Cloud/PostgreSQL decides business authorization. Runtime control carries confirmed tenant, actor, session and target scope; execution endpoints never expand it from caller-asserted identity.
 
 ## Generation and checks
 
@@ -56,3 +55,7 @@ their own clients; they never copy the `.proto` files.
 The semantics belong to specs
 `decisions/cloud/controller-integration/0-cloud-owned-internal-grpc-contract.md`; this directory only
 carries the fields.
+
+## Approved runtime control contract
+
+RuntimeControlService carries Cloud-decided target bindings, closure acknowledgement, fresh dispatch permits and independent force-stop plans. Tenant/workspace, actor/server session and control epoch bind trusted execution scope; they do not authorize caller-asserted membership. User control epoch, Controller lease epoch, runtime generation, Node incarnation, execution ID and Node operation ID remain distinct. Components without runtime_control capability are refused. Idempotent history cannot revive eligibility: Controller refreshes before dispatch and Node checks acceptance and first execution. Cloud–Controller uses mutual TLS. New file/terminal/plugin/Agent execution entry points stay closed until equally protected. Authority: specs/decisions/cloud/controller-integration/20260927-fenced-runtime-control-delivery.md.

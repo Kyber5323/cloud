@@ -121,13 +121,20 @@ export interface CloneExecution {
   /** @nullable */
   cloneRequestId: string | null;
   createdAt: string;
+  /** @nullable */
+  credentialRefId?: string | null;
+  /** @nullable */
+  credentialRefVersion?: number | null;
   dispatchedEpoch: number;
   executionId: string;
   input: CloneExecutionInput;
   nodeId: string;
+  nodeOperationId: string;
   operationId: string;
   /** @nullable */
   result: CloneExecutionResult;
+  /** @nullable */
+  terminatedByForceStopId: string | null;
   updatedAt: string;
   /** @nullable */
   workspaceId: string | null;
@@ -263,6 +270,8 @@ export interface ControllerProject {
   lifecycle: string;
   name: string;
   ownerUserId: string;
+  /** @nullable */
+  repositoryCredentialRefId?: string | null;
   repositoryUrl: string;
   /** @nullable */
   secretRef: string | null;
@@ -280,6 +289,11 @@ export interface ControllerWorkspace {
      */
   baseCommitId: string | null;
   createdAt: string;
+  creatorEvidence: string;
+  /** @nullable */
+  creatorOperationId: string | null;
+  /** @nullable */
+  creatorUserId: string | null;
   /** @nullable */
   deletedAt: string | null;
   desiredState: string;
@@ -347,6 +361,7 @@ export interface EffectResult {
   error?: string;
   installed?: boolean;
   jobTerminated?: boolean;
+  lateEnsureFenced?: boolean;
   layoutVersion?: number;
   nodeId?: string;
   removed?: boolean;
@@ -852,6 +867,11 @@ export interface Workspace {
      */
   baseCommitId: string | null;
   createdAt: string;
+  creatorEvidence: string;
+  /** @nullable */
+  creatorOperationId: string | null;
+  /** @nullable */
+  creatorUserId: string | null;
   /** @nullable */
   deletedAt: string | null;
   desiredState: WorkspaceDesiredState;
@@ -864,43 +884,6 @@ export interface Workspace {
   runtimeGeneration: number;
   tenantId: string;
   version: number;
-}
-
-export type OperationRequestPrevious = {[key: string]: Workspace};
-
-export interface OperationRequest {
-  pluginId?: string;
-  previous?: OperationRequestPrevious;
-  version?: string;
-}
-
-export interface OperationResult {
-  resourceId?: string;
-}
-
-export interface Operation {
-  actorUserId: string;
-  /** @nullable */
-  controllerEpoch: number | null;
-  createdAt: string;
-  /** @nullable */
-  errorCode: string | null;
-  id: string;
-  idempotencyKey: string;
-  kind: string;
-  projectId: string;
-  request: OperationRequest;
-  requestHash: string;
-  result: OperationResult;
-  /** @nullable */
-  retryAt: string | null;
-  state: OperationState;
-  step: OperationStep;
-  tenantId: string;
-  updatedAt: string;
-  version: number;
-  /** @nullable */
-  workspaceId: string | null;
 }
 
 export type PluginCatalogEntryKind = typeof PluginCatalogEntryKind[keyof typeof PluginCatalogEntryKind];
@@ -977,6 +960,46 @@ export interface PluginCatalogEntry {
   version: string;
 }
 
+export type OperationRequestPrevious = {[key: string]: Workspace};
+
+export interface OperationRequest {
+  desiredRevision?: number;
+  pluginId?: string;
+  previous?: OperationRequestPrevious;
+  release?: PluginCatalogEntry;
+  version?: string;
+}
+
+export interface OperationResult {
+  forceStopId?: string;
+  resourceId?: string;
+}
+
+export interface Operation {
+  actorUserId: string;
+  /** @nullable */
+  controllerEpoch: number | null;
+  createdAt: string;
+  /** @nullable */
+  errorCode: string | null;
+  id: string;
+  idempotencyKey: string;
+  kind: string;
+  projectId: string;
+  request: OperationRequest;
+  requestHash: string;
+  result: OperationResult;
+  /** @nullable */
+  retryAt: string | null;
+  state: OperationState;
+  step: OperationStep;
+  tenantId: string;
+  updatedAt: string;
+  version: number;
+  /** @nullable */
+  workspaceId: string | null;
+}
+
 export interface PluginCatalog {
   items: PluginCatalogEntry[];
   /** @nullable */
@@ -994,10 +1017,63 @@ export interface Project {
   lifecycle: string;
   name: string;
   ownerUserId: string;
+  /** @nullable */
+  repositoryCredentialRefId?: string | null;
   repositoryUrl: string;
   spaceId: string;
   tenantId: string;
   version: number;
+}
+
+export type RuntimeControlState = typeof RuntimeControlState[keyof typeof RuntimeControlState];
+
+
+export const RuntimeControlState = {
+  idle: 'idle',
+  acquiring: 'acquiring',
+  held: 'held',
+  draining: 'draining',
+  reconciling: 'reconciling',
+  maintenance: 'maintenance',
+} as const;
+
+export interface RuntimeControl {
+  controlEpoch: number;
+  /** @nullable */
+  expiresAt: string | null;
+  /** @nullable */
+  holderUserId: string | null;
+  /** @nullable */
+  sessionId?: string | null;
+  state: RuntimeControlState;
+  version: number;
+  workspaceId: string;
+}
+
+export type RuntimeForceStopState = typeof RuntimeForceStopState[keyof typeof RuntimeForceStopState];
+
+
+export const RuntimeForceStopState = {
+  registered: 'registered',
+  terminating: 'terminating',
+  succeeded: 'succeeded',
+} as const;
+
+export interface RuntimeForceStop {
+  actorUserId: string;
+  /** @nullable */
+  confirmedAt?: string | null;
+  controlEpoch: number;
+  /** @nullable */
+  controllerEpoch?: number | null;
+  createdAt: string;
+  id: string;
+  reason: string;
+  runtimeGeneration: number;
+  state: RuntimeForceStopState;
+  tenantId: string;
+  version: number;
+  workspaceId: string;
 }
 
 export interface Sandbox {
@@ -1094,9 +1170,13 @@ export const SpacePluginObservedState = {
 } as const;
 
 export interface SpacePlugin {
+  affectedCount?: number;
+  completedCount?: number;
   createdAt: string;
+  desiredRevision?: number;
   desiredState: SpacePluginDesiredState;
   desiredVersion: string;
+  failedCount?: number;
   id: string;
   identifier: string;
   /** @nullable */
@@ -1104,11 +1184,16 @@ export interface SpacePlugin {
   observedState: SpacePluginObservedState;
   /** @nullable */
   observedVersion: string | null;
+  /** @nullable */
+  requestedByUserId?: string | null;
   sourceNamespace: string;
   spaceId: string;
   tenantId: string;
+  unavailableCount?: number;
   updatedAt: string;
   version: number;
+  waitingControlCount?: number;
+  waitingStartCount?: number;
 }
 
 export interface SpacePluginList {
@@ -1130,6 +1215,10 @@ export interface TenantCreated {
 export interface Ticket {
   actorUserId: string;
   admissionEpoch: number;
+  /** @nullable */
+  controlEpoch: number | null;
+  /** @nullable */
+  controlSessionId: string | null;
   createdAt: string;
   /** @nullable */
   finishedAt: string | null;
@@ -1138,6 +1227,8 @@ export interface Ticket {
   nodeInstanceId: string;
   state: string;
   tenantId: string;
+  /** @nullable */
+  terminatedByForceStopId: string | null;
   version: number;
   workspaceId: string;
 }
@@ -1227,16 +1318,22 @@ export const WorkspaceListItemObservedState = {
 } as const;
 
 export interface WorkspaceListItem {
-  admissionEpoch: number;
-  admissionOpen: boolean;
+  admissionEpoch?: number;
+  admissionOpen?: boolean;
   /**
      * @nullable
      * @pattern ^([0-9a-f]{40}|[0-9a-f]{64})$
      */
-  baseCommitId: string | null;
+  baseCommitId?: string | null;
   /** @nullable */
-  branchName: string | null;
+  branchName?: string | null;
+  canUse: boolean;
   createdAt: string;
+  creatorEvidence: string;
+  /** @nullable */
+  creatorOperationId?: string | null;
+  /** @nullable */
+  creatorUserId: string | null;
   /** @nullable */
   deletedAt: string | null;
   desiredState: WorkspaceListItemDesiredState;
@@ -1245,11 +1342,11 @@ export interface WorkspaceListItem {
   observedState: WorkspaceListItemObservedState;
   ownerUserId: string;
   projectId: string;
-  requestedRef: string;
+  requestedRef?: string;
   runtimeGeneration: number;
   tenantId: string;
   /** @nullable */
-  title: string | null;
+  title?: string | null;
   version: number;
 }
 
@@ -2103,6 +2200,8 @@ export type DeleteApiV1TenantsTidSpacesSpaceIdPlugins200 = {
 export type PostApiV1TenantsTidSpacesSpaceIdPluginsBody = {
   identifier: string;
   pluginVersion?: string;
+  /** @minimum 0 */
+  version?: number;
 };
 
 export type PostApiV1TenantsTidSpacesSpaceIdPlugins200 = {
@@ -2140,6 +2239,7 @@ export type PostApiV1TenantsTidSpacesSpaceIdProjects202 = {
 };
 
 export type DeleteApiV1TenantsTidWorkspacesWidBody = {
+  sessionId: string;
   /** @minimum 0 */
   version: number;
 };
@@ -2149,17 +2249,52 @@ export type DeleteApiV1TenantsTidWorkspacesWid202 = {
   resource: Workspace;
 };
 
-export type PostApiV1TenantsTidWorkspacesWidAdministrativeStopBody = {
+export type PostApiV1TenantsTidWorkspacesWidControlAcquireBody = {
   /** @minimum 0 */
   version: number;
 };
 
-export type PostApiV1TenantsTidWorkspacesWidAdministrativeStop202 = {
-  operation: AdminOperation;
+export type PostApiV1TenantsTidWorkspacesWidControlReleaseBody = {
+  sessionId: string;
+  /** @minimum 0 */
+  version: number;
+};
+
+export type PostApiV1TenantsTidWorkspacesWidControlRenewBody = {
+  sessionId: string;
+  /** @minimum 0 */
+  version: number;
+};
+
+export type GetApiV1TenantsTidWorkspacesWidForceStop200 = {
+  forceStop: RuntimeForceStop | null;
+};
+
+export type PostApiV1TenantsTidWorkspacesWidForceStopBody = {
+  impactConfirmed: boolean;
+  reason: string;
+  /** @minimum 0 */
+  version: number;
+};
+
+export type PostApiV1TenantsTidWorkspacesWidForceStop202 = {
+  forceStop: RuntimeForceStop;
   resource: AdminResource;
 };
 
+export type PostApiV1TenantsTidWorkspacesWidRestartBody = {
+  sessionId: string;
+  /** @minimum 0 */
+  version: number;
+};
+
+export type PostApiV1TenantsTidWorkspacesWidRestart202 = {
+  operation: Operation;
+  resource: Workspace;
+};
+
 export type PostApiV1TenantsTidWorkspacesWidStartBody = {
+  sessionId: string;
   /** @minimum 0 */
   version: number;
 };
@@ -2170,6 +2305,7 @@ export type PostApiV1TenantsTidWorkspacesWidStart202 = {
 };
 
 export type PostApiV1TenantsTidWorkspacesWidStopBody = {
+  sessionId: string;
   /** @minimum 0 */
   version: number;
 };
@@ -2202,6 +2338,7 @@ export type PostInternalV1AccessBody = {
   action: PostInternalV1AccessBodyAction;
   /** @minimum 0 */
   epoch?: number;
+  sessionId: string;
   tenantId: string;
   workspaceId: string;
 };
@@ -2227,6 +2364,7 @@ export type PostInternalV1AdmissionsBody = {
   /** @minimum 0 */
   epoch: number;
   kind: PostInternalV1AdmissionsBodyKind;
+  sessionId: string;
   tenantId: string;
   ticketId: string;
   workspaceId: string;

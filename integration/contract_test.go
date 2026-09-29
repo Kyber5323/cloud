@@ -86,7 +86,7 @@ func TestRestartRecreatesCloudSubstrateAndController(t *testing.T) {
 	t.Cleanup(func() { reopened.Pool.Close() })
 	must(t, reopened.CheckSchema(context.Background()))
 	f.store = reopened
-	cloud := httptest.NewServer(router.New(reopened, auth, zap.NewNop()))
+	cloud := httptest.NewServer(router.NewDevelopment(reopened, auth, zap.NewNop()))
 	t.Cleanup(cloud.Close)
 	substrate, e := simulator.NewSubstrate(f.substrate.Root, f.substrate.Repositories)
 	must(t, e)

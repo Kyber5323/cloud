@@ -95,7 +95,8 @@ function useInvalidateSpacePlugins() {
 }
 
 /**
- * Installs one plugin into the current space, pinning the catalog version by
+ * Records an administrator selection with the current resource version (zero for a new row).
+ * Pins the catalog version by
  * default. The server writes the desired state and fans the download out to
  * the runtime workspaces; the row's observed state converges over SSE.
  */
@@ -106,11 +107,14 @@ export function useInstallPlugin() {
   return useMutation<
     Awaited<ReturnType<typeof postApiV1TenantsTidSpacesSpaceIdPlugins>>,
     ErrorType<ApiError>,
-    { identifier: string; pluginVersion?: string }
+    { identifier: string; pluginVersion?: string; version?: number }
   >({
     mutationFn: async (input) => {
       if (!tenantId || !space) throw new Error('cloud space not resolved')
-      const body: PostApiV1TenantsTidSpacesSpaceIdPluginsBody = { identifier: input.identifier }
+      const body: PostApiV1TenantsTidSpacesSpaceIdPluginsBody = {
+        identifier: input.identifier,
+        version: input.version ?? 0,
+      }
       if (input.pluginVersion !== undefined) body.pluginVersion = input.pluginVersion
       return postApiV1TenantsTidSpacesSpaceIdPlugins(tenantId, space.id, body, {
         headers: mutationHeaders(keyFor(input)),

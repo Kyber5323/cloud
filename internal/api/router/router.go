@@ -96,16 +96,22 @@ func Routes() []Route {
 		{"GET", "/api/v1/tenants/:tid/projects/:pid/workspaces", "", nil},
 		{"POST", "/api/v1/tenants/:tid/projects/:pid/workspaces", "", []string{"title", "baseRef"}},
 		{"GET", "/api/v1/tenants/:tid/workspaces/:wid", "", nil},
-		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/start", "", []string{"version"}},
-		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/stop", "", []string{"version"}},
-		{"DELETE", "/api/v1/tenants/:tid/workspaces/:wid", "", []string{"version"}},
+		{"GET", "/api/v1/tenants/:tid/workspaces/:wid/control", "", nil},
+		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/control/acquire", "", []string{"version"}},
+		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/control/renew", "", []string{"version", "sessionId"}},
+		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/control/release", "", []string{"version", "sessionId"}},
+		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/start", "", []string{"version", "sessionId"}},
+		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/stop", "", []string{"version", "sessionId"}},
+		{"DELETE", "/api/v1/tenants/:tid/workspaces/:wid", "", []string{"version", "sessionId"}},
 		{"GET", "/api/v1/tenants/:tid/clones", "", nil},
 		{"POST", "/api/v1/tenants/:tid/clones", "", []string{"requestId", "repository", "branch"}},
 		{"GET", "/api/v1/tenants/:tid/clones/:cloneId", "", nil},
 		{"GET", "/api/v1/tenants/:tid/operations/:oid", "", nil},
 		{"POST", "/api/v1/tenants/:tid/operations/:oid/retry", "", []string{"version"}},
 		{"GET", "/api/v1/tenants/:tid/resource-status", "", nil},
-		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/administrative-stop", "", []string{"version"}},
+		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/force-stop", "", []string{"version", "reason", "impactConfirmed"}},
+		{"GET", "/api/v1/tenants/:tid/workspaces/:wid/force-stop", "", nil},
+		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/restart", "", []string{"version", "sessionId"}},
 		{"GET", "/api/v1/tenants/:tid/spaces", "", nil},
 		{"GET", "/api/v1/tenants/:tid/spaces/:spaceId", "", nil},
 		{"PATCH", "/api/v1/tenants/:tid/spaces/:spaceId", "", []string{"name", "description", "version"}},
@@ -113,10 +119,10 @@ func Routes() []Route {
 		{"POST", "/api/v1/tenants/:tid/spaces/:spaceId/projects", "", []string{"name", "repositoryUrl", "defaultBranch", "credentialRefId"}},
 		{"GET", "/api/v1/tenants/:tid/spaces/:spaceId/plugins/catalog", "", nil},
 		{"GET", "/api/v1/tenants/:tid/spaces/:spaceId/plugins", "", nil},
-		{"POST", "/api/v1/tenants/:tid/spaces/:spaceId/plugins", "", []string{"identifier", "pluginVersion"}},
+		{"POST", "/api/v1/tenants/:tid/spaces/:spaceId/plugins", "", []string{"identifier", "pluginVersion", "version"}},
 		{"DELETE", "/api/v1/tenants/:tid/spaces/:spaceId/plugins", "", []string{"identifier", "version"}},
-		{"POST", "/internal/v1/access", "access", []string{"tenantId", "workspaceId", "action", "epoch"}},
-		{"POST", "/internal/v1/admissions", "admit", []string{"tenantId", "workspaceId", "action", "ticketId", "kind", "epoch"}},
+		{"POST", "/internal/v1/access", "access", []string{"tenantId", "workspaceId", "action", "epoch", "sessionId"}},
+		{"POST", "/internal/v1/admissions", "admit", []string{"tenantId", "workspaceId", "action", "ticketId", "kind", "epoch", "sessionId"}},
 		{"POST", "/internal/v1/controller-lease/acquire", "lease_acquire", []string{}},
 		{"POST", "/internal/v1/controller-lease/renew", "lease_renew", []string{"epoch"}},
 		{"POST", "/internal/v1/controller-lease/release", "lease_release", []string{"epoch"}},
@@ -135,6 +141,15 @@ func Routes() []Route {
 
 // New injects the store, trust configuration, and logger. No public user CRUD is registered.
 func New(store *core.Store, auth *core.Authenticator, log *zap.Logger, directories ...Directory) *gin.Engine {
+	return newRouter(store, auth, log, false, directories...)
+}
+
+// NewDevelopment keeps the simulator's internal JSON entry points separate from production.
+func NewDevelopment(store *core.Store, auth *core.Authenticator, log *zap.Logger, directories ...Directory) *gin.Engine {
+	return newRouter(store, auth, log, true, directories...)
+}
+
+func newRouter(store *core.Store, auth *core.Authenticator, log *zap.Logger, legacy bool, directories ...Directory) *gin.Engine {
 	var directory Directory
 	if len(directories) > 0 {
 		directory = directories[0]
@@ -161,6 +176,10 @@ func New(store *core.Store, auth *core.Authenticator, log *zap.Logger, directori
 	})
 	for _, route := range Routes() {
 		r.Handle(route.Method, route.Path, func(c *gin.Context) {
+			if route.Action != "" && !legacy {
+				failure(c, &core.Fault{Code: "retired_management_transport", Status: 410, Params: core.Object{}})
+				return
+			}
 			raw, ok := bearerToken(c.GetHeader("Authorization"))
 			if !ok {
 				failure(c, &core.Fault{Code: "invalid_service_credential", Status: 401, Params: core.Object{}})
@@ -235,7 +254,7 @@ func New(store *core.Store, auth *core.Authenticator, log *zap.Logger, directori
 						return
 					}
 				}
-				for _, k := range []string{"idle", "initialized"} {
+				for _, k := range []string{"idle", "initialized", "impactConfirmed"} {
 					for _, f := range route.Fields {
 						if f == k {
 							if _, ok := body[k]; !ok {
@@ -458,7 +477,7 @@ func validField(name string, value any) bool {
 			}
 		}
 		return true
-	case "idle", "initialized":
+	case "idle", "initialized", "impactConfirmed":
 		_, ok := value.(bool)
 		return ok
 	case "result":
@@ -468,7 +487,7 @@ func validField(name string, value any) bool {
 		}
 		for k, v := range o {
 			switch k {
-			case "jobTerminated", "removed", "terminated", "installed":
+			case "jobTerminated", "removed", "terminated", "lateEnsureFenced", "installed":
 				if _, ok := v.(bool); !ok {
 					return false
 				}
