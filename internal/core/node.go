@@ -149,7 +149,12 @@ func restoreAdmission(t *transaction, o Object) {
 		raw, ok := v.(map[string]any)
 		require(ok, 500, "internal_error")
 		w := Object(raw)
-		t.exec("UPDATE workspaces SET desired_state=$2,observed_state=$3,admission_open=$4,admission_epoch=admission_epoch+1,version=version+1 WHERE id=$1", wid, w.S("desiredState"), w.S("observedState"), w.B("admissionOpen"))
+		// The snapshot was taken before force-stop. Restoring it would reopen admission.
+		admissionOpen := w.B("admissionOpen")
+		if openForceStop(t, wid) != nil {
+			admissionOpen = false
+		}
+		t.exec("UPDATE workspaces SET desired_state=$2,observed_state=$3,admission_open=$4,admission_epoch=admission_epoch+1,version=version+1 WHERE id=$1", wid, w.S("desiredState"), w.S("observedState"), admissionOpen)
 	}
 	t.exec("UPDATE projects SET lifecycle='active',version=version+1 WHERE id=$1 AND lifecycle='deleting'", o.S("projectId"))
 	t.exec("UPDATE operations SET state='failed',error_code='resource_in_use',version=version+1,updated_at=now() WHERE id=$1", o.S("id"))

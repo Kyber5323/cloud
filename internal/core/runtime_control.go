@@ -34,6 +34,11 @@ func mutateRuntimeControl(t *transaction, r *PublicRequest, uid string) Object {
 
 func acquireRuntimeControl(t *transaction, r *PublicRequest, uid string) Object {
 	w := runtimeForControl(t, r, uid)
+	// Accepted force-stop withdraws handoff until termination is confirmed.
+	// Use permission was already checked, so this is not a hidden 403.
+	if openForceStop(t, w.S("id")) != nil {
+		reject(409, "termination_unconfirmed")
+	}
 	// An open session, including one still reconciling an unknown execution,
 	// keeps the single holder. A known active ticket can be reserved as
 	// acquiring, but it does not become a held lease.
@@ -192,6 +197,10 @@ func emptyControlActions() []any { return make([]any, 0) }
 
 func runtimeControlActions(t *transaction, uid string, w, session Object, blocks bool) []any {
 	actions := emptyControlActions()
+	if openForceStop(t, w.S("id")) != nil {
+		// Takeover, restart and data deletion stay closed while the intent is open.
+		return actions
+	}
 	held := session != nil && session.S("state") == "held" && !session.B("leaseExpired") && session.S("holderUserId") == uid
 	if session == nil && !blocks {
 		actions = append(actions, "acquire")

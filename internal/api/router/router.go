@@ -111,6 +111,7 @@ func Routes() []Route {
 		{"POST", "/api/v1/tenants/:tid/operations/:oid/retry", "", []string{"version"}},
 		{"GET", "/api/v1/tenants/:tid/resource-status", "", nil},
 		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/administrative-stop", "", []string{"version"}},
+		{"POST", "/api/v1/tenants/:tid/workspaces/:wid/force-stop", "", []string{"version", "reason"}},
 		{"GET", "/api/v1/tenants/:tid/spaces", "", nil},
 		{"GET", "/api/v1/tenants/:tid/spaces/:spaceId", "", nil},
 		{"PATCH", "/api/v1/tenants/:tid/spaces/:spaceId", "", []string{"name", "description", "version"}},

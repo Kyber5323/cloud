@@ -193,6 +193,11 @@ func planEffect(t *transaction, r *ControlRequest, o Object, spaceEvents *[]Spac
 	if existing := effectFor(t, o.S("id"), kind, wid); existing != nil {
 		return Object{"effect": existing, "operation": o}
 	}
+	// A new ordinary effect is not allocated while force-stop is unconfirmed.
+	// The previously planned effect above keeps its stable id for reconciliation.
+	if forceStopBlocksEffect(kind) {
+		requireNoOpenForceStop(t, wid)
+	}
 	// The effect id doubles as the preallocated sandbox instance id, so it is
 	// drawn before the step-specific request building below.
 	id := newID()
@@ -343,6 +348,13 @@ func completedEffect(t *transaction, o Object, kind, wid string) Object {
 
 func advance(t *transaction, r *ControlRequest, o Object, spaceEvents *[]SpaceEvent) Object {
 	reconciled(t, o)
+	// Keep the in-flight operation, but do not open a sandbox, install a plugin,
+	// or delete data on a runtime whose force-stop is still unconfirmed.
+	if forceStopBlocksStep(o.S("step")) {
+		for _, w := range operationWorkspaces(t, o) {
+			requireNoOpenForceStop(t, w.S("id"))
+		}
+	}
 	next := ""
 	wid := o.S("workspaceId")
 	switch o.S("step") {
@@ -440,6 +452,8 @@ func currentNode(t *transaction, wid string) Object {
 // The Node is checked again so admission never opens on a Node that went away since the node step.
 func openWorkspace(t *transaction, o Object, wid string) {
 	currentNode(t, wid)
+	// A late create or start must not reopen admission over an accepted force-stop.
+	requireNoOpenForceStop(t, wid)
 	t.exec("UPDATE workspaces SET observed_state='ready',admission_open=true,version=version+1 WHERE id=$1", wid)
 	t.exec("UPDATE projects SET lifecycle='active',version=version+1 WHERE id=$1 AND lifecycle='provisioning'", o.S("projectId"))
 }

@@ -929,6 +929,72 @@
         ],
         "type": "object"
       },
+      "ForceStopIntent": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "initiatorUserId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "requested",
+              "terminating",
+              "reconciling",
+              "stopped"
+            ],
+            "type": "string"
+          },
+          "targetRuntimeGeneration": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "workspaceId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "workspaceId",
+          "initiatorUserId",
+          "targetRuntimeGeneration",
+          "reason",
+          "idempotencyKey",
+          "state",
+          "version",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
       "FormDescriptor": {
         "additionalProperties": false,
         "properties": {
@@ -14220,7 +14286,7 @@
     },
     "/api/v1/tenants/{tid}/projects/{pid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Project deletion checks every live runtime before changing any of them. Another control session, an active or unknown write, or an active ticket is 409 resource_in_use. An open force-stop is 409 termination_unconfirmed. Deletion does not start a force-stop. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_projects_pid",
         "parameters": [
           {
@@ -16629,7 +16695,7 @@
     },
     "/api/v1/tenants/{tid}/workspaces/{wid}": {
       "delete": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. An open force-stop on that runtime is 409 termination_unconfirmed until the intent itself is stopped. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "delete_api_v1_tenants_tid_workspaces_wid",
         "parameters": [
           {
@@ -17858,9 +17924,175 @@
         ]
       }
     },
+    "/api/v1/tenants/{tid}/workspaces/{wid}/force-stop": {
+      "post": {
+        "description": "Accepts one independent force-stop intent. Only a current tenant administrator may accept it. The body carries the target runtime version and a non-empty reason; the idempotency key is the retry identity. The same key and body return the original intent, and a different reason or target is 409 idempotency_conflict. A second open intent for that runtime is 409 resource_in_use. Acceptance persists the intent, closes new admission, withdraws ordinary control sessions, and links this runtime's in-flight operations, tickets and effects without deleting or rewriting them. It does not create an operation, does not change administrative_stop, does not mark the runtime stopped, and does not delete data. Until the intent is stopped, acquire, restart and data deletion return 409 termination_unconfirmed. Another runtime is left untouched.",
+        "operationId": "post_api_v1_tenants_tid_workspaces_wid_force-stop",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Scoped to tenant and user. Same key and canonical method/path/body returns the original response before version validation; changed request is 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "version": {
+                    "format": "int64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "version",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForceStopIntent"
+                }
+              }
+            },
+            "description": "Successful command or resource response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid JSON/field/input, missing idempotency key, invalid pagination or evidence"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid, forged, expired, wrong-audience, untrusted, or caller-mismatched credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Disabled user, inactive/missing membership, wrong service role, admin required, or runtime_use_forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource absent or outside authorized tenant/owner scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version/idempotency conflict, resource_in_use, control_required, control_not_held, closed admission, stale epoch/Node/sandbox, incomplete effect, invalid transition, unconfirmed termination/idle, last_admin, space_last_owner, space_slug_conflict, or default_space_protected"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version precondition required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal error; no SQL or secret details are exposed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "External capability not wired in this deployment (a port is Unavailable), e.g. form_descriptor_unavailable or assist_unavailable"
+          }
+        },
+        "security": [
+          {
+            "serviceCredential": [],
+            "userCredential": []
+          }
+        ],
+        "summary": "POST /api/v1/tenants/:tid/workspaces/:wid/force-stop",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
     "/api/v1/tenants/{tid}/workspaces/{wid}/start": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. An open force-stop on that runtime is 409 termination_unconfirmed until the intent itself is stopped. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_workspaces_wid_start",
         "parameters": [
           {
@@ -18038,7 +18270,7 @@
     },
     "/api/v1/tenants/{tid}/workspaces/{wid}/stop": {
       "post": {
-        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
+        "description": "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. An open force-stop on that runtime is 409 termination_unconfirmed until the intent itself is stopped. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.",
         "operationId": "post_api_v1_tenants_tid_workspaces_wid_stop",
         "parameters": [
           {

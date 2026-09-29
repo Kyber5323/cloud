@@ -234,6 +234,10 @@ func Document() map[string]any {
 	s["Snapshot"] = object(obj{"operation": ref("Operation"), "project": ref("ControllerProject"), "workspaces": array(ref("ControllerWorkspace")), "sandboxes": array(ref("Sandbox")), "nodes": array(ref("Node")), "effects": array(ref("Effect")), "clones": array(ref("CloneExecution"))}, "operation", "project", "workspaces", "sandboxes", "nodes", "effects", "clones")
 	s["EmptyClaim"] = object(obj{"operation": obj{"type": "object", "nullable": true, "enum": []any{nil}}}, "operation")
 	s["Access"] = object(obj{"userId": uuid(), "tenantId": uuid(), "workspaceId": uuid(), "allowedAction": enumeration("read", "execute"), "executable": boolean(), "runtimeGeneration": number()}, "userId", "tenantId", "workspaceId", "allowedAction", "executable", "runtimeGeneration")
+	s["ForceStopIntent"] = resource("id tenantId workspaceId initiatorUserId targetRuntimeGeneration reason idempotencyKey state version createdAt updatedAt", "")
+	forceStop := properties(s, "ForceStopIntent")
+	forceStop["targetRuntimeGeneration"] = number()
+	forceStop["state"] = enumeration("requested", "terminating", "reconciling", "stopped")
 	s["RuntimeControl"] = object(obj{
 		"workspaceId":    uuid(),
 		"controlState":   enumeration("idle", "acquiring", "held", "winding_down", "reconciling"),
@@ -400,6 +404,9 @@ func responseSchema(r router.Route) (schema obj, status string) {
 	}
 	if strings.Contains(r.Path, "/control") {
 		return ref("RuntimeControl"), "200"
+	}
+	if strings.HasSuffix(r.Path, "/force-stop") {
+		return ref("ForceStopIntent"), "202"
 	}
 	if r.Path == "/api/v1/tenants/:tid/people" {
 		return object(obj{"items": array(ref("DirectoryPerson"))}, "items"), "200"
@@ -634,6 +641,8 @@ func inputSchema(name string, r router.Route) obj {
 	switch name {
 	case "version", "epoch", "admissionEpoch":
 		return obj{"type": "integer", "format": "int64", "minimum": 0}
+	case "reason":
+		return obj{"type": "string", "minLength": 1, "maxLength": 2000}
 	case "retrySeconds":
 		return obj{"type": "integer", "minimum": 1, "maximum": 3600}
 	case "protocolVersion":
@@ -721,6 +730,8 @@ func description(r router.Route) string {
 		return "Tenant administrators search the fixed Tianzhou endpoint through Cloud. Machine credentials stay server-side; only employed people and limited directory fields are returned."
 	case "/api/v1/tenants/:tid/members/huawei":
 		return "Tenant administrators add a selected Huawei person by stable globalUserId. Cloud searches Tianzhou again and verifies current employment before creating or reactivating membership."
+	case "/api/v1/tenants/:tid/workspaces/:wid/force-stop":
+		return "Accepts one independent force-stop intent. Only a current tenant administrator may accept it. The body carries the target runtime version and a non-empty reason; the idempotency key is the retry identity. The same key and body return the original intent, and a different reason or target is 409 idempotency_conflict. A second open intent for that runtime is 409 resource_in_use. Acceptance persists the intent, closes new admission, withdraws ordinary control sessions, and links this runtime's in-flight operations, tickets and effects without deleting or rewriting them. It does not create an operation, does not change administrative_stop, does not mark the runtime stopped, and does not delete data. Until the intent is stopped, acquire, restart and data deletion return 409 termination_unconfirmed. Another runtime is left untouched."
 	}
 	base := "Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. "
 	if r.Action != "" {
@@ -779,7 +790,10 @@ func description(r router.Route) string {
 		base += "Operation detail and retry follow the target runtime's creator or a current administrator, not the historical actor. administrative-stop remains administrator-only with a restricted projection. Retry only accepts blocked/retry_wait, exact operation version, and an idempotency key. "
 	}
 	if strings.Contains(r.Path, "/workspaces/") && (strings.HasSuffix(r.Path, "/start") || strings.HasSuffix(r.Path, "/stop") || r.Method == "DELETE") && !strings.Contains(r.Path, "/administrative-stop") {
-		base += "Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. "
+		base += "Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. An open force-stop on that runtime is 409 termination_unconfirmed until the intent itself is stopped. "
+	}
+	if r.Method == "DELETE" && strings.HasSuffix(r.Path, "/projects/:pid") {
+		base += "Project deletion checks every live runtime before changing any of them. Another control session, an active or unknown write, or an active ticket is 409 resource_in_use. An open force-stop is 409 termination_unconfirmed. Deletion does not start a force-stop. "
 	}
 	if r.Method == "PATCH" && !strings.Contains(r.Path, "/spaces") {
 		base += "Only project name may change; version must match. "

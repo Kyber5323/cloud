@@ -29,15 +29,16 @@ Controller、Node、Substrate、cluster Compose、手写前端界面、成员授
 
 ## 当前阶段
 
-下一会话只做第 4 阶段。没有进行中的阶段。
+下一会话只做第 5 阶段。没有进行中的阶段。
 
 ## 已落地
 
 `0018_runtime_control.sql` 已追加在 `0017_tenant_membership_and_join.sql` 之后，`0019_runtime_use_actor.sql` 接在 `0018` 之后。`0001`–`0017` 的已发布 SQL 没有改。创建本文时 Cloud `main` 为 `3123e3e`。再加迁移从 `0020` 起追加。
 
-第 1 阶段只落地了表、列、约束和迁移测试。第 2 阶段接上了使用权限。第 3 阶段接上了独占会话。下列行为仍然不是目标规则：
+第 1 阶段只落地了表、列、约束和迁移测试。第 2 阶段接上了使用权限。第 3 阶段接上了独占会话。第 4 阶段接上了独立强停意图。下一阶段不要退回这些事实：
 
-- 普通启动、停止、重启和删除已经要求使用权限和调用者当前持有的会话。`administrative_stop` 仍是管理员的活动保护停止，没有独立强停意图接口。
+- 普通启动、停止、重启和删除已经要求使用权限和调用者当前持有的会话。`administrative_stop` 仍是管理员的活动保护停止。独立强停可以登记，但没有执行端终止确认，不能把运行时标成已停止。
+- 项目删除在改任何运行时之前检查全部运行时：别人的未关闭会话、活动票据或未结束写返回冲突，不部分删除，也不自动强停。未确认的强停同样挡住项目删除和数据删除。
 - `internal/core/plugins.go` 允许成员安装和移除；项目忙时整单冲突。
 - `internal/core/migrations/0001_core.sql` 的 `credential_refs` 只有 owner 外键。冻结和新远程操作还没生效。
 - `internal/controlgrpc/server.go` 使用调用者自报的 `x-ora-controller-id`。
@@ -89,11 +90,13 @@ Controller、Node、Substrate、cluster Compose、手写前端界面、成员授
 
 ### 4. 强停
 
-状态：未开始。
+状态：已完成。
 
-新增独立强停意图。保留 `administrative_stop` 的现有语义。强停只接受当前管理员、目标版本、幂等键和非空原因；可以在其他生命周期进行中登记，但只覆盖目标运行时，完成前不可接管、不可重启、不可删数据。项目删除检查全部运行时的占用和活动，不自动强停。
+没有新迁移。意图和关联仍是 `0018_runtime_control.sql` 的 `runtime_force_stop_intents`、`runtime_force_stop_links`。入口是 `POST .../workspaces/:wid/force-stop`，实现在 `internal/core/force_stop.go`。只接受当前租户管理员、目标运行时版本、幂等键和非空原因。同一键和正文返回原来的意图；同键不同原因或目标是 `409 idempotency_conflict`。接受时关闭新准入、撤回普通控制会话，并记下该运行时的在途 operation、执行票据和 effect；不删除这些行，不改写创建者、actor 或结果，也不新建 operation。状态保持 `requested`，不把 `observed_state` 写成 stopped。完成前获取、重启和删除数据是 `409 termination_unconfirmed`。另一个运行时的在途创建可以继续；目标自己的在途 create 或插件安装不会被标成成功，迟到的 sandbox 或插件派发被拒绝。`administrative_stop` 仍要活动空闲证据，kind 不变。发起人被停用后意图还在，且不能再发新强停。
 
-必读：普通停止与强停 ADR 与其核心用例。
+跑过 `TestForceStopIntentIsAdminScoped`、`TestForceStopBlocksHandoffRestartAndDelete`、`TestForceStopDuringInflightWorkStaysOnOneRuntime`、`TestForceStopDuringPluginInstallDoesNotFinishThePlugin`，并复跑 `TestHTTPProjectLifecycleAndDurableRecovery`、`TestRuntimeControlLeaseIsExclusiveAndDatabaseTimed`、`TestControlStatesStayDistinctFromIdle`、`TestOneConflictingWriteAndLifecycleUseTheHeldSession`、`TestPluginInstallAPI`。
+
+本阶段不能宣称执行端已经终止、意图已经 `stopped`、插件调度或凭据冻结已经生效，也不能宣称内部契约已经认证控制代次。文件、终端、Agent 和 Substrate 确认仍未交付。六份 ADR 仍是 `approved`。specs 未改，核心用例证据仍是 `Missing`。
 
 ### 5. 插件与凭据
 

@@ -412,18 +412,9 @@ export interface Effect {
   workspaceId: string | null;
 }
 
-/**
- * @nullable
- */
-export type EmptyClaimOperation = typeof EmptyClaimOperation[keyof typeof EmptyClaimOperation] | null;
-
-
-export const EmptyClaimOperation = {
-} as const;
-
 export interface EmptyClaim {
   /** @nullable */
-  operation: EmptyClaimOperation;
+  operation: null;
 }
 
 export type ErrorParams = { [key: string]: unknown };
@@ -432,6 +423,30 @@ export interface Error {
   code: string;
   params: ErrorParams;
   requestId: string;
+}
+
+export type ForceStopIntentState = typeof ForceStopIntentState[keyof typeof ForceStopIntentState];
+
+
+export const ForceStopIntentState = {
+  requested: 'requested',
+  terminating: 'terminating',
+  reconciling: 'reconciling',
+  stopped: 'stopped',
+} as const;
+
+export interface ForceStopIntent {
+  createdAt: string;
+  id: string;
+  idempotencyKey: string;
+  initiatorUserId: string;
+  reason: string;
+  state: ForceStopIntentState;
+  targetRuntimeGeneration: number;
+  tenantId: string;
+  updatedAt: string;
+  version: number;
+  workspaceId: string;
 }
 
 export interface FormOption {
@@ -453,7 +468,7 @@ export const FormFieldType = {
 
 export interface FormField {
   /** Type-consistent with `type`; an array of strings for multi_select. */
-  defaultValue?: unknown | null;
+  defaultValue?: unknown;
   /** @nullable */
   description?: string | null;
   key: string;
@@ -2361,6 +2376,16 @@ export type PostApiV1TenantsTidWorkspacesWidControlReleaseBody = {
 
 export type PostApiV1TenantsTidWorkspacesWidControlRenewBody = {
   sessionId: string;
+};
+
+export type PostApiV1TenantsTidWorkspacesWidForceStopBody = {
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  reason: string;
+  /** @minimum 0 */
+  version: number;
 };
 
 export type PostApiV1TenantsTidWorkspacesWidStartBody = {

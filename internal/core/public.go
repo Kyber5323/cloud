@@ -57,7 +57,7 @@ func (s *Store) Public(ctx context.Context, r *PublicRequest) (Object, int, erro
 			out, status = createTenant(t, r, uid)
 			return out
 		}
-		isAdmin := r.SpaceID == "" && (strings.HasSuffix(r.Path, "/resource-status") || strings.HasSuffix(r.Path, "/administrative-stop") || (r.UserID != "" && r.Method == "PUT") || strings.Contains(r.Path, "/invitations") || strings.Contains(r.Path, "/join-links") || strings.Contains(r.Path, "/join-requests") || strings.HasSuffix(r.Path, "/members/huawei"))
+		isAdmin := r.SpaceID == "" && (strings.HasSuffix(r.Path, "/resource-status") || strings.HasSuffix(r.Path, "/administrative-stop") || strings.HasSuffix(r.Path, "/force-stop") || (r.UserID != "" && r.Method == "PUT") || strings.Contains(r.Path, "/invitations") || strings.Contains(r.Path, "/join-links") || strings.Contains(r.Path, "/join-requests") || strings.HasSuffix(r.Path, "/members/huawei"))
 		membership(t, r.TenantID, uid, isAdmin)
 		if r.Method == "GET" {
 			return readPublic(t, r, uid)
@@ -117,6 +117,9 @@ func (s *Store) Public(ctx context.Context, r *PublicRequest) (Object, int, erro
 		case r.OperationID != "":
 			out = retryOperation(t, r, uid)
 			status = 202
+		case r.WorkspaceID != "" && strings.HasSuffix(r.Path, "/force-stop"):
+			out = acceptForceStop(t, r, uid, hash)
+			status = 202
 		case r.WorkspaceID != "" && strings.Contains(r.Path, "/control"):
 			out = mutateRuntimeControl(t, r, uid)
 		case r.WorkspaceID != "":
@@ -144,9 +147,11 @@ func (s *Store) Public(ctx context.Context, r *PublicRequest) (Object, int, erro
 				idleProject(t, p.S("id"))
 				require(p.S("lifecycle") == "active", 409, "resource_unavailable")
 				ws := t.list("SELECT * FROM workspaces WHERE project_id=$1 AND deleted_at IS NULL ORDER BY id", p.S("id"))
+				if code := projectDeleteConflict(t, uid, ws); code != "" {
+					reject(409, code)
+				}
 				previous := Object{}
 				for _, w := range ws {
-					checkActivities(t, w)
 					previous[w.S("id")] = w
 				}
 				for _, w := range ws {
@@ -557,8 +562,13 @@ func workspaceAction(t *transaction, r *PublicRequest, uid, hash string, admin b
 	idleProject(t, p.S("id"))
 	// administrative-stop keeps its existing administrator path. Ordinary start,
 	// stop, restart and delete need use permission and the caller's held session.
+	// An open force-stop is checked after use so a caller without permission
+	// still receives runtime_use_forbidden and learns nothing about the intent.
 	if !admin {
 		requireRuntimeUse(t, r.TenantID, uid, w)
+		if openForceStop(t, w.S("id")) != nil {
+			reject(409, "termination_unconfirmed")
+		}
 		requireHeldRuntimeControl(t, r, uid, w)
 	}
 	kind, step := "stop", "quiesce"

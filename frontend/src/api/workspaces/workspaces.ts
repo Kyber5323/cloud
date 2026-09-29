@@ -28,6 +28,7 @@ import type {
   DeleteApiV1TenantsTidWorkspacesWid202,
   DeleteApiV1TenantsTidWorkspacesWidBody,
   Error,
+  ForceStopIntent,
   GetApiV1TenantsTidProjectsPidWorkspaces200,
   GetApiV1TenantsTidProjectsPidWorkspacesParams,
   PostApiV1TenantsTidProjectsPidWorkspaces202,
@@ -38,6 +39,7 @@ import type {
   PostApiV1TenantsTidWorkspacesWidControlBody,
   PostApiV1TenantsTidWorkspacesWidControlReleaseBody,
   PostApiV1TenantsTidWorkspacesWidControlRenewBody,
+  PostApiV1TenantsTidWorkspacesWidForceStopBody,
   PostApiV1TenantsTidWorkspacesWidStart202,
   PostApiV1TenantsTidWorkspacesWidStartBody,
   PostApiV1TenantsTidWorkspacesWidStop202,
@@ -248,7 +250,7 @@ export const usePostApiV1TenantsTidProjectsPidWorkspaces = <TError = ErrorType<E
       return useMutation(getPostApiV1TenantsTidProjectsPidWorkspacesMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. An open force-stop on that runtime is 409 termination_unconfirmed until the intent itself is stopped. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary DELETE /api/v1/tenants/:tid/workspaces/:wid
  */
 export const deleteApiV1TenantsTidWorkspacesWid = (
@@ -868,7 +870,77 @@ export const usePostApiV1TenantsTidWorkspacesWidControlRenew = <TError = ErrorTy
       return useMutation(getPostApiV1TenantsTidWorkspacesWidControlRenewMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Accepts one independent force-stop intent. Only a current tenant administrator may accept it. The body carries the target runtime version and a non-empty reason; the idempotency key is the retry identity. The same key and body return the original intent, and a different reason or target is 409 idempotency_conflict. A second open intent for that runtime is 409 resource_in_use. Acceptance persists the intent, closes new admission, withdraws ordinary control sessions, and links this runtime's in-flight operations, tickets and effects without deleting or rewriting them. It does not create an operation, does not change administrative_stop, does not mark the runtime stopped, and does not delete data. Until the intent is stopped, acquire, restart and data deletion return 409 termination_unconfirmed. Another runtime is left untouched.
+ * @summary POST /api/v1/tenants/:tid/workspaces/:wid/force-stop
+ */
+export const postApiV1TenantsTidWorkspacesWidForceStop = (
+    tid: string,
+    wid: string,
+    postApiV1TenantsTidWorkspacesWidForceStopBody: PostApiV1TenantsTidWorkspacesWidForceStopBody,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<ForceStopIntent>(
+      {url: `/api/v1/tenants/${tid}/workspaces/${wid}/force-stop`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: postApiV1TenantsTidWorkspacesWidForceStopBody, signal
+    },
+      options);
+    }
+
+
+
+
+export const getPostApiV1TenantsTidWorkspacesWidForceStopMutationKey = () => ['postApiV1TenantsTidWorkspacesWidForceStop'] as const;
+
+export const getPostApiV1TenantsTidWorkspacesWidForceStopMutationOptions = <TError = ErrorType<Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidForceStop>>, TError,PostApiV1TenantsTidWorkspacesWidForceStopMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidForceStop>>, TError,PostApiV1TenantsTidWorkspacesWidForceStopMutationVariables, TContext> => {
+
+const mutationKey = getPostApiV1TenantsTidWorkspacesWidForceStopMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidForceStop>>, PostApiV1TenantsTidWorkspacesWidForceStopMutationVariables> = (props) => {
+          const {tid,wid,data} = props ?? {};
+
+          return  postApiV1TenantsTidWorkspacesWidForceStop(tid,wid,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PostApiV1TenantsTidWorkspacesWidForceStopMutationResult = NonNullable<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidForceStop>>>
+    export type PostApiV1TenantsTidWorkspacesWidForceStopMutationBody = PostApiV1TenantsTidWorkspacesWidForceStopBody
+    export type PostApiV1TenantsTidWorkspacesWidForceStopMutationError = ErrorType<Error>
+    export type PostApiV1TenantsTidWorkspacesWidForceStopMutationVariables = {tid: string;wid: string;data: PostApiV1TenantsTidWorkspacesWidForceStopBody}
+
+    /**
+ * @summary POST /api/v1/tenants/:tid/workspaces/:wid/force-stop
+ */
+export const usePostApiV1TenantsTidWorkspacesWidForceStop = <TError = ErrorType<Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidForceStop>>, TError,PostApiV1TenantsTidWorkspacesWidForceStopMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof postApiV1TenantsTidWorkspacesWidForceStop>>,
+        TError,
+        PostApiV1TenantsTidWorkspacesWidForceStopMutationVariables,
+        TContext
+      > => {
+      return useMutation(getPostApiV1TenantsTidWorkspacesWidForceStopMutationOptions(options), queryClient);
+    }
+    /**
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. An open force-stop on that runtime is 409 termination_unconfirmed until the intent itself is stopped. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/workspaces/:wid/start
  */
 export const postApiV1TenantsTidWorkspacesWidStart = (
@@ -938,7 +1010,7 @@ export const usePostApiV1TenantsTidWorkspacesWidStart = <TError = ErrorType<Erro
       return useMutation(getPostApiV1TenantsTidWorkspacesWidStartMutationOptions(options), queryClient);
     }
     /**
- * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
+ * Public requests require a gateway service credential plus a caller-bound user credential. Active tenant membership is checked before lookup. Projects and runtime overview are shared with active members. Runtime content, operation detail and execution require the creator or a current tenant administrator. Ordinary start, restart, stop and delete require the creator or a current administrator and the session id of that caller's held lease. Missing the lease is 409 control_required. Another holder is 409 resource_in_use. An open force-stop on that runtime is 409 termination_unconfirmed until the intent itself is stopped. Requires matching resource version and no active project operation. Atomically closes new execution admission. Active tickets return 409 resource_in_use without changing admission. Unknown Node activity requires later proof and remains pending/blocked. main Workspace cannot be independently deleted. Mutation version conflicts return 409; a missing required version returns 428. Unknown fields are rejected. Lists use ascending UUID pagination.
  * @summary POST /api/v1/tenants/:tid/workspaces/:wid/stop
  */
 export const postApiV1TenantsTidWorkspacesWidStop = (
