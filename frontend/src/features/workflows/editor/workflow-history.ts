@@ -1,4 +1,7 @@
-import type { WorkflowGlobalVariable } from '@/features/workflows/runtime/types'
+import type {
+  WorkflowGlobalVariable,
+  WorkflowLaunchField,
+} from '@/features/workflows/runtime/types'
 import type { WorkflowGraphAnnotation } from '@/features/workflows/runtime/graph-codec'
 import type {
   WorkflowCanvasEdge,
@@ -22,6 +25,7 @@ export type WorkflowHistoryEvent =
   | 'layout.organize'
   | 'node.edit'
   | 'workflow.variables'
+  | 'workflow.launchFields'
 
 /** Stores the workflow fields that represent authored content, excluding UI state. */
 export interface WorkflowHistorySnapshot {
@@ -29,6 +33,11 @@ export interface WorkflowHistorySnapshot {
   edges: WorkflowCanvasEdge[]
   annotations: readonly WorkflowGraphAnnotation[]
   globalVariables: readonly WorkflowGlobalVariable[]
+  /**
+   * Always present, even when empty: the fingerprint below is a plain JSON.stringify, so a key
+   * that appears only once it has content would make two identical states hash differently.
+   */
+  launchFields: readonly WorkflowLaunchField[]
   description?: string
 }
 

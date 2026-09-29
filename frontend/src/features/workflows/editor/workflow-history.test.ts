@@ -34,7 +34,7 @@ function graph(
   nodes: WorkflowCanvasNode[],
   edges: WorkflowCanvasEdge[] = [],
 ): WorkflowHistorySnapshot {
-  return { nodes, edges, annotations: [], globalVariables: [] }
+  return { nodes, edges, annotations: [], globalVariables: [], launchFields: [] }
 }
 
 /** True only for commit results where the two fields differ as required. */

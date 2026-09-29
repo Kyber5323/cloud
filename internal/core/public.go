@@ -12,9 +12,14 @@ func itoa(n int) string { return strconv.Itoa(n) }
 // PublicRequest is populated only after service and final-user credentials are verified.
 type PublicRequest struct {
 	Method, Path, TenantID, ProjectID, WorkspaceID, SpaceID, OperationID, UserID, IssueID, CommentID, LabelID, StatusID, ViewID, RunID, ContextRefID, InteractionID, WorkflowID, SnapshotID, FormRef, Key, After, Query, GroupBy string
-	Limit                                                                                                                                                                                                                    int
-	Body                                                                                                                                                                                                                     Object
-	Identity                                                                                                                                                                                                                 *Claims
+	// FormIssueID is the optional `issueId` query parameter of the form-descriptor route. It is
+	// deliberately its own field rather than a fallback into IssueID: IssueID drives dispatch in both
+	// readPublic and Public, so a query parameter folded into it would let `GET /issues?issueId=…`
+	// hijack routing.
+	FormIssueID string
+	Limit       int
+	Body        Object
+	Identity    *Claims
 }
 
 // Public executes one authorized public request in a short database transaction.

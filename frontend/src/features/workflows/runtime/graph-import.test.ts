@@ -81,6 +81,28 @@ describe('imported workflow documents', () => {
     expect(imported.annotations).toEqual([ANNOTATION])
   })
 
+  it('recovers the launch-field declaration an export carried', () => {
+    const launchFields = [
+      { key: 'version', enabled: false },
+      { key: 'prompt', enabled: true, required: true },
+    ]
+    const imported = parseImportedWorkflowDocument(documentWith({ launchFields }))
+
+    // It rides beside the definition rather than inside it: the executable document is shared with
+    // the desktop runtime, which has no `@` form to declare fields for.
+    expect(imported.launchFields).toEqual(launchFields)
+    expect(imported.definition).not.toHaveProperty('launchFields')
+  })
+
+  it('refuses a declaration entry that does not name a platform launch field', () => {
+    expect(
+      importIssues(documentWith({ launchFields: [{ key: 'deploy_target' }, { key: 'branch' }] })),
+    ).toEqual(['launch field 0 does not name a platform launch field'])
+    expect(importIssues(documentWith({ launchFields: {} }))).toEqual([
+      'launchFields must be an array',
+    ])
+  })
+
   it('defaults the metadata an export may leave out', () => {
     const imported = parseImportedWorkflowDocument({
       id: 'workflow-1',

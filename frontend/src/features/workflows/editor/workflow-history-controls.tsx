@@ -262,6 +262,7 @@ function historyEventLabel(event: WorkflowHistoryEvent): TranslationKey {
     'layout.organize': 'workflows.history.eventOrganize',
     'node.edit': 'workflows.history.eventNodeEdit',
     'workflow.variables': 'workflows.history.eventVariables',
+    'workflow.launchFields': 'workflows.history.eventLaunchFields',
   }
   return keys[event]
 }

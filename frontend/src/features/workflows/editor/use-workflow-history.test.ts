@@ -16,7 +16,7 @@ function outputCard(id: string, y = 0): WorkflowCanvasNode {
 
 /** A snapshot whose context carries the phrase "histories recording" when set. */
 function snapshotOf(cards: WorkflowCanvasNode[]): WorkflowHistorySnapshot {
-  return { nodes: cards, edges: [], annotations: [], globalVariables: [] }
+  return { nodes: cards, edges: [], annotations: [], globalVariables: [], launchFields: [] }
 }
 
 const INITIAL = snapshotOf([outputCard('one')])

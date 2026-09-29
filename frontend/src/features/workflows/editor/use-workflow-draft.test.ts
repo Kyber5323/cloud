@@ -57,6 +57,18 @@ function regionFixture(): Workflow {
   return fixtureWithGraph([iterationNode(), agentMember(), outputNode()])
 }
 
+/** A stored workflow whose graph carries this launch-field declaration. */
+function declarationFixture(launchFields: unknown[]): Workflow {
+  return workflowFixture({
+    graph: {
+      nodes: [outputNode()],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      launchFields,
+    },
+  })
+}
+
 function setup(workflow: Workflow) {
   return renderHook(() => useWorkflowDraft(workflow, translate))
 }
@@ -206,5 +218,52 @@ describe('useWorkflowDraft', () => {
     expect(frame.data.kind).toBe('iteration')
     const data = frame.data as { iterationConfig?: { collectSelector?: string[] } }
     expect(data.iterationConfig?.collectSelector).toEqual([])
+  })
+
+  it('carries the launch-field declaration from the stored graph into the next save', () => {
+    const declaration = [
+      { key: 'version', enabled: false },
+      { key: 'prompt', required: true },
+    ]
+    const { result } = setup(declarationFixture(declaration))
+
+    expect(result.current.launchFields).toEqual(declaration)
+
+    act(() => {
+      result.current.replaceLaunchFields([{ key: 'repository', enabled: false }])
+    })
+
+    expect(result.current.launchFields).toEqual([{ key: 'repository', enabled: false }])
+    expect(result.current.snapshot({ x: 0, y: 0, zoom: 1 })).toHaveProperty('launchFields', [
+      { key: 'repository', enabled: false },
+    ])
+  })
+
+  it('writes the launch-field key even when the workflow declares nothing', () => {
+    const { result } = setup(draftFixture())
+
+    // The key belongs to the envelope's shape rather than being an optional extra: the editor's
+    // history fingerprint is a plain JSON.stringify of this document, so a key that appeared only
+    // once it had content would make two identical states hash differently.
+    expect(result.current.snapshot({ x: 0, y: 0, zoom: 1 })).toHaveProperty('launchFields', [])
+  })
+
+  it('keeps the launch-field declaration through a history capture and restore', () => {
+    const declaration = [{ key: 'branch', required: false }]
+    const { result } = setup(declarationFixture(declaration))
+
+    const captured = result.current.captureContent()
+    expect(captured.launchFields).toEqual(declaration)
+
+    act(() => {
+      result.current.replaceLaunchFields([])
+    })
+    expect(result.current.launchFields).toEqual([])
+
+    act(() => {
+      result.current.restoreContent(captured)
+    })
+
+    expect(result.current.launchFields).toEqual(declaration)
   })
 })

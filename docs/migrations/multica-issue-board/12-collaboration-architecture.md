@@ -2205,3 +2205,229 @@ Nothing else diverged: the descriptor is never persisted, drafts stay frontend-o
   double confirm `409` → same-key replay returns the same run → 0 workflow-authored entries. Foundation
   regression re-checked live: mention produces no run, agent/team tasks still produce comments, shared
   `seq` ordering intact, `authorType` impersonation still 400.
+
+**Revision — the platform fields (§38.37b).** Until now a workflow's form was projected **exclusively**
+from the Start node's declared input variables; the platform injected nothing. That left two questions
+every run needs answered unanswered: *which repository is this run about* and *what should it do*. Both
+are now platform-owned fields, injected into the descriptor when the form is opened **for an issue**:
+
+| Field | Key | Type | Required | Default |
+| --- | --- | --- | --- | --- |
+| 仓库地址 | `repository` | `text` | **yes** | the issue's `project_ref → projects.repository_url` (tenant-scoped JOIN; absent ⇒ empty, still required) |
+| 提示词 | `prompt` | `textarea` | no | the workflow's Start node `data.input` (the editor's 初始提示词), clipped to `maxFieldValueLength` |
+
+Design rules, all four of them deliberate:
+
+1. **Both fields lead the form.** They are prepended, so the author's own Start variables keep their
+   relative order behind them. This is a rendering decision the descriptor carries (array order), not a
+   frontend special case.
+2. **The prompt is optional and empty means "use the workflow's own".** Leaving it blank is not a
+   missing value — it is how the caller says *run the prompt the author already wrote in the Start
+   node*. Nothing is copied into the run for that case; the fallback is the workflow's, resolved at
+   execution time. The repository has no such fallback, hence required.
+3. **Author-declared-wins.** A workflow whose Start node already declares `repository` (the review
+   fixture in `integration/workflow_interaction_test.go` does) keeps its own label, type and
+   requiredness; the platform only fills in a default, and only when that default passes
+   `validFieldValue` against the *author's* control. So a `select` whose options exclude the project URL,
+   or a `number` named `prompt`, is left alone rather than corrupted. The platform never overrides a
+   declared `required`, in either direction.
+4. **No issue context ⇒ zero injection.** A request without `?issueId=` gets byte-for-byte the
+   descriptor this route served before the fields existed. Injection is not a mode the form is always
+   in; it is a function of the caller having an issue in hand.
+
+The wire change is a single **optional** `issueId` query parameter on the existing
+`GET /collaboration/forms/{formRef}` (additive; every previously-valid request stays valid). It is bound
+to its own `PublicRequest.FormIssueID` field rather than folded into `IssueID`, because `r.IssueID`
+drives dispatch in both `readPublic` and `Public` — a query parameter in that field would let
+`GET /issues?issueId=…` hijack routing.
+
+The port signature changed to carry a **resolved value**, not an id:
+`ResolveFormDescriptor(ctx, tenantID, formRef, issue IssueFormContext)` where `IssueFormContext` is
+`{IssueID, RepositoryURL}`. The Issues domain resolves it inside its own transaction and hands it over,
+so a provider still never reads the Issues tables and can never resolve the same issue from another
+tenant's point of view. The zero value means "no issue context".
+
+`GET` / `assist` / `confirm` all resolve through the same `IssueFormContext`. This is load-bearing, not
+tidiness: `validateFormValues` rejects unknown keys with 400, so a confirm validating against a
+descriptor that lacked the platform fields would reject the very values the user was shown. Assist
+takes the same context for the same reason.
+
+**Reserved keys.** `prompt` and `repository` are now platform keys as well as ordinary field keys. A
+future *real* executor that validates run input against the Start node's declared variables must map
+these two explicitly (prompt → the node's `input`, repository → the workspace/checkout target) instead
+of assuming every key in `issue_interactions.input` names a declared Start variable. Today no executor
+exists, so nothing reads them; the reservation is recorded here so the first one does not have to guess.
+
+**No migration.** `issues.project_ref` arrived in `0010` and `projects.repository_url` in `0001`; the
+injection is computed per request and nothing new is persisted. The descriptor is still never stored.
+
+Two consequences worth stating plainly:
+
+- **An existing workflow's `@` form gains a required field.** That is the intended trade-off: a run
+  with no repository is not a run anyone wants. An issue with no `project_ref` therefore requires the
+  user to type one.
+- **Front and back must deploy together.** A confirm re-validates against the issue-scoped descriptor,
+  so a client that renders the old (un-injected) form will get 400 `required_field_missing` on confirm.
+  Same repository, same release — acceptable, but not a rolling-deploy-safe change.
+
+Also deterministic and legal, but surprising if undocumented: at `maxFormFields` (100) the author's
+form is already full, so the platform fields are not appended at all rather than making a valid form
+invalid.
+
+Verification: `internal/core/workflow_collaboration_test.go` covers the injection rules (presence,
+order, requiredness, Start-prompt default, UTF-8-safe clipping, all three author-wins branches, zero
+injection without context, no `data.input`, the 100-field ceiling, and two Start nodes resolving to one
+node); `integration/workflow_interaction_test.go` adds `TestFormDescriptorPlatformFieldsForAnIssue`
+(order + defaults + author-wins + 404 on unknown/foreign issue + empty repository for a project-less
+issue) and `TestWorkflowConfirmCarriesPlatformFields` (assist accepts a `prompt` key and confirm
+persists both values into the interaction and the run snapshot).
+
+**Revision — the launch fields (§38.37c).** §38.37b answered *which repository* and *what should it
+do*. Three more questions a run needs answered were still open — *which branch of it*, *which published
+version*, and *what else should the run know* — plus the graph's own global constants, which the backend
+had never interpreted at all. They are now projected too, prepended ahead of the author's variables:
+
+| Field | Key | Type | Required | Default | Injected when |
+| --- | --- | --- | --- | --- | --- |
+| 分支 | `branch` | `text` | **yes** | the same project's `default_branch` (`NOT NULL`, so a project that exists always yields one) | always |
+| 运行版本 | `version` | `select` | no | newest `workflow_snapshots` row | the workflow has ≥1 published snapshot |
+| 补充上下文引用 | `context_refs` | `multi_select` | no | none | the issue has a project or a parent |
+| *(one per global)* | `<global.name>` | by `valueType` | no | the variable's declared `value` | the graph declares it |
+
+Design rules, continuing the four above:
+
+5. **A field with nothing to offer is not injected at all.** `validateFormDescriptor` requires
+   `len(options) > 0` for an option-taking type, so an option-less `select` is a 500 — the same
+   fail-closed reasoning that already governs the 100-field ceiling. An unpublished workflow therefore
+   has **no** version field, and an issue that can name no reference has **no** `context_refs` field.
+   Neither is a degraded mode; both are the only legal rendering.
+6. **`version` carries the snapshot id, not the version number.** The number is unique per workflow
+   (`workflow_snapshot_version_uniq`), so it *could* be the value — but the consumer of a run is
+   `createWorkflowRun`, which takes a `snapshotId`, and an id cannot come to mean a different frozen
+   document later. The number rides in the label (`v3 · <name>`), where it is read rather than consumed.
+   The query is `ORDER BY version DESC LIMIT 100`, which the existing `workflow_snapshot_list` index
+   already serves; the cap exists because 101 publishes would otherwise build an invalid descriptor.
+7. **`context_refs` is additive, and that is a correctness constraint, not a UX choice.**
+   `buildRunContext` already appends the issue's **entire** `issue_context_refs` set to every run it
+   starts, and confirm's `contextRefs` are `extraRefs` appended after them. A checkbox that appeared to
+   *remove* a reference would therefore be lying, so the field opens on nothing selected and means
+   "carry these as well". Its options are only the references the issue can name for itself — its
+   `project_ref` and its `parent_issue_id` — because a picker over arbitrary issues, pull requests and
+   files does not exist; that remains deferred, and AI Assist is still the only source of the rest.
+8. **Globals come last, after the author's Start variables.** The Start variables are *this run's*
+   parameters; a global is a workflow-wide constant this invocation may override. They keep their
+   declared `value` as the default, so an untouched field runs the workflow with exactly what it
+   declares. `valueType` maps onto the same controls Start variables use; anything with no Issues
+   control (arrays, objects, files) degrades to a JSON textarea rather than being dropped, because a
+   missing field would silently run the declared constant instead of the value the user meant to set.
+
+The port grew to `IssueFormContext{IssueID, RepositoryURL, DefaultBranch, ProjectID, ParentIssueID}` —
+all resolved from rows the Issues domain already held, so no extra query and no second tenant-scoped
+lookup. `formDescriptorFromGraph` now takes a `workflowFormSource` bundle rather than a growing argument
+list.
+
+**Reserved keys, extended.** `branch`, `version` and `context_refs` join `prompt` and `repository`. The
+first four are reserved in the §38.37b sense (map them explicitly, do not assume they name a declared
+Start variable). `context_refs` is reserved in a second sense: the surface reads its value back out — a
+list of `refType:refId` strings — and turns it into the confirm body's `contextRefs`, deduplicated
+against whatever AI Assist applied, because the run appends what it is given without checking.
+
+**Still no migration.** `projects.default_branch` arrived in `0001`, `workflow_snapshots` in `0015`, and
+`globalVariables` lives inside the `workflows.graph` jsonb document. Nothing new is persisted and the
+descriptor is still never stored.
+
+Three consequences worth stating plainly:
+
+- **An existing workflow's `@` form gains a second required field.** `branch` pairs with `repository`,
+  so an issue with no `project_ref` now asks the user for two values rather than one. Intended, and the
+  same trade-off §38.37b already made.
+- **A global variable named like a Start variable is impossible by construction** — globals always
+  contain a `.` — so the author-declared-wins rule and the globals band cannot collide with each other.
+  The 100-field ceiling still applies to globals: past it they are simply not appended.
+- **`version` records intent, not a fact.** Cloud has no workflow engine, and the issue confirm path
+  creates an `issue_runs` row with no snapshot reference at all (it is not Stage 8's `workflow_runs`).
+  Nothing binds the chosen version; the field says what the caller means to run, and no wording anywhere
+  may suggest it has run.
+
+Verification: `internal/core/workflow_collaboration_test.go` adds the branch, version (present and
+absent), context-refs (additive and absent) and global-variable projections, the defensive read of a
+malformed `globalVariables`, the three-band ordering, and the collision rule for all three new reserved
+keys; `integration/workflow_interaction_test.go` extends `TestFormDescriptorPlatformFieldsForAnIssue`
+with the full six-field order, the version options and defaults, the empty-issue case, the unpublished
+workflow, and adds `TestFormDescriptorPlatformFieldsCollideWithAuthorDeclarations` plus a confirm round
+trip carrying a chosen version and a ticked reference into the run snapshot.
+
+**Revision — author-declared launch fields (§38.37d).** §38.37b and §38.37c decided which questions the
+`@` form asks. They decided it *for every workflow at once*, in Go — the wrong place for a question whose
+answer is "it depends on the workflow": a release workflow wants the version choice, a one-off script
+does not; a review workflow wants the prompt to be mandatory, a notification workflow does not care. The
+author now declares both, and the platform's table becomes a **catalogue** the declaration narrows rather
+than the form itself.
+
+The declaration is `launchFields` in the graph envelope — a sibling of `globalVariables` and
+`description`, not a column and not a route body:
+
+| Key | Value | Meaning |
+| --- | --- | --- |
+| `key` | one of `repository`, `branch`, `version`, `prompt`, `context_refs` | which field the answer is about |
+| `enabled` | boolean, optional | whether the form asks for it at all; absent means yes |
+| `required` | boolean, optional | whether the form insists on an answer; absent means the catalogue's |
+
+An entry naming anything else is dropped rather than remembered: a declaration cannot conjure a field the
+catalogue does not have, and an unreadable entry contributes nothing rather than failing the request.
+
+Design rules, continuing the eight above:
+
+9. **The declaration is read per key, not as a list.** An unmentioned key keeps the catalogue's answer. A
+   complete list would have been the obvious shape — and the editor writes one, spelling out all five —
+   but it makes the catalogue *closed*: a sixth field added later would be invisible to every workflow
+   that had ever been saved, silently, until each was re-saved by hand. Per-key override makes that field
+   appear everywhere the moment it exists, and makes "declared nothing" and "declared the defaults" the
+   same document — which is what the drift guard below pins.
+10. **"Nothing to offer" outranks the declaration.** An author may ask for `version` on a workflow with no
+    published snapshot, and for `context_refs` on an issue that can name no reference; neither is
+    injected, because rule 5's fail-closed reasoning is not something a document can override. The
+    dialog says so on the row rather than letting the author believe the switch is broken.
+11. **A key the author declared in their own Start node is theirs.** §38.37b's author-wins rule already
+    gives that key to the author's control, label and requiredness, so the declaration is **inert** for
+    it: `enabled: false` does not withdraw it and `required` does not change it. The alternative — letting
+    a stored document delete a control its own author put on the canvas — is the one outcome a declaration
+    must not be able to produce. The dialog shows such a row as declared-by-Start and disables it, so the
+    inertness is visible rather than a surprise.
+12. **The declaration is stored in neither a snapshot nor a run.** Descriptors read the live
+    `workflows.graph`, so saving takes effect on the next read; publishing is not what makes it
+    effective, it only gives `version` something to offer. A run's `interactionValues` therefore record
+    the values submitted under the declaration *at that moment*, and a later edit cannot retroactively
+    change what a past run was asked for.
+
+**Consequences worth stating plainly.** The author may withdraw `repository` and `branch` — the two fields
+§38.37b called essential — and a confirm under such a declaration records a run with no repository. That
+is the trade-off the feature is for: the declaration is authoritative for the form, and Cloud has no
+engine to argue with it. A withdrawn key becomes an **unknown key**, not an ignored one: `assist` and
+`confirm` re-resolve the declaration, so a client still sending it gets 400 `invalid_field_value`, and AI
+Assist can no longer suggest it (`assistSuggestionObject` keeps only keys present on the descriptor).
+`required` is enforced on the server: confirm passes `requireComplete=true`, so a field the author made
+required is 400 `required_field_missing` when missing, while assist still runs on the half-filled form.
+
+**No migration and no contract drift.** The declaration lives inside the `workflows.graph` jsonb document,
+whose schema is `additionalProperties: true`; the route body allowlist (`name`, `description`, `graph`,
+`version`) governs the body's keys rather than the envelope's, so the API surface is unchanged. The
+editor's dialog writes all five keys with both answers spelled out — self-describing, and not a shape the
+projection depends on.
+
+**Two catalogue tables, and the guard between them.** The platform's answers are written twice: Go's
+`platformFormFields` (injection order, and each field's own requiredness) and TypeScript's
+`WORKFLOW_LAUNCH_FIELD_DEFAULTS` (what the dialog seeds, and what "the platform's own answer" means on
+screen). They are tied by tests rather than by generation: the Go unit tests and the drift guard in
+`integration/workflow_interaction_test.go` pin undeclared ≡ explicit defaults, and the dialog tests pin
+the same five requiredness values in the editor. A sixth field has to be added in both places, and a
+disagreement about the existing five shows up as a red test rather than as a form that changes the first
+time an author opens the dialog.
+
+Verification: `internal/core/workflow_launch_fields_test.go` covers the whole catalogue by default, the
+withdrawal of every key, both directions of `required`, a later duplicate entry winning, ten malformed
+shapes, "cannot offer what the platform does not have", and the inert-for-the-author's-own-key rule;
+`integration/workflow_interaction_test.go` adds `TestFormDescriptorAuthorDeclaredLaunchFields` — the
+drift guard, a withdrawn key rejected by both `assist` and `confirm` (with the same form accepted as the
+control), the author's requiredness enforced at confirm, an empty optional field accepted, and a
+declaration that is inert for a key the author's own Start node declares.

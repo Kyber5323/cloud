@@ -170,11 +170,60 @@ workflow_not_available` (3B-1) is **SUPERSEDED**.
 
 | Method | Path | Body fields | Response |
 | --- | --- | --- | --- |
-| GET | `/collaboration/forms/{formRef}` | — | `FormDescriptor` (`{formRef,title?,description?,fields[]}`) |
+| GET | `/collaboration/forms/{formRef}` | query `?issueId=` | `FormDescriptor` (`{formRef,title?,description?,fields[]}`) |
 | POST 🔑 | `/issues/{iid}/collaboration/assist` | `targetId`*, `values`(object) | `{suggestedValues, suggestedContextRefs, explanations?}` — **stateless, suggest only, no side effects** |
 | POST 🔑 | `/issues/{iid}/interactions/{ixid}/confirm` | `values`(object)*, `contextRefs`(array of `{refType,refId}`) | `{resource: IssueRun}` (the initial run, `status=queued`; dispatch is post-commit) |
 
 - `formRef` is an **opaque** provider token (not a UUID) and appears in a path segment.
+- `?issueId=` is **optional** and additive. Omitted (or empty) ⇒ the descriptor is exactly the one this
+  route served before the platform fields existed. Present ⇒ the descriptor is tailored to that issue
+  and the platform fields are **prepended**, in this order:
+
+  | key | label | type | required | default | injected when |
+  | --- | --- | --- | --- | --- | --- |
+  | `repository` | 仓库地址 | `text` | ✅ | issue's `project_ref → projects.repository_url` | always |
+  | `branch` | 分支 | `text` | ✅ | the same project's `default_branch` | always |
+  | `version` | 运行版本 | `select` | — | newest `workflow_snapshots` row | the workflow has ≥1 published snapshot |
+  | `prompt` | 提示词 | `textarea` | — | Start node's 初始提示词; blank means "use the workflow's own prompt" | always |
+  | `context_refs` | 补充上下文引用 | `multi_select` | — | none (empty = add nothing) | the issue has a project or a parent |
+
+  `version` offers snapshot **ids** (a run is created from an id, and the id keeps pointing at the same
+  frozen document); the version number rides in the label as `v3 · <snapshot name>`. An unpublished
+  workflow has nothing to offer and the field is **dropped** rather than injected empty — the contract
+  has no way to express a select with no choices. `context_refs` is **additive**: the issue's own
+  persisted references are already on every run it starts, so its options are the references the issue
+  can name for itself (`project:<id>`, `parent_issue:<id>`) and it opens on nothing selected.
+  A workflow that already declares one of these keys keeps its own label/type/requiredness and only
+  gains a default when that default validates against its control. Unknown or foreign issue ⇒ 404.
+
+  That table is the platform's **catalogue**, not the form: the workflow's author declares which of
+  those fields their workflow's form asks for, and which of them it insists on (§38.37d). The
+  declaration rides in the graph envelope as `launchFields`, a sibling of `globalVariables`, and is
+  read **per key** — `[{"key":"version","enabled":false},{"key":"prompt","required":true}]` turns off
+  the version choice and makes the prompt mandatory, and every key it does not mention keeps the
+  catalogue's own answer. That is what keeps a workflow declaring nothing rendering exactly the table
+  above, and a field added to the catalogue later appears for every workflow without re-saving one.
+  `enabled: false` removes the field from the descriptor (`repository` and `branch` included), after
+  which a value for that key is an **unknown key** on both `assist` and `confirm` — they re-resolve
+  the same declaration — and AI Assist can no longer suggest it. `required` overrides the catalogue's
+  answer in both directions and is enforced server-side by `confirm` (400 `required_field_missing`).
+  Two rules outrank the declaration: a field with **nothing to offer** is dropped whatever the author
+  asked for (`version` with no published snapshot, `context_refs` for an issue that names no
+  reference), and a key the author declared as a **Start variable of their own** is theirs — the
+  declaration is inert for that key, control and requiredness alike. Edited in the workflow editor's
+  `@ 表单字段` dialog, which writes all five keys with both answers spelled out; it takes effect on the
+  next descriptor read, because the projection reads the live graph rather than a published snapshot.
+- The graph's `globalVariables` are projected **after** the author's Start variables, one optional field
+  each, keyed and labelled by the variable name, defaulted from its declared `value`. `number`/`integer`
+  → `number`, `boolean` → `boolean`, `string`/`secret` → `text`, everything else (arrays, objects, files)
+  → `textarea` holding JSON. A name without a `.` is not a global and is dropped.
+- The three routes must agree: `assist` and `confirm` re-resolve the descriptor with the **same** issue
+  context, so a client that fetches with `?issueId=` must confirm against that same issue (a client
+  rendering the un-injected form gets 400 `required_field_missing` on confirm). `prompt`, `repository`,
+  `branch`, `version` and `context_refs` are **reserved keys** — an executor that validates run input
+  against Start variables must map them explicitly. `context_refs` is reserved in a second sense: the
+  surface reads its value back out (a list of `refType:refId` strings) and turns it into the run's
+  `contextRefs`, in addition to whatever AI Assist applied.
 - `values` is a plain `{fieldKey: value}` map, re-validated server-side against the **current**
   descriptor: unknown key / wrong type / value outside `options` → 400 `invalid_field_value`; missing
   required → 400 `required_field_missing`.

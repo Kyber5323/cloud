@@ -2,6 +2,41 @@ package core
 
 import "strings"
 
+// issueFormContext resolves the issue context a form descriptor may be tailored with: the repository
+// and default branch of the project the issue belongs to, and the references the issue can name for
+// itself (§38.37b, §38.37c).
+//
+// An empty issue id means the caller has no issue in hand — that is the plain
+// `GET /collaboration/forms/{formRef}` — and yields the zero value, so no platform field is injected. A
+// non-empty id is resolved through the tenant-scoped issue lookup, so an unknown or foreign issue is the
+// same 404 it would be anywhere else rather than a silently dropped context.
+func issueFormContext(t *transaction, tid, issueID string) IssueFormContext {
+	if issueID == "" {
+		return IssueFormContext{}
+	}
+	return formContextForIssue(t, tid, issue(t, tid, issueID))
+}
+
+// formContextForIssue is issueFormContext for a caller that already holds the issue row, so assist and
+// confirm do not re-read what they just loaded.
+func formContextForIssue(t *transaction, tid string, i Object) IssueFormContext {
+	out := IssueFormContext{IssueID: i.S("id"), ParentIssueID: i.S("parentIssueId")}
+	ref := i.S("projectRef")
+	if !validID(ref) {
+		return out
+	}
+	// `issues.project_ref` carries no foreign key — migration 0010 adds the column shape-only — so a
+	// project that has since been deleted is a missing default, never an error. Reading the branch
+	// alongside the repository costs nothing: it is the same row, and `default_branch` is NOT NULL, so
+	// a project that exists always yields one.
+	if project := t.one("SELECT repository_url, default_branch FROM projects WHERE id=$1 AND tenant_id=$2 AND deleted_at IS NULL", ref, tid); project != nil {
+		out.ProjectID = ref
+		out.RepositoryURL = project.S("repositoryUrl")
+		out.DefaultBranch = project.S("defaultBranch")
+	}
+	return out
+}
+
 // interaction loads one interaction scoped to its tenant and issue; foreign/missing are 404.
 func interaction(t *transaction, tid, iid, ixid string) Object {
 	require(validID(ixid), 404, "not_found")
@@ -68,7 +103,7 @@ func confirmInteraction(t *transaction, r *PublicRequest, uid string, dispatches
 	require(it["runId"] == nil, 409, "interaction_already_confirmed")
 	i := issue(t, r.TenantID, r.IssueID)
 	targetType, targetID := it.S("targetType"), it.S("targetId")
-	descriptor := workflowFormDescriptor(t, r.TenantID, targetType, targetID)
+	descriptor := workflowFormDescriptor(t, r.TenantID, targetType, targetID, formContextForIssue(t, r.TenantID, i))
 	values := interactionValues(r.Body)
 	validateFormValues(descriptor, values, true)
 
@@ -89,7 +124,7 @@ func assistWorkflow(t *transaction, r *PublicRequest) Object {
 	i := issue(t, r.TenantID, r.IssueID)
 	targetID := r.Body.S("targetId")
 	require(validID(targetID), 400, "invalid_target")
-	descriptor := workflowFormDescriptor(t, r.TenantID, "workflow", targetID)
+	descriptor := workflowFormDescriptor(t, r.TenantID, "workflow", targetID, formContextForIssue(t, r.TenantID, i))
 	// Assist is requested while the form is still being filled, so shape is validated but requiredness
 	// is not — an incomplete form is exactly when a suggestion is useful.
 	current := interactionValues(r.Body)

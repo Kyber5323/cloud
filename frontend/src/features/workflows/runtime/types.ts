@@ -75,6 +75,46 @@ export interface WorkflowGlobalVariable {
   value?: unknown
 }
 
+/** Every platform launch field a workflow's `@` form can ask for, in the order they are injected. */
+export const WORKFLOW_LAUNCH_FIELD_KEYS = [
+  'repository',
+  'branch',
+  'version',
+  'prompt',
+  'context_refs',
+] as const
+
+/** One platform launch field, named the way the Issues surface names it. */
+export type WorkflowLaunchFieldKey = (typeof WORKFLOW_LAUNCH_FIELD_KEYS)[number]
+
+/**
+ * The platform's own answer for each launch field: whether the `@` form asks for it, and whether it
+ * insists on an answer. Mirrors the Go catalogue, and the drift-guard test ties the two together.
+ */
+export const WORKFLOW_LAUNCH_FIELD_DEFAULTS: readonly {
+  key: WorkflowLaunchFieldKey
+  required: boolean
+}[] = [
+  { key: 'repository', required: true },
+  { key: 'branch', required: true },
+  { key: 'version', required: false },
+  { key: 'prompt', required: false },
+  { key: 'context_refs', required: false },
+]
+
+/**
+ * One entry of a workflow's launch-field declaration (§38.37d): a per-key override of the platform
+ * catalogue. A key the declaration does not name keeps the platform's own answer, so a field the
+ * platform adds later reaches every workflow without one being re-saved.
+ */
+export interface WorkflowLaunchField {
+  key: WorkflowLaunchFieldKey
+  /** Whether the `@` form asks for the field; unstated means yes. */
+  enabled?: boolean
+  /** Whether the form insists on an answer; unstated keeps the platform's own answer. */
+  required?: boolean
+}
+
 /** Form controls supported by a Start node when collecting deployment-time input. */
 export type WorkflowInputFieldType =
   'text-input' | 'paragraph' | 'select' | 'number' | 'checkbox' | 'file' | 'file-list' | 'json'

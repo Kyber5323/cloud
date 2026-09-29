@@ -56,10 +56,91 @@ const descriptor: FormDescriptor = {
   ],
 }
 
+/**
+ * The descriptor the backend projects once the form is opened *for an issue*: the platform's two
+ * fields lead it, prefilled from the issue's project repository and the workflow's Start prompt. They
+ * are ordinary fields as far as the renderer is concerned — that is the point of projecting them into
+ * the descriptor rather than special-casing them in the UI.
+ */
+const platformDescriptor: FormDescriptor = {
+  formRef: 'security-review',
+  fields: [
+    {
+      key: 'repository',
+      label: '仓库地址',
+      type: 'text',
+      required: true,
+      defaultValue: 'https://github.com/ora/cloud',
+    },
+    {
+      key: 'prompt',
+      label: '提示词',
+      type: 'textarea',
+      required: false,
+      defaultValue: 'Review the diff',
+    },
+    { key: 'notes', label: 'Notes', type: 'textarea', required: false },
+  ],
+}
+
+/**
+ * The same descriptor once the launch fields are added: a required branch, the workflow's published
+ * versions to run, and the references this run may carry on top of the issue's own. They are ordinary
+ * fields too — the only one the surface reads back out is `context_refs`.
+ */
+const launchDescriptor: FormDescriptor = {
+  formRef: 'security-review',
+  fields: [
+    {
+      key: 'repository',
+      label: '仓库地址',
+      type: 'text',
+      required: true,
+      defaultValue: 'https://github.com/ora/cloud',
+    },
+    { key: 'branch', label: '分支', type: 'text', required: true, defaultValue: 'main' },
+    {
+      key: 'version',
+      label: '运行版本',
+      type: 'select',
+      required: false,
+      defaultValue: 'snap-3',
+      options: [
+        { value: 'snap-3', label: 'v3 · 发布 3' },
+        { value: 'snap-2', label: 'v2 · 发布 2' },
+      ],
+    },
+    {
+      key: 'prompt',
+      label: '提示词',
+      type: 'textarea',
+      required: false,
+      defaultValue: 'Review the diff',
+    },
+    {
+      key: 'context_refs',
+      label: '补充上下文引用',
+      type: 'multi_select',
+      required: false,
+      options: [
+        { value: 'project:p1', label: '本项目' },
+        { value: 'parent_issue:p2', label: '父任务' },
+      ],
+    },
+  ],
+}
+
 const suggestion: AssistSuggestion = {
   suggestedValues: { scope: 'changed-files', severity: 'high' },
   suggestedContextRefs: [],
   explanations: { scope: 'because scope', severity: 'because severity' },
+}
+
+/** A suggestion that proposes one reference the user can also tick in the form, to prove the dedup. */
+const refSuggestion: AssistSuggestion = {
+  suggestedValues: {},
+  suggestedContextRefs: [{ refType: 'project', refId: 'p1' }],
+  explanations: {},
 }
 
 const interaction: IssueInteraction = {
@@ -151,6 +232,12 @@ async function fillRequired(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole('option', { name: 'Changed files' }))
 }
 
+/** The two clicks every confirm goes through: into Review, then the confirm itself. */
+async function reviewAndConfirm(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: '审阅' }))
+  await user.click(await screen.findByRole('button', { name: '确认执行' }))
+}
+
 describe('WorkflowInteractionComposer', () => {
   it('renders exactly the fields the descriptor declares', async () => {
     serveComposer()
@@ -219,6 +306,34 @@ describe('WorkflowInteractionComposer', () => {
     expect(onRemove).toHaveBeenCalled()
   })
 
+  it('prefills the platform fields and gates Review on the repository alone', async () => {
+    const { confirm } = serveComposer({ descriptor: platformDescriptor })
+    const user = userEvent.setup()
+    renderComposer()
+
+    const repository = await screen.findByLabelText(/仓库地址/)
+    expect(repository).toHaveValue('https://github.com/ora/cloud')
+    const prompt = screen.getByLabelText(/提示词/)
+    expect(prompt).toHaveValue('Review the diff')
+
+    // The prompt is optional: clearing it is how the run says "use the workflow's own Start prompt".
+    await user.clear(prompt)
+    expect(screen.getByRole('button', { name: '审阅' })).toBeEnabled()
+
+    // The repository is not optional, and an issue whose project has no repository arrives empty.
+    await user.clear(repository)
+    expect(screen.getByRole('button', { name: '审阅' })).toBeDisabled()
+    await user.type(repository, 'ora-space/cloud')
+
+    await reviewAndConfirm(user)
+
+    await waitFor(() =>
+      expect(confirm).toHaveBeenCalledWith({
+        values: { repository: 'ora-space/cloud', prompt: '' },
+      }),
+    )
+  })
+
   it('requires an explicit Review, and Confirm creates the comment + interaction + run once', async () => {
     const { comment, confirm } = serveComposer()
     const user = userEvent.setup()
@@ -232,8 +347,7 @@ describe('WorkflowInteractionComposer', () => {
     await user.click(screen.getByRole('button', { name: '返回修改' }))
     expect(await screen.findByRole('button', { name: '审阅' })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '审阅' }))
-    await user.click(await screen.findByRole('button', { name: '确认执行' }))
+    await reviewAndConfirm(user)
 
     await waitFor(() => expect(comment).toHaveBeenCalledTimes(1))
     expect(comment).toHaveBeenCalledWith({
@@ -246,5 +360,70 @@ describe('WorkflowInteractionComposer', () => {
       }),
     )
     await waitFor(() => expect(onConfirmed).toHaveBeenCalled())
+  })
+
+  it('prefills the branch and the newest published version, and gates Review on the branch too', async () => {
+    const { confirm } = serveComposer({ descriptor: launchDescriptor })
+    const user = userEvent.setup()
+    renderComposer()
+
+    const branch = await screen.findByLabelText(/分支/)
+    expect(branch).toHaveValue('main')
+    // The version opens on the newest published snapshot, shown by its version number.
+    expect(selectTrigger('运行版本')).toHaveTextContent('v3 · 发布 3')
+
+    // The branch pairs with the repository: clearing it gates Review exactly as clearing that does.
+    await user.clear(branch)
+    expect(screen.getByRole('button', { name: '审阅' })).toBeDisabled()
+    await user.type(branch, 'release/1.0')
+
+    await reviewAndConfirm(user)
+
+    await waitFor(() =>
+      expect(confirm).toHaveBeenCalledWith({
+        values: {
+          repository: 'https://github.com/ora/cloud',
+          branch: 'release/1.0',
+          version: 'snap-3',
+          prompt: 'Review the diff',
+        },
+      }),
+    )
+  })
+
+  it('carries the ticked context references, once each even when Assist suggested one too', async () => {
+    const { confirm } = serveComposer({
+      descriptor: launchDescriptor,
+      suggestion: refSuggestion,
+    })
+    const user = userEvent.setup()
+    renderComposer()
+
+    // Assist suggests the project reference, which the user applies and then also ticks below: the run
+    // must receive it once, because it appends what it is given without checking.
+    await user.click(await screen.findByRole('button', { name: 'AI Assist' }))
+    await user.click(await screen.findByRole('button', { name: '应用' }))
+    expect(await screen.findByText('已应用')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('checkbox', { name: '本项目' }))
+    await user.click(screen.getByRole('checkbox', { name: '父任务' }))
+
+    await reviewAndConfirm(user)
+
+    await waitFor(() =>
+      expect(confirm).toHaveBeenCalledWith({
+        values: {
+          repository: 'https://github.com/ora/cloud',
+          branch: 'main',
+          version: 'snap-3',
+          prompt: 'Review the diff',
+          context_refs: ['project:p1', 'parent_issue:p2'],
+        },
+        contextRefs: [
+          { refType: 'project', refId: 'p1' },
+          { refType: 'parent_issue', refId: 'p2' },
+        ],
+      }),
+    )
   })
 })

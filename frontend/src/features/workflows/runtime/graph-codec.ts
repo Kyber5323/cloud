@@ -2,8 +2,10 @@ import type {
   WorkflowDefinitionEdge,
   WorkflowDefinitionNode,
   WorkflowGlobalVariable,
+  WorkflowLaunchField,
   WorkflowViewport,
 } from '@/features/workflows/runtime/types'
+import { WORKFLOW_LAUNCH_FIELD_KEYS } from '@/features/workflows/runtime/types'
 import { workflowContainerNodes } from '@/features/workflows/runtime/container-layout'
 import { asJsonRecord } from '@/features/workflows/runtime/json-record'
 
@@ -15,6 +17,8 @@ export interface WorkflowGraphEnvelope {
   viewport: WorkflowViewport
   annotations: WorkflowGraphAnnotation[]
   globalVariables: WorkflowGlobalVariable[]
+  /** Which platform launch fields the `@` form asks for; see {@link WorkflowLaunchField}. */
+  launchFields: WorkflowLaunchField[]
   description?: string
 }
 
@@ -49,6 +53,7 @@ function emptyWorkflowGraph(): WorkflowGraphEnvelope {
     viewport: DEFAULT_VIEWPORT,
     annotations: [],
     globalVariables: [],
+    launchFields: [],
   }
 }
 
@@ -59,6 +64,7 @@ export interface WorkflowGraphInput {
   viewport: WorkflowViewport
   annotations?: readonly WorkflowGraphAnnotation[]
   globalVariables?: readonly WorkflowGlobalVariable[]
+  launchFields?: readonly WorkflowLaunchField[]
   description?: string
 }
 
@@ -83,6 +89,9 @@ export function serializeWorkflowGraphValue(input: WorkflowGraphInput): Record<s
     viewport: input.viewport,
     annotations: input.annotations ?? [],
     globalVariables: input.globalVariables ?? [],
+    // Always written, like the globals and unlike the description: the envelope's key set has to be
+    // stable, because the editor's history fingerprint is a plain JSON.stringify of this document.
+    launchFields: input.launchFields ?? [],
     ...(input.description === undefined ? {} : { description: input.description }),
   }
 }
@@ -139,6 +148,23 @@ export function isWorkflowGlobalVariable(value: unknown): value is WorkflowGloba
     typeof variable['name'] === 'string' &&
     variable['name'].includes('.') &&
     typeof variable['valueType'] === 'string'
+  )
+}
+
+/**
+ * Guards one launch-field declaration entry before the editor renders it.
+ *
+ * The key is the load-bearing half: it decides whether the entry names a field at all, and a key the
+ * platform does not have is dropped rather than remembered. `enabled` and `required` are left alone,
+ * because an unreadable one already means "unstated" to every reader of the declaration — the
+ * projection included — so rejecting the entry would change nothing but lose the author's intent.
+ */
+export function isWorkflowLaunchField(value: unknown): value is WorkflowLaunchField {
+  const field = asJsonRecord(value)
+  return (
+    field !== undefined &&
+    typeof field['key'] === 'string' &&
+    (WORKFLOW_LAUNCH_FIELD_KEYS as readonly string[]).includes(field['key'])
   )
 }
 
@@ -234,6 +260,9 @@ export function parseWorkflowGraphValue(value: unknown): WorkflowGraphEnvelope {
       : [],
     globalVariables: Array.isArray(record['globalVariables'])
       ? record['globalVariables'].filter(isWorkflowGlobalVariable)
+      : [],
+    launchFields: Array.isArray(record['launchFields'])
+      ? record['launchFields'].filter(isWorkflowLaunchField)
       : [],
     ...(typeof record['description'] === 'string' ? { description: record['description'] } : {}),
   }

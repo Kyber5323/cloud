@@ -24,6 +24,7 @@ import { WorkflowCanvas } from '@/features/workflows/editor/workflow-canvas'
 import { WorkflowDraftSaveStatusLabel } from '@/features/workflows/editor/workflow-draft-save-status'
 import { WorkflowHistoryTools } from '@/features/workflows/editor/workflow-history-controls'
 import { WorkflowInspector } from '@/features/workflows/editor/workflow-inspector'
+import { WorkflowLaunchTools } from '@/features/workflows/editor/workflow-launch-tools'
 import { WorkflowRunTools } from '@/features/workflows/editor/workflow-run-tools'
 import { WorkflowTransferTools } from '@/features/workflows/editor/workflow-transfer-tools'
 import { WorkflowVariablesTools } from '@/features/workflows/editor/workflow-variables-tools'
@@ -64,22 +65,9 @@ export interface WorkflowEditorProps {
 export function WorkflowEditor({ tenantId, workflow, onImported }: WorkflowEditorProps) {
   const state = useWorkflowEditorState(tenantId, workflow)
   const inspectorRef = useRef<ResizablePanelHandle | null>(null)
-  const [pendingIterationDeletion, setPendingIterationDeletion] =
-    useState<PendingIterationDeletion | null>(null)
+  const iterationDeletion = useIterationDeletionConfirmation()
 
   useInspectorAutoExpand(inspectorRef, state.selectedNode?.id ?? null)
-
-  /** Asks the author before a region with members is deleted; resolves the dialog. */
-  const confirmIterationDeletion = useCallback(
-    (memberCount: number) =>
-      new Promise<boolean>((resolve) => setPendingIterationDeletion({ memberCount, resolve })),
-    [],
-  )
-
-  function settleIterationDeletion(confirmed: boolean): void {
-    pendingIterationDeletion?.resolve(confirmed)
-    setPendingIterationDeletion(null)
-  }
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -94,6 +82,15 @@ export function WorkflowEditor({ tenantId, workflow, onImported }: WorkflowEdito
           <WorkflowVariablesTools
             variables={state.globalVariables}
             onSave={state.onGlobalVariablesSave}
+          />
+        }
+        launchTools={
+          <WorkflowLaunchTools
+            tenantId={tenantId}
+            workflowId={workflow.id}
+            fields={state.launchFields}
+            startVariableNames={state.startVariableNames}
+            onSave={state.onLaunchFieldsSave}
           />
         }
         versionTools={
@@ -130,7 +127,7 @@ export function WorkflowEditor({ tenantId, workflow, onImported }: WorkflowEdito
             onIterationInsert={state.onIterationInsert}
             onToggleIterationCollapsed={state.onToggleIterationCollapsed}
             onIterationCorrection={state.onIterationCorrection}
-            onConfirmIterationDeletion={confirmIterationDeletion}
+            onConfirmIterationDeletion={iterationDeletion.confirm}
             onHistoryNodeDragStart={state.onHistoryNodeDragStart}
             onHistoryNodeDragStop={state.onHistoryNodeDragStop}
           />
@@ -154,14 +151,40 @@ export function WorkflowEditor({ tenantId, workflow, onImported }: WorkflowEdito
           />
         </ResizablePanel>
       </ResizablePanelGroup>
-      {pendingIterationDeletion !== null && (
+      {iterationDeletion.pending !== null && (
         <IterationDeletionDialog
-          pending={pendingIterationDeletion}
-          onSettle={settleIterationDeletion}
+          pending={iterationDeletion.pending}
+          onSettle={iterationDeletion.settle}
         />
       )}
     </div>
   )
+}
+
+/**
+ * Turns the region-deletion question into something the canvas can wait on.
+ *
+ * React Flow's before-delete hook is synchronous, so the question is answered through a promise the
+ * dialog settles: the canvas holds the deletion until the author has said yes or no.
+ */
+function useIterationDeletionConfirmation(): {
+  pending: PendingIterationDeletion | null
+  confirm: (memberCount: number) => Promise<boolean>
+  settle: (confirmed: boolean) => void
+} {
+  const [pending, setPending] = useState<PendingIterationDeletion | null>(null)
+  const confirm = useCallback(
+    (memberCount: number) =>
+      new Promise<boolean>((resolve) => setPending({ memberCount, resolve })),
+    [],
+  )
+
+  function settle(confirmed: boolean): void {
+    pending?.resolve(confirmed)
+    setPending(null)
+  }
+
+  return { pending, confirm, settle }
 }
 
 /**
@@ -234,6 +257,7 @@ function EditorToolbar({
   onSave,
   historyTools,
   variablesTools,
+  launchTools,
   runTools,
   versionTools,
   transferTools,
@@ -252,6 +276,8 @@ function EditorToolbar({
   historyTools: ReactNode
   /** Workflow-wide variable editing for the current document. */
   variablesTools: ReactNode
+  /** The `@` form's launch-field declaration for the current document. */
+  launchTools: ReactNode
   /** Publish and version-history controls for the current document. */
   versionTools: ReactNode
   /** Import and export controls for the current document. */
@@ -270,6 +296,7 @@ function EditorToolbar({
       <div className="ml-auto flex items-center gap-2">
         {historyTools}
         {variablesTools}
+        {launchTools}
         {runTools}
         {transferTools}
         {versionTools}

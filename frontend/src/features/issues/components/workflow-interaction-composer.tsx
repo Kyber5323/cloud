@@ -48,6 +48,53 @@ function sameRef(left: ContextRefRef, right: ContextRefRef): boolean {
   return left.refType === right.refType && left.refId === right.refId
 }
 
+/** The descriptor key whose value is read as context references rather than as workflow input (§38.37c). */
+const CONTEXT_REFS_KEY = 'context_refs'
+
+/**
+ * The ref types that field can offer. A literal set rather than a cast, so the parsed value narrows to
+ * a checked member of `ContextRef['refType']` instead of asserting its way in.
+ */
+const FIELD_REF_TYPES = ['project', 'parent_issue'] as const
+
+function isFieldRefType(value: string): value is (typeof FIELD_REF_TYPES)[number] {
+  return FIELD_REF_TYPES.some((candidate) => candidate === value)
+}
+
+/**
+ * Reads the supplementary context-reference field: a list of `refType:refId` pairs, each of which the
+ * run receives as a context reference. Anything else is dropped rather than forwarded — the server
+ * validates the pairs again and would answer a malformed one with a 400, so a bad pair is better
+ * dropped here than turned into a failed confirm.
+ */
+function contextRefsFromField(value: unknown): ContextRefRef[] {
+  if (!Array.isArray(value)) return []
+  const refs: ContextRefRef[] = []
+  for (const item of value) {
+    if (typeof item !== 'string') continue
+    const separator = item.indexOf(':')
+    if (separator <= 0) continue
+    const refType = item.slice(0, separator)
+    const refId = item.slice(separator + 1)
+    if (refId === '' || !isFieldRefType(refType)) continue
+    refs.push({ refType, refId })
+  }
+  return refs
+}
+
+/**
+ * The references the run carries: the ones AI Assist applied and the ones the user picked, each once.
+ * Deduplicated because the run appends what it is given without checking, so a suggestion the user
+ * also ticked would otherwise travel twice.
+ */
+function mergeContextRefs(applied: ContextRefRef[], picked: ContextRefRef[]): ContextRefRef[] {
+  const merged = [...applied]
+  for (const ref of picked) {
+    if (!merged.some((item) => sameRef(item, ref))) merged.push(ref)
+  }
+  return merged
+}
+
 /** Editable form state for one Workflow interaction. Pure UI state — nothing here is persisted. */
 function useWorkflowForm(descriptor: FormDescriptor | undefined) {
   const [values, setValues] = useState<FormValues>({})
@@ -287,7 +334,7 @@ export function WorkflowInteractionComposer({
   onRemove: () => void
 }) {
   const formRef = target.interactionDescriptor.formRef ?? undefined
-  const descriptorQuery = useFormDescriptor(slug, formRef)
+  const descriptorQuery = useFormDescriptor(slug, formRef, issueId)
   const assist = useAssistWorkflow(slug, issueId)
   const confirm = useConfirmWorkflow(slug, issueId)
   const [reviewing, setReviewing] = useState(false)
@@ -304,10 +351,12 @@ export function WorkflowInteractionComposer({
     )
   }
 
+  const contextRefs = mergeContextRefs(
+    form.contextRefs,
+    contextRefsFromField(form.values[CONTEXT_REFS_KEY]),
+  )
   const confirmInput =
-    form.contextRefs.length > 0
-      ? { values: form.values, contextRefs: form.contextRefs }
-      : { values: form.values }
+    contextRefs.length > 0 ? { values: form.values, contextRefs } : { values: form.values }
 
   /** Confirm is the first moment anything reaches the server: comment -> interaction -> run. */
   async function submit() {

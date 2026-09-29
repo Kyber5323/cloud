@@ -327,6 +327,36 @@ async function addGlobalVariableAlliance(value: string): Promise<void> {
   fireEvent.click(screen.getByRole('button', { name: '保存' }))
 }
 
+/** The default chain with a launch-field declaration and Start variables added. */
+function declaredGraphFixture(launchFields: unknown[], inputVariables: unknown[] = []) {
+  const graph = graphFixture()
+  // The chain's Start node is its first, and the only node these tests reach into. The fixture is
+  // built fresh on every call and shared with nobody, so it is patched in place.
+  const start = graph.nodes[0]
+  if (start !== undefined) {
+    start.data = Object.assign({}, start.data, { inputVariables })
+  }
+  return { ...graph, launchFields }
+}
+
+/** Opens the `@` form fields dialog from the toolbar. */
+function openLaunchFields(): void {
+  fireEvent.click(screen.getByRole('button', { name: '@ 表单字段' }))
+}
+
+/** The ask switch of one launch-field row, found by the row's title. */
+function launchAskSwitch(field: string): HTMLElement {
+  const card = screen.getByText(field).closest('.rounded-lg')
+  if (!(card instanceof HTMLElement)) {
+    throw new Error(`launch field ${field} has no row container`)
+  }
+  const control = within(card).getAllByRole('switch')[0]
+  if (control === undefined) {
+    throw new Error(`launch field ${field} has no ask switch`)
+  }
+  return control
+}
+
 /**
  * Interactions go through `fireEvent` rather than `userEvent` here because
  * `userEvent` dispatches pointer events, and the panel separator behind the
@@ -766,6 +796,74 @@ describe('WorkflowEditor global variables', () => {
     // The empty custom list keeps only the add button.
     expect(screen.queryByLabelText('全局变量 1 名称')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '添加全局变量' })).toBeInTheDocument()
+  })
+})
+
+describe('WorkflowEditor launch fields', () => {
+  it('writes a committed declaration into the saved graph', async () => {
+    const bodies = renderEditor({ graph: declaredGraphFixture([]) })
+
+    openLaunchFields()
+    fireEvent.click(launchAskSwitch('运行版本'))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    const saved = await nextSavedGraph(bodies)
+    expect(saved).toMatchObject({
+      graph: {
+        launchFields: [
+          { key: 'repository', enabled: true, required: true },
+          { key: 'branch', enabled: true, required: true },
+          { key: 'version', enabled: false, required: false },
+          { key: 'prompt', enabled: true, required: false },
+          { key: 'context_refs', enabled: true, required: false },
+        ],
+      },
+    })
+  })
+
+  it('reopens the dialog on the declaration it committed', async () => {
+    renderEditor({ graph: declaredGraphFixture([]) })
+
+    openLaunchFields()
+    fireEvent.click(launchAskSwitch('运行版本'))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    openLaunchFields()
+
+    expect(launchAskSwitch('运行版本')).not.toBeChecked()
+    expect(launchAskSwitch('提示词')).toBeChecked()
+  })
+
+  it('opens a stored declaration on the answers it carries', () => {
+    renderEditor({
+      graph: declaredGraphFixture([{ key: 'prompt', enabled: true, required: true }]),
+    })
+
+    openLaunchFields()
+
+    expect(launchAskSwitch('提示词')).toBeChecked()
+    expect(screen.getByText('提示词').closest('.rounded-lg')).toHaveTextContent('必填')
+  })
+
+  it('marks a row the Start node owns as declared, not editable', () => {
+    renderEditor({
+      graph: declaredGraphFixture([], [{ name: 'repository', valueType: 'string' }]),
+    })
+
+    openLaunchFields()
+
+    expect(screen.getByText('已由开始节点声明，这一行由该变量决定。')).toBeInTheDocument()
+  })
+
+  it('undo restores the declaration the save replaced', async () => {
+    renderEditor({ graph: declaredGraphFixture([{ key: 'version', enabled: false }]) })
+
+    openLaunchFields()
+    fireEvent.click(launchAskSwitch('运行版本'))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    fireEvent.click(screen.getByRole('button', { name: '撤销' }))
+    openLaunchFields()
+
+    expect(launchAskSwitch('运行版本')).not.toBeChecked()
   })
 })
 

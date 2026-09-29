@@ -33,6 +33,7 @@ import type {
   WorkflowDefinitionEdge,
   WorkflowDefinitionNode,
   WorkflowGlobalVariable,
+  WorkflowLaunchField,
   WorkflowNodeData,
   WorkflowNodeKind,
   WorkflowViewport,
@@ -56,6 +57,7 @@ interface DraftState {
   viewport: WorkflowViewport
   annotations: readonly WorkflowGraphAnnotation[]
   globalVariables: readonly WorkflowGlobalVariable[]
+  launchFields: readonly WorkflowLaunchField[]
   description?: string
 }
 
@@ -65,6 +67,8 @@ export interface WorkflowDraft {
   edges: WorkflowCanvasEdge[]
   /** Workflow-wide declarations, reseeded together with the graph. */
   globalVariables: readonly WorkflowGlobalVariable[]
+  /** Which platform launch fields the `@` form asks for, reseeded with the graph. */
+  launchFields: readonly WorkflowLaunchField[]
   /** Viewport the draft was seeded with, used until the canvas reports a new one. */
   viewport: WorkflowViewport
   /** The single selected node, or `null` when the selection is empty or multiple. */
@@ -85,6 +89,8 @@ export interface WorkflowDraft {
   updateNodeData: (nodeId: string, data: WorkflowNodeData) => void
   /** Replaces the workflow-wide declarations, e.g. after the variables dialog saves. */
   replaceGlobalVariables: (variables: WorkflowGlobalVariable[]) => void
+  /** Replaces the launch-field declaration, e.g. after the launch-fields dialog saves. */
+  replaceLaunchFields: (fields: WorkflowLaunchField[]) => void
   /** Re-arranges the graph into execution order. */
   organize: () => void
   /**
@@ -182,6 +188,9 @@ export function useWorkflowDraft(
   const replaceGlobalVariables = (variables: WorkflowGlobalVariable[]): void => {
     replaceState(setWorkflowGlobalVariables(stateRef.current, variables))
   }
+  const replaceLaunchFields = (fields: WorkflowLaunchField[]): void => {
+    replaceState(setWorkflowLaunchFields(stateRef.current, fields))
+  }
   const organize = (): void => {
     replaceState({
       ...stateRef.current,
@@ -221,6 +230,7 @@ export function useWorkflowDraft(
     nodes: state.nodes,
     edges: state.edges,
     globalVariables: state.globalVariables,
+    launchFields: state.launchFields,
     viewport: state.viewport,
     selectedNode,
     applyNodeChanges: applyNodeEdits,
@@ -232,6 +242,7 @@ export function useWorkflowDraft(
     connect,
     updateNodeData,
     replaceGlobalVariables,
+    replaceLaunchFields,
     organize,
     reset,
     captureContent,
@@ -366,6 +377,14 @@ function setWorkflowGlobalVariables(
   return { ...current, globalVariables: variables.map((variable) => ({ ...variable })) }
 }
 
+/** Replaces the launch-field declaration, detaching it from the dialog's draft array. */
+function setWorkflowLaunchFields(
+  current: DraftState,
+  fields: readonly WorkflowLaunchField[],
+): DraftState {
+  return { ...current, launchFields: fields.map((field) => ({ ...field })) }
+}
+
 /** Serializes the draft into the graph document the API stores. */
 function serializeDraft(state: DraftState, viewport: WorkflowViewport): Record<string, unknown> {
   return serializeWorkflowGraphValue({
@@ -374,6 +393,7 @@ function serializeDraft(state: DraftState, viewport: WorkflowViewport): Record<s
     viewport,
     annotations: state.annotations,
     globalVariables: state.globalVariables,
+    launchFields: state.launchFields,
     ...(state.description === undefined ? {} : { description: state.description }),
   })
 }
@@ -387,6 +407,7 @@ function seedDraft(workflow: CloudWorkflow): DraftState {
     viewport: graph.viewport,
     annotations: graph.annotations,
     globalVariables: graph.globalVariables,
+    launchFields: graph.launchFields,
     ...(graph.description === undefined ? {} : { description: graph.description }),
   }
 }
@@ -451,6 +472,7 @@ function captureWorkflowHistorySnapshot(state: DraftState): WorkflowHistorySnaps
     edges: state.edges.map((edge) => ({ ...edge, selected: false })),
     annotations: state.annotations.map((annotation) => ({ ...annotation })),
     globalVariables: state.globalVariables.map((variable) => ({ ...variable })),
+    launchFields: state.launchFields.map((field) => ({ ...field })),
     ...(state.description === undefined ? {} : { description: state.description }),
   }
 }
@@ -479,6 +501,7 @@ function restoreSnapshotContent(
     viewport,
     annotations: snapshot.annotations,
     globalVariables: snapshot.globalVariables,
+    launchFields: snapshot.launchFields,
     ...(snapshot.description === undefined ? {} : { description: snapshot.description }),
   }
 }

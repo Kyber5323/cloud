@@ -2,6 +2,8 @@ package integration
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -13,7 +15,7 @@ import (
 // options and a duplicated field key), to prove Issues fails closed instead of rendering it.
 type invalidDescriptorProvider struct{ FormRef string }
 
-func (p invalidDescriptorProvider) ResolveFormDescriptor(context.Context, string, string) (core.FormDescriptor, bool, error) {
+func (p invalidDescriptorProvider) ResolveFormDescriptor(context.Context, string, string, core.IssueFormContext) (core.FormDescriptor, bool, error) {
 	return core.FormDescriptor{
 		FormRef: p.FormRef,
 		Fields: []core.FormField{
@@ -26,19 +28,72 @@ func (p invalidDescriptorProvider) ResolveFormDescriptor(context.Context, string
 // startInputGraph is a graph whose Start node declares an input form. Cloud projects exactly those
 // variables onto the @ form, so this graph IS the descriptor the picker renders — there is no
 // separate registration step and no fixture identity to keep in sync.
-func startInputGraph(variables []any) core.Object {
+func startInputGraph(variables []any) core.Object { return startPromptGraph(variables, "") }
+
+// startPromptGraph is startInputGraph with the Start node's kickoff prompt set: it is the default the
+// platform's prompt field is prefilled from. An empty prompt leaves the key off, the way a Start node
+// nobody has typed into is stored.
+func startPromptGraph(variables []any, prompt string) core.Object {
+	data := core.Object{
+		"kind": "start", "title": "开始", "description": "",
+		"inputVariables": variables,
+	}
+	if prompt != "" {
+		data["input"] = prompt
+	}
 	return core.Object{
 		"nodes": []any{core.Object{
 			"id": "start-1", "type": "workflow", "deletable": false,
 			"position": core.Object{"x": 0, "y": 0},
-			"data": core.Object{
-				"kind": "start", "title": "开始", "description": "",
-				"inputVariables": variables,
-			},
+			"data":     data,
 		}},
 		"edges":    []any{},
 		"viewport": core.Object{"x": 0, "y": 0, "zoom": 1},
 	}
+}
+
+// launchGraph is startInputGraph with the workflow's launch-field declaration in the envelope: the
+// author's answer, carried in the document rather than registered anywhere, about which platform
+// fields the @ form asks for and which of them it insists on (§38.37d).
+func launchGraph(variables []any, launchFields []any) core.Object {
+	graph := startInputGraph(variables)
+	graph["launchFields"] = launchFields
+	return graph
+}
+
+// orderedFormFields reads a descriptor response's fields in wire order: order is part of what the
+// platform fields promise, so a test has to be able to see it.
+func orderedFormFields(t *testing.T, d core.Object) []core.Object {
+	t.Helper()
+	raw, _ := d["fields"].([]any)
+	out := []core.Object{}
+	for _, item := range raw {
+		field, ok := item.(map[string]any)
+		if !ok {
+			t.Fatalf("field is not an object: %v", item)
+		}
+		out = append(out, core.Object(field))
+	}
+	return out
+}
+
+// formFields indexes a descriptor response by field key.
+func formFields(t *testing.T, d core.Object) map[string]core.Object {
+	t.Helper()
+	out := map[string]core.Object{}
+	for _, field := range orderedFormFields(t, d) {
+		out[field.S("key")] = field
+	}
+	return out
+}
+
+// fieldKeys names the projected fields in wire order, for failure messages.
+func fieldKeys(fields []core.Object) []string {
+	out := []string{}
+	for _, field := range fields {
+		out = append(out, field.S("key"))
+	}
+	return out
 }
 
 // reviewVariables is the input form the review workflow publishes: a required text field, an optional
@@ -61,6 +116,24 @@ func createWorkflow(t *testing.T, f *fixture, name, key string, variables []any)
 	t.Helper()
 	return f.call("POST", f.path("/workflows"), core.Object{
 		"name": name, "description": name + " (test)", "graph": startInputGraph(variables),
+	}, key, 200).O("resource").S("id")
+}
+
+// createPromptWorkflow publishes a workflow whose Start node carries a kickoff prompt alongside its
+// input variables — the prompt the platform's optional prompt field is prefilled from.
+func createPromptWorkflow(t *testing.T, f *fixture, name, key, prompt string, variables []any) string {
+	t.Helper()
+	return f.call("POST", f.path("/workflows"), core.Object{
+		"name": name, "description": name + " (test)", "graph": startPromptGraph(variables, prompt),
+	}, key, 200).O("resource").S("id")
+}
+
+// createLaunchWorkflow publishes a workflow that declares both an input form and a launch-field
+// declaration — the author having answered the editor's `@` form fields dialog.
+func createLaunchWorkflow(t *testing.T, f *fixture, name, key string, variables, launchFields []any) string {
+	t.Helper()
+	return f.call("POST", f.path("/workflows"), core.Object{
+		"name": name, "description": name + " (test)", "graph": launchGraph(variables, launchFields),
 	}, key, 200).O("resource").S("id")
 }
 
@@ -169,19 +242,10 @@ func TestFormDescriptorProjection(t *testing.T) {
 	if d.S("formRef") != review || d.S("title") != "Security Review Workflow" {
 		t.Fatalf("descriptor wrong: %v", d)
 	}
-	fields, _ := d["fields"].([]any)
-	if len(fields) == 0 {
+	if len(orderedFormFields(t, d)) == 0 {
 		t.Fatalf("descriptor has no fields: %v", d)
 	}
-	byKey := map[string]core.Object{}
-	for _, raw := range fields {
-		field, ok := raw.(map[string]any)
-		if !ok {
-			t.Fatalf("field is not an object: %v", raw)
-		}
-		o := core.Object(field)
-		byKey[o.S("key")] = o
-	}
+	byKey := formFields(t, d)
 	if byKey["scope"].S("type") != "select" || byKey["severity"].S("type") != "select" {
 		t.Fatalf("select fields wrong: %v", byKey)
 	}
@@ -203,17 +267,7 @@ func TestFormDescriptorProjection(t *testing.T) {
 	}
 
 	// The second workflow's form is its own.
-	other := f.call("GET", f.path("/collaboration/forms/"+release), nil, "", 200)
-	otherFields, _ := other["fields"].([]any)
-	otherByKey := map[string]core.Object{}
-	for _, raw := range otherFields {
-		field, ok := raw.(map[string]any)
-		if !ok {
-			t.Fatalf("field is not an object: %v", raw)
-		}
-		o := core.Object(field)
-		otherByKey[o.S("key")] = o
-	}
+	otherByKey := formFields(t, f.call("GET", f.path("/collaboration/forms/"+release), nil, "", 200))
 	if otherByKey["rolloutPercent"].S("type") != "number" || otherByKey["rolloutPercent"].N("defaultValue") != 10 {
 		t.Fatalf("number field wrong: %v", otherByKey["rolloutPercent"])
 	}
@@ -227,6 +281,390 @@ func TestFormDescriptorProjection(t *testing.T) {
 	// Unknown refs and cross-tenant guesses never leak: an unknown formRef is a typed 404.
 	f.call("GET", f.path("/collaboration/forms/does-not-exist"), nil, "", 404)
 	f.call("GET", f.path("/collaboration/forms/"+uuid.NewString()), nil, "", 404)
+}
+
+// TestFormDescriptorPlatformFieldsForAnIssue covers the issue-scoped projection (§38.37b, §38.37c): a
+// form opened for one issue carries the launch fields — which repository and branch this run is for,
+// which published version to run, what prompt, and which extra context travels with it — prefilled from
+// that issue's project and the workflow's own document.
+func TestFormDescriptorPlatformFieldsForAnIssue(t *testing.T) {
+	f := setup(t)
+	// The release workflow declares none of the reserved keys, so every platform field is injected
+	// rather than colliding with an author's declaration. Two publishes give the version field a choice.
+	release := createPromptWorkflow(t, f, "Release Readiness Workflow", "wf-platform", "Ship the release", []any{
+		core.Object{"name": "notes", "displayName": "Release notes", "fieldType": "text-input", "valueType": "string"},
+	})
+	f.call("POST", f.path("/workflows/"+release+"/publish"), core.Object{}, "wf-platform-pub-1", 200)
+	newest := f.call("POST", f.path("/workflows/"+release+"/publish"), core.Object{"name": "Release cut"}, "wf-platform-pub-2", 200).O("resource")
+
+	project := f.create("platform-project").O("resource")
+	withProject := f.call("POST", f.path("/issues"), core.Object{
+		"title": "Has a project", "projectRef": project.S("id"),
+	}, "platform-1", 200).O("resource")
+	noProject := f.call("POST", f.path("/issues"), core.Object{"title": "Has no project"}, "platform-2", 200).O("resource")
+
+	// No issue context is not a degraded mode: the descriptor is the one this route always served, with
+	// no platform field at all — even though the graph would have supplied a prompt to prefill.
+	bare := f.call("GET", f.path("/collaboration/forms/"+release), nil, "", 200)
+	if keys := fieldKeys(orderedFormFields(t, bare)); len(keys) != 1 || keys[0] != "notes" {
+		t.Fatalf("an issue-less descriptor grew platform fields: %v", keys)
+	}
+
+	// With an issue, the platform fields lead the form: they say what the run is about, while the
+	// author's variables are its parameters.
+	d := f.call("GET", f.path("/collaboration/forms/"+release+"?issueId="+withProject.S("id")), nil, "", 200)
+	want := []string{"repository", "branch", "version", "prompt", "context_refs", "notes"}
+	if keys := fieldKeys(orderedFormFields(t, d)); !slices.Equal(keys, want) {
+		t.Fatalf("platform fields did not lead the form: %v, want %v", keys, want)
+	}
+	byKey := formFields(t, d)
+
+	// The repository and the branch pair up, and both are read from the same project row.
+	if r := byKey["repository"]; r.S("type") != "text" || !r.B("required") || r["defaultValue"] != project.S("repositoryUrl") {
+		t.Fatalf("repository field wrong: %v", r)
+	}
+	if b := byKey["branch"]; b.S("type") != "text" || !b.B("required") || b["defaultValue"] != project.S("defaultBranch") {
+		t.Fatalf("branch field wrong: %v", b)
+	}
+
+	// The version field offers the published versions, newest first and newest by default, and carries
+	// the snapshot id rather than the version number: the id is what a run is created from.
+	version := byKey["version"]
+	if version.S("type") != "select" || version.B("required") || version["defaultValue"] != newest.S("id") {
+		t.Fatalf("version field wrong: %v", version)
+	}
+	options, _ := version["options"].([]any)
+	if len(options) != 2 {
+		t.Fatalf("version options = %v, want both publishes", options)
+	}
+	first, _ := options[0].(map[string]any)
+	if first["value"] != newest.S("id") || first["label"] != "v2 · Release cut" {
+		t.Fatalf("the newest snapshot is not the first option: %v", first)
+	}
+
+	// The prompt is optional: leaving it empty is how the run says "use the workflow's own prompt",
+	// which is exactly the value it is prefilled with.
+	if p := byKey["prompt"]; p.S("type") != "textarea" || p.B("required") || p["defaultValue"] != "Ship the release" {
+		t.Fatalf("prompt field wrong: %v", p)
+	}
+
+	// The context references are additive: nothing is selected to begin with, and the only thing on
+	// offer is the one reference this issue can name for itself — its project.
+	refs := byKey["context_refs"]
+	if refs.S("type") != "multi_select" || refs.B("required") || refs["defaultValue"] != nil {
+		t.Fatalf("context refs field wrong: %v", refs)
+	}
+	refOptions, _ := refs["options"].([]any)
+	if len(refOptions) != 1 {
+		t.Fatalf("context ref options = %v, want just the issue's own project", refOptions)
+	}
+	only, _ := refOptions[0].(map[string]any)
+	if only["value"] != "project:"+project.S("id") {
+		t.Fatalf("context ref option = %v, want the issue's project", only)
+	}
+
+	// An issue with no project still gets the required repository and branch — just with nothing in
+	// them, which is what asks the user to fill them in — and loses the reference it cannot name.
+	empty := formFields(t, f.call("GET", f.path("/collaboration/forms/"+release+"?issueId="+noProject.S("id")), nil, "", 200))
+	for _, key := range []string{"repository", "branch"} {
+		if !empty[key].B("required") {
+			t.Fatalf("%s lost its requiredness without a default: %v", key, empty[key])
+		}
+		if got := empty[key]["defaultValue"]; got != nil {
+			t.Fatalf("an issue with no project produced a %s default: %v", key, got)
+		}
+	}
+	if _, ok := empty["context_refs"]; ok {
+		t.Fatalf("an issue that names no reference grew a context refs field: %v", empty["context_refs"])
+	}
+	// Neither the version nor the prompt depends on the issue: they come from the workflow itself.
+	if empty["version"]["defaultValue"] != newest.S("id") || empty["prompt"]["defaultValue"] != "Ship the release" {
+		t.Fatalf("a workflow-owned default depended on the issue: %v", empty)
+	}
+
+	// A workflow nobody has published has no version to offer, and the contract has no way to express a
+	// select with no choices — so the field is dropped rather than injected empty.
+	unpublished := createPromptWorkflow(t, f, "Unpublished Workflow", "wf-platform-unpub", "Draft", nil)
+	unpubKeys := fieldKeys(orderedFormFields(t, f.call("GET", f.path("/collaboration/forms/"+unpublished+"?issueId="+withProject.S("id")), nil, "", 200)))
+	if !slices.Equal(unpubKeys, []string{"repository", "branch", "prompt", "context_refs"}) {
+		t.Fatalf("an unpublished workflow grew a version field: %v", unpubKeys)
+	}
+
+	// An issue that cannot be resolved is a 404, never a silently dropped context.
+	f.call("GET", f.path("/collaboration/forms/"+release+"?issueId="+uuid.NewString()), nil, "", 404)
+	f.call("GET", f.path("/collaboration/forms/"+release+"?issueId=not-a-uuid"), nil, "", 404)
+}
+
+// TestFormDescriptorPlatformFieldsCollideWithAuthorDeclarations covers the reserved-key rule (§38.37c):
+// a workflow that declares one of the platform's own names keeps its declaration, and the platform
+// contributes only the default that declaration can hold.
+func TestFormDescriptorPlatformFieldsCollideWithAuthorDeclarations(t *testing.T) {
+	f := setup(t)
+	// The review workflow declares `repository` and `branch` itself — `branch` with a default of its
+	// own — and is published, so the platform would otherwise offer a version too.
+	wid := reviewWorkflow(t, f)
+	f.call("POST", f.path("/workflows/"+wid+"/publish"), core.Object{}, "wf-collide-pub", 200)
+	// The project's branch differs from the author's, so keeping the author's is a visible choice
+	// rather than a coincidence of both being "main".
+	project := f.call("POST", f.path("/projects"), core.Object{
+		"name": "Collide", "repositoryUrl": "https://example.invalid/collide.git", "defaultBranch": "trunk",
+	}, "platform-collide-project", 202).O("resource")
+	iss := f.call("POST", f.path("/issues"), core.Object{
+		"title": "Collides", "projectRef": project.S("id"),
+	}, "platform-collide-1", 200).O("resource")
+
+	byKey := formFields(t, f.call("GET", f.path("/collaboration/forms/"+wid+"?issueId="+iss.S("id")), nil, "", 200))
+
+	// The author's controls survive; the platform only fills a default they left empty.
+	if r := byKey["repository"]; r.S("label") != "Repository" || !r.B("required") || r["defaultValue"] != project.S("repositoryUrl") {
+		t.Fatalf("the author's repository declaration was overwritten: %v", r)
+	}
+	if b := byKey["branch"]; b.S("label") != "Branch" || b.B("required") {
+		t.Fatalf("the author's branch declaration was overwritten: %v", b)
+	}
+	if got := byKey["branch"]["defaultValue"]; got != "main" {
+		t.Fatalf("the author's own branch default was replaced: %v, want main", got)
+	}
+	// The reserved keys the author did not declare are still injected alongside their fields.
+	if v := byKey["version"]; v.S("type") != "select" {
+		t.Fatalf("the platform's version field was not injected: %v", v)
+	}
+	if p := byKey["prompt"]; p.S("type") != "textarea" || p.B("required") {
+		t.Fatalf("the platform's prompt field was not injected: %v", p)
+	}
+	// The colliding keys keep the author's position, so only the two injected fields are prepended.
+	if keys := fieldKeys(orderedFormFields(t, f.call("GET", f.path("/collaboration/forms/"+wid+"?issueId="+iss.S("id")), nil, "", 200))); keys[0] != "version" || keys[1] != "prompt" {
+		t.Fatalf("the injected fields did not lead the colliding form: %v", keys)
+	}
+}
+
+// launchDefaults is the declaration an author gets by opening the editor's `@` form fields dialog and
+// saving it untouched: every field asked for, at the platform's own requiredness.
+func launchDefaults() []any {
+	return []any{
+		core.Object{"key": "repository", "enabled": true, "required": true},
+		core.Object{"key": "branch", "enabled": true, "required": true},
+		core.Object{"key": "version", "enabled": true, "required": false},
+		core.Object{"key": "prompt", "enabled": true, "required": false},
+		core.Object{"key": "context_refs", "enabled": true, "required": false},
+	}
+}
+
+// notesVariables is one author variable that collides with none of the platform's reserved keys, so a
+// descriptor built from it is the platform's own fields plus this one.
+func notesVariables() []any {
+	return []any{
+		core.Object{"name": "notes", "displayName": "Release notes", "fieldType": "text-input", "valueType": "string"},
+	}
+}
+
+// launchIssue is an issue on the given project, for a case that needs its own interaction list:
+// workflowComment answers with the issue's first form interaction, so two workflows sharing an issue
+// would both be driven through whichever of them was commented on first.
+func launchIssue(t *testing.T, f *fixture, projectID, title, key string) core.Object {
+	t.Helper()
+	return f.call("POST", f.path("/issues"), core.Object{
+		"title": title, "projectRef": projectID,
+	}, key, 200).O("resource")
+}
+
+// fieldShapes is a descriptor's fields without their defaults. A default can name a value only one
+// workflow has — a version names that workflow's newest snapshot — while the shape is the catalogue's.
+func fieldShapes(fields []core.Object) []string {
+	out := []string{}
+	for _, field := range fields {
+		out = append(out, fmt.Sprintf("%s %s %s %t", field.S("key"), field.S("label"), field.S("type"), field.B("required")))
+	}
+	return out
+}
+
+// TestFormDescriptorAuthorDeclaredLaunchFields covers §38.37d: the workflow's author decides which of
+// the platform's launch fields the `@` form asks for, and which of them it insists on. The declaration
+// rides in the graph, so the live document is what decides — publishing only gives the version field
+// something to offer.
+func TestFormDescriptorAuthorDeclaredLaunchFields(t *testing.T) {
+	f := setup(t)
+	project := f.create("launch-project").O("resource")
+	repo := project.S("repositoryUrl")
+	iss := f.call("POST", f.path("/issues"), core.Object{
+		"title": "Declared launch fields", "projectRef": project.S("id"),
+	}, "launch-issue", 200).O("resource")
+
+	// Drift guard. A declaration that spells out the platform's own answers must be the same form as
+	// declaring nothing at all: the catalogue the editor's dialog seeds from and the catalogue the
+	// projection injects have to agree, or the first save from that dialog would change the form.
+	plain := createPromptWorkflow(t, f, "Plain", "launch-plain", "Ship it", notesVariables())
+	explicit := createLaunchWorkflow(t, f, "Explicit", "launch-explicit", notesVariables(), launchDefaults())
+	for _, wid := range []string{plain, explicit} {
+		f.call("POST", f.path("/workflows/"+wid+"/publish"), core.Object{}, "launch-pub-"+wid, 200)
+	}
+	plainFields := orderedFormFields(t, f.call("GET", f.path("/collaboration/forms/"+plain+"?issueId="+iss.S("id")), nil, "", 200))
+	explicitFields := orderedFormFields(t, f.call("GET", f.path("/collaboration/forms/"+explicit+"?issueId="+iss.S("id")), nil, "", 200))
+	if got, want := fieldShapes(explicitFields), fieldShapes(plainFields); !slices.Equal(got, want) {
+		t.Fatalf("an explicit default declaration changed the form:\n got %v\nwant %v", got, want)
+	}
+	if len(plainFields) != 6 {
+		t.Fatalf("the drift guard compared an unexpected form: %v", fieldShapes(plainFields))
+	}
+
+	// A withdrawn field is not asked for at all. The repository is the sharpest case: it is one of the
+	// two the platform considers essential, and the author may still decide this workflow needs none.
+	declared := createLaunchWorkflow(t, f, "Declared", "launch-declared", notesVariables(), []any{
+		core.Object{"key": "repository", "enabled": false},
+		core.Object{"key": "version", "enabled": false},
+	})
+	f.call("POST", f.path("/workflows/"+declared+"/publish"), core.Object{}, "launch-pub-declared", 200)
+	d := f.call("GET", f.path("/collaboration/forms/"+declared+"?issueId="+iss.S("id")), nil, "", 200)
+	if keys := fieldKeys(orderedFormFields(t, d)); !slices.Equal(keys, []string{"branch", "prompt", "context_refs", "notes"}) {
+		t.Fatalf("a withdrawn field was still asked for: %v", keys)
+	}
+	// The descriptor is the whole contract, and both routes that read it re-resolve the declaration, so
+	// a value for a withdrawn field is an unknown key rather than a silently kept one.
+	declaredIss := launchIssue(t, f, project.S("id"), "Declared launch fields", "launch-declared-issue")
+	it := workflowComment(t, f, declared, declaredIss.S("id"), "launch-declared-1", "configure")
+	f.call("POST", confirmPath(f, declaredIss.S("id"), it.S("id")), core.Object{"values": core.Object{
+		"repository": repo, "branch": "main",
+	}}, "launch-declared-c1", 400)
+	// The control for that rejection: the same form without the withdrawn key goes through, so what
+	// the 400 above was about is the key and not the rest of the submission.
+	f.call("POST", confirmPath(f, declaredIss.S("id"), it.S("id")), core.Object{"values": core.Object{
+		"branch": "main",
+	}}, "launch-declared-c2", 200)
+	f.call("POST", assistPath(f, iss.S("id")), workflowAssistBody(declared, core.Object{
+		"repository": repo,
+	}), "launch-declared-a1", 400)
+	f.call("POST", assistPath(f, iss.S("id")), workflowAssistBody(declared, core.Object{
+		"branch": "main",
+	}), "launch-declared-a2", 200)
+
+	// Requiredness is the author's too: the prompt becomes something the form insists on and the branch
+	// stops being something it does. Both are enforced on the server, not merely drawn as required.
+	strict := createLaunchWorkflow(t, f, "Strict", "launch-strict", notesVariables(), []any{
+		core.Object{"key": "prompt", "enabled": true, "required": true},
+		core.Object{"key": "branch", "enabled": true, "required": false},
+	})
+	f.call("POST", f.path("/workflows/"+strict+"/publish"), core.Object{}, "launch-pub-strict", 200)
+	byKey := formFields(t, f.call("GET", f.path("/collaboration/forms/"+strict+"?issueId="+iss.S("id")), nil, "", 200))
+	if !byKey["prompt"].B("required") {
+		t.Fatalf("the author's required prompt was not enforced: %v", byKey["prompt"])
+	}
+	if byKey["branch"].B("required") {
+		t.Fatalf("the author's optional branch was still required: %v", byKey["branch"])
+	}
+	// Optional is not the same as empty: the field keeps the default the project gives it.
+	if got := byKey["branch"]["defaultValue"]; got != project.S("defaultBranch") {
+		t.Fatalf("an optional branch lost its default: %v", got)
+	}
+	strictIss := launchIssue(t, f, project.S("id"), "Strict launch fields", "launch-strict-issue")
+	strictIt := workflowComment(t, f, strict, strictIss.S("id"), "launch-strict-1", "configure")
+	// A form filled in but for the prompt: what the author made required is what confirm refuses to
+	// proceed without, and the branch it made optional is not.
+	f.call("POST", confirmPath(f, strictIss.S("id"), strictIt.S("id")), core.Object{"values": core.Object{
+		"repository": repo, "branch": "main",
+	}}, "launch-strict-c1", 400)
+	// An empty optional field is a legal value, and how a run says "whatever the workflow uses".
+	f.call("POST", confirmPath(f, strictIss.S("id"), strictIt.S("id")), core.Object{"values": core.Object{
+		"repository": repo, "branch": "", "prompt": "Review the auth path",
+	}}, "launch-strict-c2", 200)
+
+	// A key the author declared in their own Start node is not the platform's to withdraw: the
+	// declaration is inert for that key, control and requiredness alike, and the platform contributes
+	// only the default such a control can hold.
+	owned := createLaunchWorkflow(t, f, "Author owned", "launch-owned", []any{
+		core.Object{"name": "repository", "displayName": "Repository", "fieldType": "text-input", "valueType": "string"},
+	}, []any{
+		core.Object{"key": "repository", "enabled": false, "required": true},
+		core.Object{"key": "version", "enabled": false},
+	})
+	f.call("POST", f.path("/workflows/"+owned+"/publish"), core.Object{}, "launch-pub-owned", 200)
+	ownedFields := formFields(t, f.call("GET", f.path("/collaboration/forms/"+owned+"?issueId="+iss.S("id")), nil, "", 200))
+	if r := ownedFields["repository"]; r.S("label") != "Repository" || r.B("required") {
+		t.Fatalf("the declaration reached a key the author owns: %v", r)
+	}
+	if got := ownedFields["repository"]["defaultValue"]; got != repo {
+		t.Fatalf("the author's repository was not prefilled: %v", got)
+	}
+	// The same declaration did withdraw a field the author does not own, so the inertness above is the
+	// author's key being theirs rather than the declaration being ignored.
+	if _, ok := ownedFields["version"]; ok {
+		t.Fatalf("a withdrawn field survived: %v", ownedFields["version"])
+	}
+}
+
+// TestWorkflowConfirmCarriesPlatformFields covers the round trip across the three paths that must
+// agree on one descriptor (§38.37b): the values the form was rendered with are the values assist
+// accepts and the values confirm persists and hands to the run. A descriptor that differed between
+// them would reject a submission the user was legitimately shown.
+func TestWorkflowConfirmCarriesPlatformFields(t *testing.T) {
+	f := setup(t)
+	wid := reviewWorkflow(t, f)
+	// Publishing gives the form a version to choose, so the round trip covers every launch field.
+	published := f.call("POST", f.path("/workflows/"+wid+"/publish"), core.Object{}, "platform-confirm-pub", 200).O("resource")
+	project := f.create("platform-confirm-project").O("resource")
+	repo := project.S("repositoryUrl")
+	iss := f.call("POST", f.path("/issues"), core.Object{
+		"title": "Platform confirm", "projectRef": project.S("id"),
+	}, "platform-confirm-issue", 200).O("resource")
+	it := workflowComment(t, f, wid, iss.S("id"), "platform-confirm-1", "configure the review")
+
+	// Assist accepts a platform key, which it only can if it resolved the same issue-scoped descriptor
+	// the form was rendered from: an unknown key is a 400.
+	res := f.call("POST", assistPath(f, iss.S("id")), workflowAssistBody(wid, core.Object{
+		"repository": repo, "prompt": "Focus on the auth path",
+	}), "platform-assist-1", 200)
+	if res.O("suggestedValues").S("scope") == "" {
+		t.Fatalf("assist suggested nothing: %v", res)
+	}
+
+	// A value the platform field's type rejects is still rejected.
+	f.call("POST", confirmPath(f, iss.S("id"), it.S("id")), core.Object{"values": core.Object{
+		"repository": 7, "scope": "full-repo", "severity": "high",
+	}}, "platform-c1", 400)
+
+	// The context-reference field's value is a list of `refType:refId` pairs; the pairs the surface
+	// turns it into are validated like any other, so an unknown ref type is a 400 rather than a
+	// silently dropped reference.
+	f.call("POST", confirmPath(f, iss.S("id"), it.S("id")), core.Object{
+		"values": core.Object{"repository": repo, "scope": "full-repo", "severity": "high"},
+		"contextRefs": []any{core.Object{
+			"refType": "not_a_type", "refId": uuid.NewString(),
+		}},
+	}, "platform-c2", 400)
+
+	created := f.call("POST", confirmPath(f, iss.S("id"), it.S("id")), core.Object{
+		"values": core.Object{
+			"repository": repo, "prompt": "Focus on the auth path", "version": published.S("id"),
+			"branch": "main", "scope": "full-repo", "severity": "high",
+			"context_refs": []any{"project:" + project.S("id")},
+		},
+		// What the surface derives from the field above, alongside anything AI Assist applied.
+		"contextRefs": []any{core.Object{"refType": "project", "refId": project.S("id")}},
+	}, "platform-c3", 200).O("resource")
+	run := f.call("GET", f.path("/issues/"+iss.S("id")+"/runs/"+created.S("id")), nil, "", 200)
+
+	// Every launch value reaches the run snapshot, which is what the workflow would execute with.
+	executed := run.O("input").O("interactionValues")
+	if executed.S("repository") != repo || executed.S("prompt") != "Focus on the auth path" {
+		t.Fatalf("platform values did not reach the run: %v", executed)
+	}
+	if executed.S("version") != published.S("id") {
+		t.Fatalf("the chosen version did not reach the run: %v", executed)
+	}
+	refs, _ := run.O("input")["contextRefs"].([]any)
+	if len(refs) != 1 {
+		t.Fatalf("the chosen context ref did not reach the run: %v", run.O("input"))
+	}
+	if ref, _ := refs[0].(map[string]any); ref["refType"] != "project" || ref["refId"] != project.S("id") {
+		t.Fatalf("the run's context ref is wrong: %v", refs[0])
+	}
+
+	reloaded := issueItems(f.call("GET", f.path("/issues/"+iss.S("id")+"/interactions"), nil, "", 200))[0]
+	if reloaded.O("input").S("prompt") != "Focus on the auth path" || reloaded.O("input").S("repository") != repo {
+		t.Fatalf("platform values were not persisted on the interaction: %v", reloaded.O("input"))
+	}
+	if reloaded.O("input").S("version") != published.S("id") {
+		t.Fatalf("the chosen version was not persisted on the interaction: %v", reloaded.O("input"))
+	}
 }
 
 // TestFormDescriptorUnavailableAndInvalid covers the provider failure modes (§38.19): no provider is

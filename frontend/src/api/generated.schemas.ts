@@ -1112,6 +1112,13 @@ export type PostApiV1TenantsBody = {
   slug: string;
 };
 
+export type GetApiV1TenantsTidCollaborationFormsFormRefParams = {
+/**
+ * Issue the form is being configured for. Tailors the descriptor with the platform fields (repository, prompt) and prefills them from the issue's project repository and the workflow's Start prompt. An unknown or foreign issue is 404.
+ */
+issueId?: string;
+};
+
 export type GetApiV1TenantsTidCollaborationTargets200 = {
   items: CollaborationTarget[];
   nextCursor: string;

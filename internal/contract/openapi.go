@@ -227,6 +227,11 @@ func Document() map[string]any {
 		if isList(r) {
 			parameters = append(parameters, obj{"name": "limit", "in": "query", "schema": obj{"type": "integer", "minimum": 1, "maximum": 100, "default": 50}}, obj{"name": "after", "in": "query", "schema": uuid(), "description": "Exclusive UUID cursor, ascending stable ordering."})
 		}
+		if strings.Contains(r.Path, "/collaboration/forms/") {
+			// Optional, and absent by default: a caller that omits it gets the descriptor without the
+			// platform fields, which is what every client served before they existed still sends.
+			parameters = append(parameters, obj{"name": "issueId", "in": "query", "schema": uuid(), "description": "Issue the form is being configured for. Tailors the descriptor with the platform fields (repository, prompt) and prefills them from the issue's project repository and the workflow's Start prompt. An unknown or foreign issue is 404."})
+		}
 		if len(parameters) > 0 {
 			operation["parameters"] = parameters
 		}

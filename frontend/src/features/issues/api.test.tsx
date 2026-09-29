@@ -3,8 +3,8 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '@/test/msw-server'
-import type { Issue } from './types'
-import { useCreateIssue, useIssues, useMoveIssue, useUpdateIssue } from './api'
+import type { FormDescriptor, Issue } from './types'
+import { useCreateIssue, useFormDescriptor, useIssues, useMoveIssue, useUpdateIssue } from './api'
 
 function wrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
@@ -106,6 +106,60 @@ describe('useCreateIssue', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(body).toEqual({ title: 'Child task', parentIssueId: 'p1' })
+  })
+})
+
+describe('useFormDescriptor', () => {
+  const descriptor: FormDescriptor = {
+    formRef: 'f1',
+    fields: [
+      {
+        key: 'repository',
+        label: '仓库地址',
+        type: 'text',
+        required: true,
+        defaultValue: 'https://github.com/ora/cloud',
+      },
+    ],
+  }
+
+  it('asks for the descriptor alone when no issue is given', async () => {
+    let search = ''
+    server.use(
+      http.get('/api/v1/tenants/t1/collaboration/forms/f1', ({ request }) => {
+        search = new URL(request.url).search
+        return HttpResponse.json(descriptor)
+      }),
+    )
+    const { result } = renderHook(() => useFormDescriptor('t1', 'f1'), {
+      wrapper: wrapper(new QueryClient()),
+    })
+
+    await waitFor(() => expect(result.current.data).toEqual(descriptor))
+    expect(search).toBe('')
+  })
+
+  it('carries the issue and caches the descriptor per issue', async () => {
+    const asked: string[] = []
+    server.use(
+      http.get('/api/v1/tenants/t1/collaboration/forms/f1', ({ request }) => {
+        asked.push(new URL(request.url).searchParams.get('issueId') ?? '')
+        return HttpResponse.json(descriptor)
+      }),
+    )
+    const queryClient = new QueryClient()
+    const { result, rerender } = renderHook(
+      ({ issueId }: { issueId: string }) => useFormDescriptor('t1', 'f1', issueId),
+      { wrapper: wrapper(queryClient), initialProps: { issueId: 'i1' } },
+    )
+
+    await waitFor(() => expect(result.current.data).toEqual(descriptor))
+    expect(asked).toEqual(['i1'])
+
+    // A second issue is a different cache entry: the first issue's defaults were its own project's
+    // repository, so reusing them would seed the wrong form.
+    rerender({ issueId: 'i2' })
+    await waitFor(() => expect(asked).toEqual(['i1', 'i2']))
   })
 })
 

@@ -54,14 +54,37 @@ type ContextInput struct {
 	ContextRefs       []Object
 }
 
+// IssueFormContext is the already-authorized issue material a descriptor may be tailored with
+// (§38.37b, §38.37c). It is a value the Issue domain resolves inside its own transaction and hands
+// over, so a provider never reads the Issues tables and can never resolve the same issue from another
+// tenant's point of view. The zero value means "no issue context": the descriptor is then projected
+// exactly as it was before this context existed, and no platform field is injected.
+//
+// Every field is optional in the same sense: an issue with no project leaves the repository, branch
+// and project id empty, and the platform fields they feed either lose their default or drop out
+// entirely. Nothing here is an error to be missing.
+type IssueFormContext struct {
+	IssueID       string
+	RepositoryURL string
+	DefaultBranch string
+	// ProjectID and ParentIssueID are the two references an issue can name for itself, and the only
+	// options the supplementary context-reference field offers.
+	ProjectID     string
+	ParentIssueID string
+}
+
 // FormDescriptorProvider resolves the Issues-facing FormDescriptor for a `formRef` (§38.17). Issues
 // never learns whether the descriptor comes from a Workflow database, an HTTP/RPC service, a JSON
 // Schema, a DSL, code or protobuf — the adapter owns that mapping.
 //
+// `issue` carries the invocation-time issue context the descriptor may be tailored with; it is the
+// zero value when the caller has none. A provider that ignores it stays correct — it simply never
+// contributes platform fields.
+//
 // ok=false means the provider does not know this formRef (404); a nil provider means the capability is
 // not wired in this deployment (503).
 type FormDescriptorProvider interface {
-	ResolveFormDescriptor(ctx context.Context, tenantID, formRef string) (FormDescriptor, bool, error)
+	ResolveFormDescriptor(ctx context.Context, tenantID, formRef string, issue IssueFormContext) (FormDescriptor, bool, error)
 }
 
 // AssistInput is the invocation-time material for one AI Assist request (§38.11).

@@ -13,7 +13,14 @@ import { renderWithProviders } from '@/test/render'
 
 /** A distinct frozen state so step fingerprints never collide. */
 function snapshotWith(label: string): WorkflowHistorySnapshot {
-  return { nodes: [], edges: [], annotations: [], globalVariables: [], description: label }
+  return {
+    nodes: [],
+    edges: [],
+    annotations: [],
+    globalVariables: [],
+    launchFields: [],
+    description: label,
+  }
 }
 
 /** A history step carrying exactly the given label and subject. */

@@ -2,12 +2,16 @@ import { describe, expect, it } from 'vitest'
 import {
   isoToWorkflowTimestamp,
   parseWorkflowGraph,
+  parseWorkflowGraphValue,
   serializeWorkflowGraph,
+  serializeWorkflowGraphValue,
   workflowTimestampToIso,
 } from '@/features/workflows/runtime/graph-codec'
+import type { WorkflowGraphInput } from '@/features/workflows/runtime/graph-codec'
 import type {
   WorkflowDefinitionEdge,
   WorkflowDefinitionNode,
+  WorkflowLaunchField,
 } from '@/features/workflows/runtime/types'
 
 const node: WorkflowDefinitionNode = {
@@ -31,6 +35,7 @@ const EMPTY_ENVELOPE = {
   viewport: { x: 0, y: 0, zoom: 1 },
   annotations: [],
   globalVariables: [],
+  launchFields: [],
 }
 
 describe('graph envelope codec', () => {
@@ -43,23 +48,53 @@ describe('graph envelope codec', () => {
       height: 140,
       data: { text: 'Review this branch', theme: 'yellow' as const },
     }
-    const graph = serializeWorkflowGraph({
+    // One document, written once. A round trip claims the parser hands back exactly what the
+    // serializer was given, so writing the expectation out a second time would only be able to say
+    // that the test agrees with itself.
+    const document: WorkflowGraphInput = {
       nodes: [node],
       edges: [edge],
       annotations: [annotation],
       globalVariables: [{ name: 'sys.workflow_id', valueType: 'string' }],
+      launchFields: [
+        { key: 'version', enabled: false },
+        { key: 'prompt', enabled: true, required: true },
+      ],
       viewport: { x: 32, y: 64, zoom: 1.5 },
       description: 'A review flow',
+    }
+
+    expect(parseWorkflowGraph(serializeWorkflowGraph(document))).toEqual(document)
+  })
+
+  it('keeps a launch-field declaration through a parse and resave', () => {
+    const declaration: WorkflowLaunchField[] = [{ key: 'repository', enabled: false }]
+
+    // The declaration is a sibling of the globals rather than a node's data, so a graph that
+    // carries one has to hand it back on the next save: the editor writes what it read.
+    const parsed = parseWorkflowGraphValue(
+      serializeWorkflowGraphValue({ ...EMPTY_ENVELOPE, launchFields: declaration }),
+    )
+    expect(parsed.launchFields).toEqual(declaration)
+    expect(
+      serializeWorkflowGraphValue({
+        nodes: parsed.nodes,
+        edges: parsed.edges,
+        viewport: parsed.viewport,
+        launchFields: parsed.launchFields,
+      }),
+    ).toHaveProperty('launchFields', declaration)
+  })
+
+  it('drops a declaration entry that does not name a platform launch field', () => {
+    const parsed = parseWorkflowGraphValue({
+      ...EMPTY_ENVELOPE,
+      launchFields: [{ key: 'deploy_target', enabled: false }, { key: 'branch' }, 'nonsense'],
     })
 
-    expect(parseWorkflowGraph(graph)).toEqual({
-      nodes: [node],
-      edges: [edge],
-      annotations: [annotation],
-      globalVariables: [{ name: 'sys.workflow_id', valueType: 'string' }],
-      viewport: { x: 32, y: 64, zoom: 1.5 },
-      description: 'A review flow',
-    })
+    // A key the catalogue does not have cannot be declared about, and a declaration that is not
+    // a list of entries is no declaration at all.
+    expect(parsed.launchFields).toEqual([{ key: 'branch' }])
   })
 
   it('omits the description key when absent', () => {
@@ -83,6 +118,7 @@ describe('graph envelope codec', () => {
       viewport: { x: 5, y: 6, zoom: 1 },
       annotations: [],
       globalVariables: [],
+      launchFields: [],
     })
   })
 
@@ -201,6 +237,7 @@ describe('graph envelope codec', () => {
       viewport: { x: 0, y: 0, zoom: 1 },
       annotations: [],
       globalVariables: [],
+      launchFields: [],
     }
 
     const graph = serializeWorkflowGraph(input)
@@ -279,6 +316,7 @@ it('preserves canonical MCP IDs and disabled bindings across graph round trips',
     viewport: { x: 0, y: 0, zoom: 1 },
     annotations: [],
     globalVariables: [],
+    launchFields: [],
   }
   expect(parseWorkflowGraph(serializeWorkflowGraph(input))).toEqual(input)
 })

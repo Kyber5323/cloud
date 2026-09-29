@@ -8,6 +8,7 @@ import { isAuthoredNodeChange } from '@/features/workflows/runtime/layout'
 import type { WorkflowIterationInsertion } from '@/features/workflows/runtime/iteration-graph'
 import type {
   WorkflowGlobalVariable,
+  WorkflowLaunchField,
   WorkflowNodeData,
   WorkflowNodeKind,
   WorkflowViewport,
@@ -79,6 +80,13 @@ export interface WorkflowEditorState extends WorkflowEditorHandlers {
   edges: WorkflowCanvasEdge[]
   /** Workflow-wide declarations the inspector and kind panels resolve variables against. */
   globalVariables: readonly WorkflowGlobalVariable[]
+  /** Which platform launch fields the `@` form asks for, as the launch-fields dialog reads them. */
+  launchFields: readonly WorkflowLaunchField[]
+  /**
+   * Names the graph's Start node declares, which the launch-fields dialog reads as the author
+   * owning those keys. Empty when the graph has no Start node.
+   */
+  startVariableNames: readonly string[]
   /** Viewport the canvas should open at. */
   viewport: WorkflowViewport
   /** The single selected node, or `null` when the selection is empty or multiple. */
@@ -100,6 +108,8 @@ export interface WorkflowEditorState extends WorkflowEditorHandlers {
   draftGraph: () => Record<string, unknown>
   /** Replaces the workflow-wide declarations as one history step. */
   onGlobalVariablesSave: (variables: WorkflowGlobalVariable[]) => void
+  /** Replaces the launch-field declaration as one history step. */
+  onLaunchFieldsSave: (fields: WorkflowLaunchField[]) => void
   /** Undo and redo controls for the session. */
   history: WorkflowHistoryControls
 }
@@ -119,7 +129,7 @@ export function useWorkflowEditorState(
   const translate = useWorkflowTranslator()
   const draft = useWorkflowDraft(workflow, translate)
   const saveGraph = useUpdateWorkflowGraph(tenantId)
-  const { snapshot, nodes, edges, selectedNode, viewport, globalVariables } = draft
+  const { snapshot, nodes, edges, selectedNode, viewport, globalVariables, launchFields } = draft
 
   // The viewport rides along with every write but never marks the draft dirty,
   // so panning and zooming cannot bump the workflow version on their own.
@@ -162,6 +172,14 @@ export function useWorkflowEditorState(
   )
 
   const globalVariablesSaver = useWorkflowGlobalVariablesRecorder(draft, markDirty, history, t)
+  const launchFieldsSaver = useWorkflowLaunchFieldsRecorder(draft, markDirty, history, t)
+
+  // The names the graph's Start node declares. The first Start node is the one that counts, which is
+  // the same rule the `@` projection reads its variables by: a graph carrying two of them cannot have
+  // one supply the prompt and the other the variables, so the dialog must not treat the second node's
+  // names as declared either.
+  const startNode = nodes.find((node) => node.data.kind === 'start')
+  const startVariableNames = (startNode?.data.inputVariables ?? []).map((variable) => variable.name)
   const onViewportChange = useCallback((next: Viewport) => {
     viewportRef.current = next
   }, [])
@@ -187,9 +205,12 @@ export function useWorkflowEditorState(
   return {
     ...useWorkflowDraftHandlers(draft, markDirty, history, t),
     ...globalVariablesSaver,
+    ...launchFieldsSaver,
     nodes,
     edges,
     globalVariables,
+    launchFields,
+    startVariableNames,
     viewport,
     selectedNode,
     status,
@@ -580,6 +601,35 @@ function useWorkflowGlobalVariablesRecorder(
   )
 
   return { onGlobalVariablesSave }
+}
+
+/**
+ * Records a replacement of the launch-field declaration as one discrete
+ * `workflow.launchFields` step, for the same reason the globals recorder does:
+ * the dialog commits the whole declaration at once.
+ */
+function useWorkflowLaunchFieldsRecorder(
+  draft: WorkflowDraft,
+  markDirty: () => void,
+  history: WorkflowHistoryBridge,
+  t: TFunction,
+) {
+  const { captureContent, replaceLaunchFields } = draft
+  const { record } = history
+
+  const onLaunchFieldsSave = useCallback(
+    (fields: WorkflowLaunchField[]) => {
+      const before = captureContent()
+      markDirty()
+      replaceLaunchFields(fields)
+      record(before, captureContent(), 'workflow.launchFields', {
+        meta: { subject: t('workflows.launchFields.title') },
+      })
+    },
+    [captureContent, markDirty, record, replaceLaunchFields, t],
+  )
+
+  return { onLaunchFieldsSave }
 }
 
 /** Names one canvas node for a history step without exposing internal ids. */

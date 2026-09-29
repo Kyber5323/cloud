@@ -1,3 +1,5 @@
+import { historyTranslations } from '@/features/workflows/history-translations'
+import { launchFieldTranslations } from '@/features/workflows/launch-field-translations'
 import type { TranslationBundle } from '@/i18n/resource-bundle'
 
 /**
@@ -18,6 +20,8 @@ import type { TranslationBundle } from '@/i18n/resource-bundle'
  */
 export const workflowTranslations = {
   'zh-CN': {
+    ...historyTranslations['zh-CN'],
+    ...launchFieldTranslations['zh-CN'],
     // Node catalog: palette labels and descriptions for every executable kind.
     'workflows.node.start.label': '开始',
     'workflows.node.start.description': '定义工作流输入',
@@ -294,30 +298,6 @@ export const workflowTranslations = {
       '回滚会用该版本冻结的图替换当前画布，未保存的修改会丢失。',
     'workflows.version.rollbackNamed': '回滚到版本 {{version}}',
 
-    // Session undo/redo and change history.
-    'workflows.history.undo': '撤销',
-    'workflows.history.redo': '重做',
-    'workflows.history.history': '历史记录',
-    'workflows.history.historyHint': '查看本次编辑的操作记录',
-    'workflows.history.undoHint': '撤销上一步操作（Ctrl+Z）',
-    'workflows.history.redoHint': '重做被撤销的操作（Ctrl+Shift+Z）',
-    'workflows.history.current': '当前状态',
-    'workflows.history.stepsBack': '回溯 {{count}} 步',
-    'workflows.history.stepsForward': '前移 {{count}} 步',
-    'workflows.history.clear': '清空历史',
-    'workflows.history.empty': '还没有可回退的操作。',
-    'workflows.history.sessionStart': '会话开始',
-    'workflows.history.eventNodeAdd': '添加节点',
-    'workflows.history.eventNodeDelete': '删除节点',
-    'workflows.history.eventEdgeDelete': '删除连线',
-    'workflows.history.eventEdgeConnect': '建立连线',
-    'workflows.history.eventNodeMove': '移动节点',
-    'workflows.history.eventIterationResize': '调整区域大小',
-    'workflows.history.eventOrganize': '自动整理',
-    'workflows.history.eventNodeEdit': '编辑节点',
-    'workflows.history.eventVariables': '编辑全局变量',
-    'workflows.history.unknownNode': '未命名节点',
-
     // Workflow-wide variable declarations edited from the variables dialog.
     'workflows.globalVariables.title': '全局变量',
     'workflows.globalVariables.description':
@@ -448,6 +428,8 @@ export const workflowTranslations = {
     'workflows.errors.unknown': '操作失败，请稍后重试。',
   },
   'en-US': {
+    ...historyTranslations['en-US'],
+    ...launchFieldTranslations['en-US'],
     'workflows.node.start.label': 'Start',
     'workflows.node.start.description': 'Define workflow inputs',
     'workflows.node.agent.label': 'Agent',
@@ -730,30 +712,6 @@ export const workflowTranslations = {
     'workflows.version.restoreDescription':
       'Rolling back replaces the current canvas with the graph frozen in that version; unsaved changes are lost.',
     'workflows.version.rollbackNamed': 'Roll back to version {{version}}',
-
-    // Session undo/redo and change history.
-    'workflows.history.undo': 'Undo',
-    'workflows.history.redo': 'Redo',
-    'workflows.history.history': 'History',
-    'workflows.history.historyHint': 'Review the edits made in this session',
-    'workflows.history.undoHint': 'Undo the last edit (Ctrl+Z)',
-    'workflows.history.redoHint': 'Redo the last undone edit (Ctrl+Shift+Z)',
-    'workflows.history.current': 'Current state',
-    'workflows.history.stepsBack': '{{count}} steps back',
-    'workflows.history.stepsForward': '{{count}} steps forward',
-    'workflows.history.clear': 'Clear history',
-    'workflows.history.empty': 'Nothing to undo yet.',
-    'workflows.history.sessionStart': 'Session start',
-    'workflows.history.eventNodeAdd': 'Add node',
-    'workflows.history.eventNodeDelete': 'Delete node',
-    'workflows.history.eventEdgeDelete': 'Delete connection',
-    'workflows.history.eventEdgeConnect': 'Connect nodes',
-    'workflows.history.eventNodeMove': 'Move node',
-    'workflows.history.eventIterationResize': 'Resize region',
-    'workflows.history.eventOrganize': 'Auto arrange',
-    'workflows.history.eventNodeEdit': 'Edit node',
-    'workflows.history.eventVariables': 'Edit global variables',
-    'workflows.history.unknownNode': 'Unnamed node',
 
     'workflows.globalVariables.title': 'Global variables',
     'workflows.globalVariables.description':

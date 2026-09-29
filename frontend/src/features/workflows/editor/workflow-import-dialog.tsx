@@ -149,6 +149,7 @@ function importedGraph(document: ImportedWorkflowDocument): Record<string, unkno
     edges: document.definition.edges,
     viewport: document.definition.viewport,
     annotations: document.annotations,
+    launchFields: document.launchFields,
     ...(document.definition.globalVariables === undefined
       ? {}
       : { globalVariables: document.definition.globalVariables }),

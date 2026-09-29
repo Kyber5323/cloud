@@ -3187,6 +3187,15 @@
               "pattern": "^[A-Za-z0-9._:@-]+$",
               "type": "string"
             }
+          },
+          {
+            "description": "Issue the form is being configured for. Tailors the descriptor with the platform fields (repository, prompt) and prefills them from the issue's project repository and the workflow's Start prompt. An unknown or foreign issue is 404.",
+            "in": "query",
+            "name": "issueId",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
           }
         ],
         "responses": {

@@ -9,6 +9,7 @@ import {
 import {
   isWorkflowGlobalVariable,
   isWorkflowGraphAnnotation,
+  isWorkflowLaunchField,
   type WorkflowGraphAnnotation,
 } from '@/features/workflows/runtime/graph-codec'
 import { asJsonRecord } from '@/features/workflows/runtime/json-record'
@@ -17,6 +18,7 @@ import {
   type WorkflowAgentConfig,
   type WorkflowDefinition,
   type WorkflowGlobalVariable,
+  type WorkflowLaunchField,
   type WorkflowNodeData,
   type WorkflowViewport,
 } from '@/features/workflows/runtime/types'
@@ -42,6 +44,12 @@ export interface ImportedWorkflowDocument {
   definition: WorkflowDefinition
   /** Editor notes, which live beside the definition rather than inside it. */
   annotations: WorkflowGraphAnnotation[]
+  /**
+   * The `@` form's launch-field declaration, which the definition does not carry: the executable
+   * document is shared with the desktop runtime, and which fields the cloud form asks for is a
+   * cloud-`@` concern. Leaving it out of the definition is what keeps an export round-tripping.
+   */
+  launchFields: WorkflowLaunchField[]
 }
 
 /** One element that either narrowed cleanly or is the reason the import is refused. */
@@ -72,6 +80,7 @@ export function parseImportedWorkflowDocument(value: unknown): ImportedWorkflowD
   const viewport = readImportedViewport(document['viewport'])
   const annotations = readImportedAnnotations(document['annotations'])
   const globalVariables = readImportedGlobalVariables(document['globalVariables'])
+  const launchFields = readImportedLaunchFields(document['launchFields'])
   const issues = [
     ...readDocumentIssues(document),
     ...nodes.issues,
@@ -79,6 +88,7 @@ export function parseImportedWorkflowDocument(value: unknown): ImportedWorkflowD
     ...viewport.issues,
     ...annotations.issues,
     ...globalVariables.issues,
+    ...launchFields.issues,
   ]
   if (issues.length > 0) {
     throw new WorkflowImportError(issues)
@@ -96,6 +106,7 @@ export function parseImportedWorkflowDocument(value: unknown): ImportedWorkflowD
         }),
       ),
       annotations: annotations.values,
+      launchFields: launchFields.values,
     }
   } catch (error) {
     throw error instanceof WorkflowDefinitionValidationError
@@ -162,6 +173,29 @@ function readImportedGlobalVariables(value: unknown): {
       values.push(variable)
     } else {
       issues.push(`global variable ${index} is not a valid workflow variable`)
+    }
+  }
+  return { values, issues }
+}
+
+/** Narrows every imported launch-field declaration entry, reporting each one it had to refuse. */
+function readImportedLaunchFields(value: unknown): {
+  values: WorkflowLaunchField[]
+  issues: string[]
+} {
+  if (value === undefined) {
+    return { values: [], issues: [] }
+  }
+  if (!Array.isArray(value)) {
+    return { values: [], issues: ['launchFields must be an array'] }
+  }
+  const values: WorkflowLaunchField[] = []
+  const issues: string[] = []
+  for (const [index, field] of value.entries()) {
+    if (isWorkflowLaunchField(field)) {
+      values.push(field)
+    } else {
+      issues.push(`launch field ${index} does not name a platform launch field`)
     }
   }
   return { values, issues }

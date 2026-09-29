@@ -273,13 +273,22 @@ export function useInteractions(tid: string, issueId: string) {
 /**
  * Loads the Issues-facing FormDescriptor for a `formRef` (§38.17). The descriptor is a rendering
  * projection — it is fetched per selection, never embedded in the picker payload.
+ *
+ * `issueId` is the issue the form is being configured for. It is what makes the descriptor carry the
+ * platform fields (repository, prompt) and what prefills them from the issue's project repository and
+ * the workflow's Start prompt. It is optional, and omitting it is not a degraded mode: the descriptor
+ * is then exactly the one this route served before the platform fields existed.
+ *
+ * It is part of the query key because it changes the response: a descriptor cached for one issue must
+ * never seed another issue's form with the wrong defaults.
  */
-export function useFormDescriptor(tid: string, formRef: string | undefined) {
+export function useFormDescriptor(tid: string, formRef: string | undefined, issueId?: string) {
   return useQuery({
-    queryKey: ['collaboration-form', tid, formRef ?? ''],
+    queryKey: ['collaboration-form', tid, formRef ?? '', issueId ?? ''],
     queryFn: async () => {
       const { data } = await AXIOS_INSTANCE.get<FormDescriptor>(
         `/api/v1/tenants/${tid}/collaboration/forms/${encodeURIComponent(formRef ?? '')}`,
+        issueId ? { params: { issueId } } : undefined,
       )
       return data
     },
