@@ -196,6 +196,12 @@ func snapshot(out core.Object) *controlpb.OperationSnapshot {
 	for _, c := range rows(out["clones"]) {
 		snap.Clones = append(snap.Clones, record(c))
 	}
+	if pluginInput := out.O("pluginInput"); pluginInput.S("kind") != "" {
+		snap.PluginInput = input(pluginInput)
+	}
+	for _, execution := range rows(out["pluginExecutions"]) {
+		snap.PluginExecutions = append(snap.PluginExecutions, record(execution))
+	}
 	return snap
 }
 

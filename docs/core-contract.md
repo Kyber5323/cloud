@@ -68,9 +68,9 @@ Node 本地原子 idle 与实际开始执行之间的进程锁由阶段二 Node 
 显式 `(source_namespace, identifier)` 列对,不是 `operations.result` 里的 JSON 大杂烩。
 
 市场目录由 cloud server 自己维护:`internal/pluginmarket` 每 5 分钟(可配)git fetch + 扫描
-`registry/**/orax.toml`,单事务整源替换 `plugin_catalog_entries`;目录读取永远不出网。effect 载荷
-(`plugin_ensure`)从目录快照自包含拼装 url/sha256/targets,与 desktop `DownloadRequest` 字段对应,
-Node 无需 registry index 或自行同步市场;sha256 校验为必选项(与 `docs/desktop-runtime.md` 同款要求)。
+`registry/**/orax.toml`,单事务整源替换 `plugin_catalog_entries`;目录读取永远不出网。插件安装是
+Workspace `plugin` 步骤上的一次 Node 执行:载荷仍从目录快照自包含拼装 url/sha256/targets,Node 无需
+registry index,并在落盘前校验 sha256。`plugin_ensure` / `plugin_delete` 只保留历史行,不再新计划。
 
 安装/移除的公开路由走 space 成员门控与严格解码;重复安装幂等、版本冲突 409、缺版本 428。
 完整契约见 [docs/plugins.md](plugins.md)。

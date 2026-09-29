@@ -306,6 +306,10 @@ func (c *Controller) Step(ctx context.Context) (bool, error) {
 		if e := c.clone(ctx, snap, workspaces, nodes); e != nil {
 			return false, e
 		}
+	case "plugin":
+		if e := c.plugins(ctx, snap, nodes); e != nil {
+			return false, e
+		}
 	case "quiesce":
 		for _, w := range workspaces {
 			if c.Operation.S("workspaceId") != "" && w.S("id") != c.Operation.S("workspaceId") {
@@ -330,14 +334,6 @@ func (c *Controller) Step(ctx context.Context) (bool, error) {
 	default:
 		kinds := map[string]string{"sandbox": "sandbox_ensure", "terminate": "sandbox_terminate", "cleanup": "workspace_data_delete"}
 		kind := kinds[step]
-		if step == "plugin" {
-			// The plugin step's effect follows the operation intent: an
-			// install fans out plugin_ensure, a removal plugin_delete.
-			kind = "plugin_ensure"
-			if c.Operation.S("kind") == "remove_plugin" {
-				kind = "plugin_delete"
-			}
-		}
 		if kind == "" {
 			return false, fmt.Errorf("unknown step %s", step)
 		}

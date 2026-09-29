@@ -298,6 +298,8 @@ export interface ControllerWorkspace {
   deletedAt: string | null;
   desiredState: string;
   id: string;
+  /** @nullable */
+  issueRunId?: string | null;
   kind: string;
   observedState: string;
   ownerUserId: string;
@@ -797,6 +799,34 @@ export interface Node {
   workspaceId: string;
 }
 
+export type NodeExecutionInput = { [key: string]: unknown };
+
+/**
+ * @nullable
+ */
+export type NodeExecutionResult = { [key: string]: unknown } | null;
+
+export interface NodeExecution {
+  createdAt: string;
+  dispatchedEpoch: number;
+  executionId: string;
+  input: NodeExecutionInput;
+  kind: string;
+  lastEventSequence: number;
+  nodeId: string;
+  nodeOperationId: string;
+  operationId: string;
+  /** @nullable */
+  result: NodeExecutionResult;
+  /** @nullable */
+  terminatedByForceStopId: string | null;
+  updatedAt: string;
+  /** @nullable */
+  workId: string | null;
+  /** @nullable */
+  workspaceId: string | null;
+}
+
 export type OperationState = typeof OperationState[keyof typeof OperationState];
 
 
@@ -960,11 +990,20 @@ export interface PluginCatalogEntry {
   version: string;
 }
 
+export type OperationRequestPluginMetaItem = {
+  desiredRevision: number;
+  pluginId: string;
+};
+
+export type OperationRequestPluginsItem = { [key: string]: unknown };
+
 export type OperationRequestPrevious = {[key: string]: Workspace};
 
 export interface OperationRequest {
   desiredRevision?: number;
   pluginId?: string;
+  pluginMeta?: OperationRequestPluginMetaItem[];
+  plugins?: OperationRequestPluginsItem[];
   previous?: OperationRequestPrevious;
   release?: PluginCatalogEntry;
   version?: string;
@@ -1089,11 +1128,15 @@ export interface Sandbox {
   workspaceId: string;
 }
 
+export type SnapshotPluginInput = { [key: string]: unknown };
+
 export interface Snapshot {
   clones: CloneExecution[];
   effects: Effect[];
   nodes: Node[];
   operation: Operation;
+  pluginExecutions: NodeExecution[];
+  pluginInput?: SnapshotPluginInput;
   project: ControllerProject;
   sandboxes: Sandbox[];
   workspaces: ControllerWorkspace[];
@@ -2445,6 +2488,8 @@ export const PostInternalV1OperationsOidDeferBodyErrorCode = {
   external_failure: 'external_failure',
   clone_failed: 'clone_failed',
   clone_result_unknown: 'clone_result_unknown',
+  plugin_execution_failed: 'plugin_execution_failed',
+  plugin_result_unknown: 'plugin_result_unknown',
 } as const;
 
 export type PostInternalV1OperationsOidDeferBodyState = typeof PostInternalV1OperationsOidDeferBodyState[keyof typeof PostInternalV1OperationsOidDeferBodyState];

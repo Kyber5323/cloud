@@ -67,6 +67,7 @@ func forceStopCommand(t *transaction, r *ControlRequest) Object {
 				t.exec("UPDATE sandbox_instances SET terminated_at=COALESCE(terminated_at,clock_timestamp()),observed_state='terminated' WHERE id=$1", target.S("sandboxId"))
 			}
 			t.exec("UPDATE clone_executions SET terminated_by_force_stop_id=$2 WHERE workspace_id=$1 AND result IS NULL", f.S("workspaceId"), f.S("id"))
+			t.exec("UPDATE node_executions SET terminated_by_force_stop_id=$2 WHERE workspace_id=$1 AND result IS NULL", f.S("workspaceId"), f.S("id"))
 			// Cancellation is recorded as failure with the force intent reference; the original input,
 			// actor, execution identity and any real result remain intact. Project-wide deletion resumes.
 			t.exec("UPDATE operations SET state='failed',error_code='administrative_force_stop',result=result||jsonb_build_object('forceStopId',$2::text),version=version+1,updated_at=clock_timestamp() WHERE workspace_id=$1 AND state IN ('queued','running','retry_wait','blocked')", f.S("workspaceId"), f.S("id"))

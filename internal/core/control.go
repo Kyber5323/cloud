@@ -20,7 +20,6 @@ type ControlRequest struct {
 // Committed plugin instance writebacks broadcast space invalidation notices exactly like public
 // mutations, so live subscribers see fan-out progress without polling.
 func (s *Store) Control(ctx context.Context, r *ControlRequest) (Object, error) {
-	var events []SpaceEvent
 	out, err := s.transact(ctx, func(t *transaction) Object {
 		if r.Action == "access" || r.Action == "admit" {
 			require(r.Service.Role == "controller", 403, "service_forbidden")
@@ -67,28 +66,23 @@ func (s *Store) Control(ctx context.Context, r *ControlRequest) (Object, error) 
 		}
 		// The submission wraps the operation lookup too: a replay after the version moved on must
 		// return the recorded response, not fail the version check it already passed.
-		return submitted(t, r, func() Object { return operationCommand(t, r, &events) })
+		return submitted(t, r, func() Object { return operationCommand(t, r) })
 	})
-	if err == nil && s.Events != nil {
-		for _, ev := range events {
-			s.Events.Publish(ev)
-		}
-	}
 	return out, err
 }
 
 // operationCommand runs one Effect-level action on the operation the caller claimed.
-func operationCommand(t *transaction, r *ControlRequest, events *[]SpaceEvent) Object {
+func operationCommand(t *transaction, r *ControlRequest) Object {
 	o := operation(t, r)
 	switch r.Action {
 	case "snapshot":
 		return snapshot(t, o)
 	case "plan":
-		return planEffect(t, r, o, events)
+		return planEffect(t, r, o)
 	case "effect_result":
-		return effectResult(t, r, o, events)
+		return effectResult(t, r, o)
 	case "advance":
-		return advance(t, r, o, events)
+		return advance(t, r, o)
 	case "defer":
 		state := r.Body.S("state")
 		code := r.Body.S("errorCode")
@@ -144,6 +138,10 @@ func claim(t *transaction, r *ControlRequest) Object {
 	}
 	t.exec("UPDATE operations SET state='running',controller_epoch=$2,version=version+1,updated_at=now() WHERE id=$1", o.S("id"), r.Body.N("epoch"))
 	o = t.one("SELECT * FROM operations WHERE id=$1", o.S("id"))
+	if o.S("step") == "plugin" {
+		enterPluginStep(t, o)
+		o = t.one("SELECT * FROM operations WHERE id=$1", o.S("id"))
+	}
 	return snapshot(t, o)
 }
 
@@ -162,7 +160,21 @@ func operation(t *transaction, r *ControlRequest) Object {
 // original execution instead of registering a second one.
 func snapshot(t *transaction, o Object) Object {
 	p := t.one("SELECT p.*,c.secret_ref FROM projects p LEFT JOIN credential_refs c ON c.id=p.credential_ref_id WHERE p.id=$1", o.S("projectId"))
-	return Object{"operation": o, "project": p, "workspaces": t.list("SELECT w.* FROM workspaces w WHERE w.project_id=$1 AND w.deleted_at IS NULL ORDER BY w.id", o.S("projectId")), "sandboxes": t.list("SELECT s.* FROM sandbox_instances s JOIN workspaces w ON w.id=s.workspace_id WHERE w.project_id=$1 ORDER BY s.id", o.S("projectId")), "nodes": t.list("SELECT n.* FROM node_instances n JOIN sandbox_instances s ON s.id=n.sandbox_instance_id JOIN workspaces w ON w.id=s.workspace_id WHERE w.project_id=$1 ORDER BY n.id", o.S("projectId")), "effects": t.list("SELECT * FROM external_effects WHERE operation_id=$1 ORDER BY created_at,id", o.S("id")), "clones": t.list("SELECT * FROM clone_executions WHERE operation_id=$1 ORDER BY created_at,execution_id", o.S("id"))}
+	out := Object{
+		"operation":  o,
+		"project":    p,
+		"workspaces": t.list("SELECT w.* FROM workspaces w WHERE w.project_id=$1 AND w.deleted_at IS NULL ORDER BY w.id", o.S("projectId")),
+		"sandboxes":  t.list("SELECT s.* FROM sandbox_instances s JOIN workspaces w ON w.id=s.workspace_id WHERE w.project_id=$1 ORDER BY s.id", o.S("projectId")),
+		"nodes":      t.list("SELECT n.* FROM node_instances n JOIN sandbox_instances s ON s.id=n.sandbox_instance_id JOIN workspaces w ON w.id=s.workspace_id WHERE w.project_id=$1 ORDER BY n.id", o.S("projectId")),
+		// Retired plugin effects stay in the table as history and are not part of the live snapshot.
+		"effects":          t.list("SELECT * FROM external_effects WHERE operation_id=$1 AND kind NOT IN ('plugin_ensure','plugin_delete') ORDER BY created_at,id", o.S("id")),
+		"clones":           t.list("SELECT * FROM clone_executions WHERE operation_id=$1 ORDER BY created_at,execution_id", o.S("id")),
+		"pluginExecutions": t.list("SELECT * FROM node_executions WHERE operation_id=$1 AND kind IN ('install_plugins','remove_plugins') ORDER BY created_at,execution_id", o.S("id")),
+	}
+	if input := pluginInputOf(o); len(input) > 0 {
+		out["pluginInput"] = input
+	}
+	return out
 }
 
 func operationWorkspaces(t *transaction, o Object) []Object {
@@ -176,7 +188,7 @@ func operationWorkspaces(t *transaction, o Object) []Object {
 // Retired storage and worktree effects of an operation that crossed migration 0016 are history no
 // Substrate serves any more, so they cannot be reconciled and do not block it.
 func reconciled(t *transaction, o Object) {
-	require(t.one("SELECT id FROM external_effects WHERE operation_id=$1 AND reconciled_epoch<>$2 AND kind NOT IN ('storage_ensure','worktree_ensure','worktree_delete','storage_delete')", o.S("id"), o.N("controllerEpoch")) == nil, 409, "reconcile_required")
+	require(t.one("SELECT id FROM external_effects WHERE operation_id=$1 AND reconciled_epoch<>$2 AND kind NOT IN ('storage_ensure','worktree_ensure','worktree_delete','storage_delete','plugin_ensure','plugin_delete')", o.S("id"), o.N("controllerEpoch")) == nil, 409, "reconcile_required")
 }
 
 func effectFor(t *transaction, oid, kind, wid string) Object {
@@ -190,7 +202,7 @@ func nullable(s string) any {
 	return s
 }
 
-func planEffect(t *transaction, r *ControlRequest, o Object, spaceEvents *[]SpaceEvent) Object {
+func planEffect(t *transaction, r *ControlRequest, o Object) Object {
 	reconciled(t, o)
 	kind, wid := r.Body.S("kind"), r.Body.S("workspaceId")
 	require(validID(wid), 400, "invalid_effect_scope")
@@ -209,85 +221,34 @@ func planEffect(t *transaction, r *ControlRequest, o Object, spaceEvents *[]Spac
 	// drawn before the step-specific request building below.
 	id := newID()
 	var request Object
-	switch o.S("step") {
-	case "plugin":
-		request = planPluginEffect(t, o, kind, wid, spaceEvents)
-	default:
-		// Only the three lifecycle effects remain; the clone step dispatches through the execution
-		// registry, not through a Substrate effect.
-		allowed := map[string]string{"sandbox": "sandbox_ensure", "terminate": "sandbox_terminate", "cleanup": "workspace_data_delete"}
-		require(allowed[o.S("step")] == kind, 409, "invalid_step")
-		request = Object{"kind": kind, "projectId": o.S("projectId"), "workspaceId": wid}
-		if kind == "sandbox_ensure" {
-			w := t.one("SELECT * FROM workspaces WHERE id=$1", wid)
-			require(w.S("desiredState") == "running", 409, "resource_unavailable")
-			require(t.one("SELECT id FROM sandbox_instances WHERE workspace_id=$1 AND terminated_at IS NULL", wid) == nil, 409, "termination_unconfirmed")
-			t.exec("UPDATE workspaces SET runtime_generation=runtime_generation+1,observed_state='starting',version=version+1 WHERE id=$1", wid)
-			t.exec("INSERT INTO sandbox_instances(id,workspace_id,generation,observed_state) SELECT $1,id,runtime_generation,'allocating' FROM workspaces WHERE id=$2", id, wid)
-		}
-		if kind == "sandbox_terminate" {
-			s := t.one("SELECT * FROM sandbox_instances WHERE workspace_id=$1 AND terminated_at IS NULL", wid)
-			require(s != nil, 409, "no_current_sandbox")
-			request["sandboxInstanceId"] = s.S("id")
-			t.exec("UPDATE sandbox_instances SET observed_state='terminating' WHERE id=$1", s.S("id"))
-		}
-		if kind == "workspace_data_delete" {
-			// The data is deleted only once no sandbox of this Workspace can still write to it.
-			require(t.one("SELECT id FROM sandbox_instances WHERE workspace_id=$1 AND terminated_at IS NULL", wid) == nil, 409, "termination_unconfirmed")
-		}
+	// Plugin installs are Node executions of the plugin step, not Substrate effects. The three
+	// lifecycle effects are the only ones still planned.
+	allowed := map[string]string{"sandbox": "sandbox_ensure", "terminate": "sandbox_terminate", "cleanup": "workspace_data_delete"}
+	require(allowed[o.S("step")] == kind, 409, "invalid_step")
+	request = Object{"kind": kind, "projectId": o.S("projectId"), "workspaceId": wid}
+	if kind == "sandbox_ensure" {
+		w := t.one("SELECT * FROM workspaces WHERE id=$1", wid)
+		require(w.S("desiredState") == "running", 409, "resource_unavailable")
+		require(t.one("SELECT id FROM sandbox_instances WHERE workspace_id=$1 AND terminated_at IS NULL", wid) == nil, 409, "termination_unconfirmed")
+		t.exec("UPDATE workspaces SET runtime_generation=runtime_generation+1,observed_state='starting',version=version+1 WHERE id=$1", wid)
+		t.exec("INSERT INTO sandbox_instances(id,workspace_id,generation,observed_state) SELECT $1,id,runtime_generation,'allocating' FROM workspaces WHERE id=$2", id, wid)
+	}
+	if kind == "sandbox_terminate" {
+		s := t.one("SELECT * FROM sandbox_instances WHERE workspace_id=$1 AND terminated_at IS NULL", wid)
+		require(s != nil, 409, "no_current_sandbox")
+		request["sandboxInstanceId"] = s.S("id")
+		t.exec("UPDATE sandbox_instances SET observed_state='terminating' WHERE id=$1", s.S("id"))
+	}
+	if kind == "workspace_data_delete" {
+		// The data is deleted only once no sandbox of this Workspace can still write to it.
+		require(t.one("SELECT id FROM sandbox_instances WHERE workspace_id=$1 AND terminated_at IS NULL", wid) == nil, 409, "termination_unconfirmed")
 	}
 	t.exec("INSERT INTO external_effects(id,operation_id,project_id,workspace_id,kind,state,request,reconciled_epoch) VALUES($1,$2,$3,$4,$5,'planned',$6,$7)", id, o.S("id"), o.S("projectId"), nullable(wid), kind, jsonText(request), o.N("controllerEpoch"))
 	t.exec("UPDATE operations SET version=version+1,updated_at=now() WHERE id=$1", o.S("id"))
 	return Object{"effect": t.one("SELECT * FROM external_effects WHERE id=$1", id), "operation": t.one("SELECT * FROM operations WHERE id=$1", o.S("id"))}
 }
 
-// planPluginEffect builds the self-contained plugin effect payload and admits
-// the dispatch. The payload carries the release info (url/sha256/targets)
-// straight from the catalog snapshot, so the Node execution plane never needs
-// a registry index or marketplace sync of its own; field names match the
-// desktop plugin-manager DownloadRequest capabilities.
-func planPluginEffect(t *transaction, o Object, kind, wid string, spaceEvents *[]SpaceEvent) Object {
-	switch {
-	case o.S("kind") == "install_plugin":
-		require(kind == "plugin_ensure", 409, "invalid_step")
-	case o.S("kind") == "remove_plugin":
-		require(kind == "plugin_delete", 409, "invalid_step")
-	default:
-		reject(409, "invalid_step")
-	}
-	require(wid == o.S("workspaceId"), 403, "invalid_effect_scope")
-	c := runtimeControl(t, wid)
-	require(c.S("state") == "maintenance" && c.S("maintenanceOperationId") == o.S("id") && c.B("bindingConfirmed"), 409, "runtime_input_closure_unconfirmed")
-	require(t.pluginExecution == PluginExecutionSimulation, 409, "executor_capability_unavailable")
-	checkActivities(t, t.one("SELECT * FROM workspaces WHERE id=$1", wid))
-	pluginID := o.O("request").S("pluginId")
-	version := o.O("request").S("version")
-	require(pluginID != "", 409, "invalid_plugin_request")
-	request := Object{"kind": kind, "projectId": o.S("projectId"), "workspaceId": wid, "pluginId": pluginID}
-	if kind == "plugin_delete" {
-		request["version"] = version
-		pluginInstanceWriteback(t, o, "removing", "", nil, spaceEvents)
-		return request
-	}
-	entry := o.O("request").O("release")
-	require(entry.S("id") == pluginID && entry.S("version") == version, 409, "plugin_release_unverified")
-	// Admission: plugin_ensure dispatches only to a ready workspace, mirroring
-	// the node step gate — a provisioning or stopped workspace is not a valid
-	// download target.
-	w := t.one("SELECT * FROM workspaces WHERE id=$1", wid)
-	require(w.S("observedState") == "ready", 409, "workspace_not_ready")
-	request["version"] = entry.S("version")
-	if entry.S("url") != "" {
-		request["universal"] = Object{"url": entry.S("url"), "sha256": entry.S("sha256")}
-	}
-	if entry["targets"] != nil {
-		request["targets"] = entry["targets"]
-	}
-	pluginInstanceWriteback(t, o, "installing", entry.S("version"), nil, spaceEvents)
-	return request
-}
-
-func effectResult(t *transaction, r *ControlRequest, o Object, spaceEvents *[]SpaceEvent) Object {
+func effectResult(t *transaction, r *ControlRequest, o Object) Object {
 	require(validID(r.EffectID), 404, "not_found")
 	e := t.one("SELECT * FROM external_effects WHERE id=$1 AND operation_id=$2", r.EffectID, o.S("id"))
 	require(e != nil, 404, "not_found")
@@ -332,7 +293,7 @@ func effectResult(t *transaction, r *ControlRequest, o Object, spaceEvents *[]Sp
 		if message == "" {
 			message = "external_failure"
 		}
-		pluginInstanceWriteback(t, o, "failed", "", &message, spaceEvents)
+		pluginInstanceWriteback(t, o, "", "failed", "", &message, 0)
 	}
 	t.exec("UPDATE external_effects SET state=$2,external_id=COALESCE($3,external_id),result=$4,reconciled_epoch=$5 WHERE id=$1", e.S("id"), state, nullable(external), jsonText(result), o.N("controllerEpoch"))
 	t.exec("UPDATE operations SET version=version+1,updated_at=now() WHERE id=$1", o.S("id"))
@@ -357,7 +318,7 @@ func completedEffect(t *transaction, o Object, kind, wid string) Object {
 	return e
 }
 
-func advance(t *transaction, r *ControlRequest, o Object, spaceEvents *[]SpaceEvent) Object {
+func advance(t *transaction, r *ControlRequest, o Object) Object {
 	reconciled(t, o)
 	next := ""
 	wid := o.S("workspaceId")
@@ -369,17 +330,19 @@ func advance(t *transaction, r *ControlRequest, o Object, spaceEvents *[]SpaceEv
 	case "node":
 		currentNode(t, wid)
 		t.exec("UPDATE sandbox_instances SET observed_state='running' WHERE workspace_id=$1 AND terminated_at IS NULL", wid)
-		if o.S("kind") == "create_project" || o.S("kind") == "create_workspace" {
-			// A new Workspace has a connected Node but no code yet: admission waits for the clone.
+		switch o.S("kind") {
+		case "create_project", "create_workspace":
+			// A new Workspace has a connected Node but no code yet: admission waits for clone and plugins.
 			next = "clone"
-		} else {
+		case "start", "restart":
+			next = finishPluginGate(t, o, wid)
+		default:
 			openWorkspace(t, o, wid)
 			next = "done"
 		}
 	case "clone":
 		advanceClone(t, o, wid)
-		openWorkspace(t, o, wid)
-		next = "done"
+		next = finishPluginGate(t, o, wid)
 	case "quiesce":
 		for _, w := range operationWorkspaces(t, o) {
 			checkActivities(t, w)
@@ -425,16 +388,12 @@ func advance(t *transaction, r *ControlRequest, o Object, spaceEvents *[]SpaceEv
 		}
 		next = "done"
 	case "plugin":
-		// The plugin step completes the install/remove for exactly the
-		// operation's bound workspace; the space-level aggregate is recomputed
-		// from the fan-out rows in the same transaction.
-		kind := "plugin_ensure"
-		state, version := "installed", o.O("request").S("version")
-		if o.S("kind") == "remove_plugin" {
-			kind, state, version = "plugin_delete", "removed", ""
+		// Item failures are already on the instances. The step still finishes so one broken plugin
+		// cannot keep the Workspace from becoming ready.
+		require(pluginStepSettled(t, o), 409, "plugin_incomplete")
+		if openAfterPlugins(o.S("kind")) {
+			openWorkspace(t, o, wid)
 		}
-		completedEffect(t, o, kind, wid)
-		pluginInstanceWriteback(t, o, state, version, nil, spaceEvents)
 		next = "done"
 	default:
 		reject(409, "invalid_step")

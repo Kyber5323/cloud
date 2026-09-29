@@ -270,7 +270,7 @@ func (f *fixture) acknowledgeSimulatorBindings() {
 	list, err := api.ListBindings(ctx, &controlpb.ListBindingsRequest{Epoch: f.controller.Epoch})
 	must(f.t, err)
 	for _, b := range list.Bindings {
-		if f.scalar("SELECT count(*) FROM execution_tickets WHERE workspace_id=$1 AND state='active'", b.WorkspaceId) != 0 || f.scalar("SELECT count(*) FROM clone_executions WHERE workspace_id=$1 AND result IS NULL", b.WorkspaceId) != 0 {
+		if f.scalar("SELECT count(*) FROM execution_tickets WHERE workspace_id=$1 AND state='active'", b.WorkspaceId) != 0 || f.scalar("SELECT count(*) FROM clone_executions WHERE workspace_id=$1 AND result IS NULL", b.WorkspaceId) != 0 || f.scalar("SELECT count(*) FROM node_executions WHERE workspace_id=$1 AND result IS NULL", b.WorkspaceId) != 0 {
 			continue
 		}
 		_, err = api.AcknowledgeBinding(ctx, &controlpb.AcknowledgeBindingRequest{SubmissionId: uuid.NewString(), Epoch: f.controller.Epoch, WorkspaceId: b.WorkspaceId, NodeInstanceId: b.NodeInstanceId, ControlEpoch: b.ControlEpoch, ControlVersion: b.ControlVersion, InputClosed: b.InputClosed})

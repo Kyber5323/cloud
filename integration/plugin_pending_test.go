@@ -26,7 +26,6 @@ func TestPluginSelectionRequiresAdminAndWaitsForControlThenExecutor(t *testing.T
 		t.Fatal("refused member created selection")
 	}
 	session := f.controlSession(wid)
-	f.store.PluginExecution = core.PluginExecutionUnavailable
 	selected := f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/hello-world", "version": 0}, "admin-selection", 200).O("resource")
 	if selected.N("affectedCount") != 1 || selected.N("waitingControlCount") != 1 || selected.N("completedCount") != 0 {
 		t.Fatal(selected)
@@ -36,18 +35,6 @@ func TestPluginSelectionRequiresAdminAndWaitsForControlThenExecutor(t *testing.T
 	}
 	control := f.call("GET", f.path("/workspaces/"+wid+"/control"), nil, "", 200)
 	f.call("POST", f.path("/workspaces/"+wid+"/control/release"), core.Object{"version": control.N("version"), "sessionId": session}, "release-plugin", 200)
-	f.acknowledgeSimulatorBindings()
-	// A recovery claim revisits the durable target without another installation request.
-	f.internal("/internal/v1/operations/claim", core.Object{"epoch": f.controller.Epoch}, 200)
-	summary := f.call("GET", f.pluginSpacePath(sid)+"/plugins", nil, "", 200)
-	row := core.Object(summary["items"].([]any)[0].(map[string]any))
-	if row.N("unavailableCount") != 1 || row.S("observedState") != "pending" {
-		t.Fatal(row)
-	}
-	if f.scalar("SELECT count(*) FROM operations WHERE workspace_id=$1 AND kind='install_plugin'", wid) != 0 {
-		t.Fatal("missing executor produced a plan")
-	}
-	f.store.PluginExecution = core.PluginExecutionSimulation
 	f.completeNextPlugin(t, "install_plugin")
 	if f.spacePlugin(sid, "official/hello-world").S("observedState") != "installed" {
 		t.Fatal("pending intent was not revisited")

@@ -9,6 +9,7 @@ type ControlSignal struct {
 	Kind        ControlSignalKind
 	OperationID string
 	NodeID      string
+	RunID       string
 }
 
 // ControlSignalKind enumerates the signals the Watch stream can carry.
@@ -21,6 +22,9 @@ const (
 	// operation (created or retried); OperationID names it. A retry_wait operation becoming due has no
 	// commit to follow, so the holder's periodic claim covers it.
 	SignalOperationAvailable ControlSignalKind = "operation_available"
+	// SignalThreadCommandAvailable follows a committed Thread command. RunID names the IssueRun.
+	// The command stays in PostgreSQL; losing the hint only delays ClaimThreadCommands.
+	SignalThreadCommandAvailable ControlSignalKind = "thread_command_available"
 	// SignalDrain precedes this instance's shutdown: the holder stops claiming from it until a new
 	// Watch is established, keeps its lease, and leaves in-flight coordination and user work alone.
 	SignalDrain ControlSignalKind = "drain"
