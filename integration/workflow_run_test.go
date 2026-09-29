@@ -22,8 +22,10 @@ func runGraph() core.Object {
 			core.Object{
 				"id": "agent-1", "type": "workflow",
 				"position": core.Object{"x": 300, "y": 0},
-				"data": core.Object{"kind": "agent", "title": "评审", "description": "",
-					"agentConfig": core.Object{"schemaVersion": 1, "executor": core.Object{}, "prompt": "评审"}},
+				"data": core.Object{
+					"kind": "agent", "title": "评审", "description": "",
+					"agentConfig": core.Object{"schemaVersion": 1, "executor": core.Object{}, "prompt": "评审"},
+				},
 			},
 		},
 		"edges": []any{core.Object{
