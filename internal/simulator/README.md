@@ -24,6 +24,10 @@
   - 在严格的单调递增 Epoch 栅栏保护下推进或延期操作。
   - 通过 gRPC `ExecutionService` 驱动 clone 步骤（`clone.go`）：登记 execution、交给模拟 Node 执行、登记查询结果，失败时以 `clone_failed` 延期到 retry_wait。
 
+### Agent 会话替身 (`agent.go`)
+
+Controller 每次有界 Step 都领取运行工作、投递 Thread 命令并接管 Node 证据，避免 quiesce 等待结束命令时饿死消息处理。`AgentNode` 用磁盘日志固定输入、去重 command_id，回显首条及追加消息，收到结束命令后提交会话终态；替换 Controller 并重开日志继续同一执行。它只验证 Cloud 控制流。交付目前显式报告 upload_failed，不能作为真实对象上传、Revision 校验或 M3 的证据。
+
 ### 临时凭据签发器
 - `NewCredentials()` 在内存中为四种不同的角色（`gateway`、`controller`、`node`、`user`）生成 Ed25519 密码学密钥对。
 - 在模拟器测试运行期间按需签发短期 JWT token；其密码学 token 结构与生产环境一致，但不需要外部身份认证基础设施。

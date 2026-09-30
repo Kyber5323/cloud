@@ -145,6 +145,9 @@ func setup(t *testing.T) *fixture {
 	f.controlConn = controlConn(t, store)
 	f.executions = controlpb.NewExecutionServiceClient(f.controlConn)
 	f.controller = &simulator.Controller{Client: client, SubstrateURL: external.URL, Executions: f.executions}
+	f.controller.AgentRuns = controlpb.NewAgentRunServiceClient(f.controlConn)
+	f.controller.AgentNode, e = simulator.NewAgentNode(filepath.Join(root, "agent-node"))
+	must(t, e)
 	f.external, f.pgConfig = external, config
 	validateHTTP(t, f)
 	must(t, f.controller.Acquire(context.Background()))

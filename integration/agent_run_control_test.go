@@ -1,6 +1,8 @@
 package integration
 
 import (
+	"context"
+	"database/sql"
 	"strings"
 	"sync"
 	"testing"
@@ -17,10 +19,17 @@ import (
 
 func (f *fixture) insertAgentRun(t *testing.T, projectID string) string {
 	t.Helper()
+	return f.insertAgentRunFor(t, projectID, f.uid)
+}
+
+func (f *fixture) insertAgentRunFor(t *testing.T, projectID, actor string) string {
+	t.Helper()
 	issue, run := uuid.NewString(), uuid.NewString()
-	_, e := f.store.Pool.Exec(`INSERT INTO issues(id,tenant_id,creator_user_id,title,number,project_ref) VALUES($1,$2,$3,'Agent task',424242,$4)`, issue, f.tid, f.uid, projectID)
+	_, e := f.store.Pool.Exec(`INSERT INTO issues(id,tenant_id,creator_user_id,title,number,project_ref) VALUES($1,$2,$3,'Agent task',(SELECT COALESCE(max(number),0)+1 FROM issues WHERE tenant_id=$2),$4)`, issue, f.tid, f.uid, projectID)
 	must(t, e)
 	_, e = f.store.Pool.Exec(`INSERT INTO issue_runs(id,tenant_id,issue_id,executor_type,executor_id) VALUES($1,$2,$3,'agent',$4)`, run, f.tid, issue, uuid.NewString())
+	must(t, e)
+	_, e = f.store.Pool.Exec(`INSERT INTO issue_activities(id,tenant_id,issue_id,seq,actor_type,actor_id,action,details) VALUES($1,$2,$3,1,'user',$4,'run.enqueued',jsonb_build_object('runId',$5::text))`, uuid.NewString(), f.tid, issue, actor, run)
 	must(t, e)
 	return run
 }
@@ -40,14 +49,26 @@ func sessionInput() core.Object {
 	}
 }
 
+func (f *fixture) readyRunWorkspace(t *testing.T, run string) string {
+	t.Helper()
+	created, err := f.store.CreateRunWorkspace(t.Context(), run)
+	must(t, err)
+	if created.B("busy") {
+		t.Fatal("run Project is busy")
+	}
+	f.drain()
+	f.acknowledgeSimulatorBindings()
+	return created.O("workspace").S("id")
+}
+
 // Session and delivery work is registered only on the Node Cloud chose, and a second execution conflicts.
 func TestSessionWorkIsRegisteredOnTheCloudChosenNode(t *testing.T) {
 	f := setup(t)
 	created := f.create("agent-work")
 	f.drain()
-	wid := created.O("workspace").S("id")
-	sandbox, node, incarnation := f.liveNode(t, wid)
 	run := f.insertAgentRun(t, created.O("resource").S("id"))
+	wid := f.readyRunWorkspace(t, run)
+	sandbox, node, incarnation := f.liveNode(t, wid)
 	work, e := f.store.EnqueueExecutionWork(t.Context(), run, "agent_session", sessionInput(), core.Object{"workspaceId": wid, "sandboxInstanceId": sandbox, "nodeId": node}, time.Time{})
 	must(t, e)
 	if work.S("runId") != run {
@@ -98,9 +119,9 @@ func TestThreadEventsAreTakenOverInOrder(t *testing.T) {
 	f := setup(t)
 	created := f.create("thread-events")
 	f.drain()
-	wid := created.O("workspace").S("id")
-	sandbox, node, incarnation := f.liveNode(t, wid)
 	run := f.insertAgentRun(t, created.O("resource").S("id"))
+	wid := f.readyRunWorkspace(t, run)
+	sandbox, node, incarnation := f.liveNode(t, wid)
 	_, e := f.store.EnqueueExecutionWork(t.Context(), run, "agent_session", sessionInput(), core.Object{"workspaceId": wid, "sandboxInstanceId": sandbox, "nodeId": node}, time.Time{})
 	must(t, e)
 	ctx := asController(f.client.Subject)
@@ -110,9 +131,11 @@ func TestThreadEventsAreTakenOverInOrder(t *testing.T) {
 	must(t, e)
 	var mu sync.Mutex
 	var fresh []int64
-	f.store.OnThreadEvents = func(_, _ string, sequences []int64) error {
+	f.store.OnThreadEvents = func(_ context.Context, _ *sql.Tx, _, _ string, events []core.Object) error {
 		mu.Lock()
-		fresh = append(fresh, sequences...)
+		for _, ev := range events {
+			fresh = append(fresh, ev.N("sequence"))
+		}
 		mu.Unlock()
 		return nil
 	}
@@ -125,7 +148,7 @@ func TestThreadEventsAreTakenOverInOrder(t *testing.T) {
 		return err
 	}
 	must(t, take("batch-1", event(1, `{"kind":"one"}`)))
-	if err := take("batch-gap", event(3, `{"kind":"three"}`)); err == nil {
+	if err := take("batch-gap", event(2, `{"kind":"two"}`), event(4, `{"kind":"four"}`)); err == nil {
 		t.Fatal("a gap was stored")
 	} else {
 		expectStatus(t, err, codes.Aborted, controlpb.ErrorCode_ERROR_CODE_CONFLICT)
@@ -153,9 +176,9 @@ func TestThreadCommandsAndUploadGrantsAreNotLostOrStored(t *testing.T) {
 	f := setup(t)
 	created := f.create("thread-commands")
 	f.drain()
-	wid := created.O("workspace").S("id")
-	sandbox, node, incarnation := f.liveNode(t, wid)
 	run := f.insertAgentRun(t, created.O("resource").S("id"))
+	wid := f.readyRunWorkspace(t, run)
+	sandbox, node, incarnation := f.liveNode(t, wid)
 	_, e := f.store.EnqueueThreadCommand(t.Context(), run, "submit_user_turn", core.Object{"turnId": "turn-2", "content": []core.Object{{"text": "continue"}}})
 	must(t, e)
 	ctx := asController(f.client.Subject)
@@ -210,6 +233,12 @@ func TestThreadCommandsAndUploadGrantsAreNotLostOrStored(t *testing.T) {
 	}
 	if stored := storedGrantCount(t, f); stored != 0 {
 		t.Fatalf("upload grant was stored in %d columns", stored)
+	}
+	unverified := &controlpb.ExecutionResult{Node: &controlpb.NodeIdentity{NodeId: node, NodeIncarnationId: incarnation}, Outcome: &controlpb.ExecutionResult_RevisionUnchanged{RevisionUnchanged: &controlpb.RevisionUnchanged{FinalCommit: f.commit, BaseCommit: f.commit, RevisionRef: "refs/ora/revisions/1", History: &controlpb.StoredObject{Key: delivery.S("historyKey"), Sha256: strings.Repeat("a", 64), Size: 1}}}}
+	_, e = f.executions.TakeOverNodeEvent(ctx, &controlpb.TakeOverNodeEventRequest{SubmissionId: "unverified-delivery", Epoch: f.controller.Epoch, OperationId: run, ExecutionId: "delivery-1", Sequence: 1, Result: unverified, Event: []byte("unverified")})
+	expectStatus(t, e, codes.Aborted, controlpb.ErrorCode_ERROR_CODE_CONFLICT)
+	if f.scalar("SELECT count(*) FROM node_event_receipts WHERE execution_id='delivery-1'") != 0 || f.scalar("SELECT count(*) FROM node_executions WHERE execution_id='delivery-1' AND result IS NOT NULL") != 0 {
+		t.Fatal("unverified delivery became ACKable")
 	}
 	failed := &controlpb.ExecutionResult{Node: &controlpb.NodeIdentity{NodeId: node, NodeIncarnationId: incarnation}, Outcome: &controlpb.ExecutionResult_RevisionFailed{RevisionFailed: &controlpb.RevisionFailed{Reason: controlpb.RevisionFailureReason_REVISION_FAILURE_REASON_UPLOAD_FAILED}}}
 	_, e = f.executions.TakeOverNodeEvent(ctx, &controlpb.TakeOverNodeEventRequest{SubmissionId: "delivery-end", Epoch: f.controller.Epoch, OperationId: run, ExecutionId: "delivery-1", Sequence: 1, Result: failed, Event: []byte("fail")})

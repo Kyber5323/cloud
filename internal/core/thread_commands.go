@@ -1,6 +1,9 @@
 package core
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 // EnqueueThreadCommand persists one user turn or end request. It becomes claimable only after this
 // transaction commits, and only once the run's session execution is registered.
@@ -43,7 +46,7 @@ func claimThreadCommands(t *transaction, limit int64) Object {
 		JOIN workspaces w ON w.id=e.workspace_id
 		JOIN sandbox_instances s ON s.workspace_id=w.id AND s.generation=w.runtime_generation AND s.terminated_at IS NULL
 		WHERE c.delivered_at IS NULL
-		ORDER BY c.run_id,c.created_at,c.id
+		ORDER BY c.run_id,c.queue_sequence
 		LIMIT $1`, limit)
 	return Object{"commands": rows}
 }
@@ -68,16 +71,17 @@ func takeOverThreadEvents(t *transaction, r *ControlRequest) Object {
 	execution := r.Body.S("executionId")
 	e := t.one("SELECT * FROM node_executions WHERE execution_id=$1 AND operation_id=$2 AND kind='agent_session'", execution, r.Body.S("operationId"))
 	require(e != nil, 404, "not_found")
-	require(len(e.O("result")) == 0, 409, "result_conflict")
 	events := objectsOf(r.Body["events"])
 	require(len(events) >= 1 && len(events) <= 64, 400, "invalid_event")
 	last := e.N("lastEventSequence")
-	var fresh []int64
+	var fresh []Object
 	var expected int64
 	for i, ev := range events {
 		seq := ev.N("sequence")
 		record := ev.S("record")
 		require(seq >= 1 && record != "" && len(record) <= 256*1024, 400, "invalid_event")
+		var content map[string]json.RawMessage
+		require(json.Unmarshal([]byte(record), &content) == nil && content != nil, 400, "invalid_event")
 		if i == 0 {
 			expected = seq
 		}
@@ -90,17 +94,14 @@ func takeOverThreadEvents(t *transaction, r *ControlRequest) Object {
 			continue
 		}
 		require(seq == last+1, 409, "receipt_conflict")
+		require(len(e.O("result")) == 0 && e["terminatedByForceStopId"] == nil, 409, "result_conflict")
 		t.exec("INSERT INTO node_event_receipts(execution_id,sequence,event) VALUES($1,$2,$3)", execution, seq, canon)
 		last = seq
-		fresh = append(fresh, seq)
+		fresh = append(fresh, ev)
 	}
 	if len(fresh) > 0 {
 		t.exec("UPDATE node_executions SET last_event_sequence=$2 WHERE execution_id=$1", execution, last)
-		if t.onThreadEvents != nil {
-			if err := t.onThreadEvents(e.S("operationId"), execution, fresh); err != nil {
-				reject(409, "business_hook_failed")
-			}
-		}
+		threadEventsTakenOver(t, e.S("operationId"), execution, fresh)
 	}
 	return Object{"takenOverThrough": last}
 }

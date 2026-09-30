@@ -223,6 +223,7 @@ func cloneDispatch(t *transaction, r *ControlRequest) Object {
 	operation, execution, node := r.Body.S("operationId"), r.Body.S("executionId"), r.Body.S("nodeId")
 	input := r.Body.O("input")
 	require(validID(operation) && execution != "" && node != "" && len(input) > 0, 400, "invalid_dispatch")
+	require(t.one("SELECT execution_id FROM node_executions WHERE execution_id=$1", execution) == nil, 409, "dispatch_conflict")
 	request := t.one("SELECT * FROM clone_requests WHERE id=$1", operation)
 	if request == nil {
 		return workspaceCloneDispatch(t, r, operation, execution, node, input)

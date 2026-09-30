@@ -38,9 +38,10 @@ func reconcileRuntimeControls(t *transaction) {
  AND NOT EXISTS(SELECT 1 FROM sandbox_instances s WHERE s.workspace_id=w.id AND s.terminated_at IS NULL)))
  AND NOT EXISTS(SELECT 1 FROM execution_tickets a WHERE a.workspace_id=w.id AND a.state='active' AND a.terminated_by_force_stop_id IS NULL)
  AND NOT EXISTS(SELECT 1 FROM clone_executions e WHERE e.workspace_id=w.id AND e.result IS NULL AND e.terminated_by_force_stop_id IS NULL)
+	AND NOT EXISTS(SELECT 1 FROM node_executions e WHERE e.workspace_id=w.id AND e.result IS NULL AND e.terminated_by_force_stop_id IS NULL)
  AND NOT EXISTS(SELECT 1 FROM operations o WHERE (o.workspace_id=w.id OR (o.workspace_id IS NULL AND o.project_id=w.project_id)) AND o.state IN ('queued','running','blocked','retry_wait'))`)
 	for _, c := range rows {
-		t.exec("UPDATE runtime_controls SET state='idle',session_id=NULL,holder_user_id=NULL,expires_at=NULL,maintenance_operation_id=NULL,bound_sandbox_id=NULL,binding_confirmed=false,input_closed=true,version=version+1,updated_at=clock_timestamp() WHERE workspace_id=$1", c.S("workspaceId"))
+		t.exec("UPDATE runtime_controls SET state='idle',session_id=NULL,holder_user_id=NULL,expires_at=NULL,maintenance_operation_id=NULL,maintenance_run_id=NULL,bound_sandbox_id=NULL,binding_confirmed=false,input_closed=true,version=version+1,updated_at=clock_timestamp() WHERE workspace_id=$1", c.S("workspaceId"))
 		auditRuntimeControl(t, runtimeControl(t, c.S("workspaceId")), "responsibilities_settled", "")
 	}
 }
@@ -117,13 +118,20 @@ func requireRuntimeSession(t *transaction, w Object, uid, session string) Object
 // reserveRuntimeMaintenance shares the user's write boundary with a fixed lifecycle intent.
 func reserveRuntimeMaintenance(t *transaction, wid, oid string) {
 	t.exec("INSERT INTO runtime_controls(workspace_id,state) VALUES($1,'idle') ON CONFLICT(workspace_id) DO NOTHING", wid)
-	t.exec("UPDATE runtime_controls SET state='maintenance',maintenance_operation_id=$2,control_epoch=control_epoch+1,session_id=NULL,holder_user_id=NULL,expires_at=NULL,binding_confirmed=false,input_closed=false,version=version+1,updated_at=clock_timestamp() WHERE workspace_id=$1", wid, oid)
+	t.exec("UPDATE runtime_controls SET state='maintenance',maintenance_operation_id=$2,maintenance_run_id=NULL,control_epoch=control_epoch+1,session_id=NULL,holder_user_id=NULL,expires_at=NULL,binding_confirmed=false,input_closed=false,version=version+1,updated_at=clock_timestamp() WHERE workspace_id=$1", wid, oid)
 	auditRuntimeControl(t, runtimeControl(t, wid), "lifecycle_reserved", "")
 }
 
 // finishRuntimeMaintenance requests closure after the fixed intent finishes; it cannot grant
 // another session on a still-running Node before that Node confirms its durable responsibilities.
 func finishRuntimeMaintenance(t *transaction, oid string) {
+	if run := t.one("SELECT w.id,w.issue_run_id FROM workspaces w JOIN operations o ON o.workspace_id=w.id WHERE o.id=$1 AND o.kind='create_workspace' AND o.state='succeeded' AND w.issue_run_id IS NOT NULL", oid); run != nil {
+		// Initialization handed back terminal evidence for clone/plugins. The next control epoch
+		// belongs to this run; Node must acknowledge it before any session or delivery is permitted.
+		t.exec("UPDATE runtime_controls SET state='maintenance',maintenance_operation_id=NULL,maintenance_run_id=$2,control_epoch=control_epoch+1,binding_confirmed=false,input_closed=false,version=version+1,updated_at=clock_timestamp() WHERE workspace_id=$1", run.S("id"), run.S("issueRunId"))
+		auditRuntimeControl(t, runtimeControl(t, run.S("id")), "run_reserved", "")
+		return
+	}
 	t.exec("UPDATE runtime_controls SET state='draining',binding_confirmed=false,input_closed=false,version=version+1,updated_at=clock_timestamp() WHERE maintenance_operation_id=$1 AND state='maintenance'", oid)
 	reconcileRuntimeControls(t)
 }

@@ -59,3 +59,15 @@ plugins:
   marketplace_branch: "main"
   sync_interval: 5m
   sync_enabled: true
+object_store:
+  # Optional S3-compatible upload-grant service. Credentials are mounted files, never values here.
+  # CLOUD_OBJECT_STORE_* overrides each key; this does not enable Revision verification (M3).
+  enabled: false
+  endpoint: ""
+  public_endpoint: ""
+  region: "us-east-1"
+  bucket: "revisions"
+  path_style: true
+  access_key_id_file: ""
+  secret_access_key_file: ""
+  upload_grant_ttl: 15m

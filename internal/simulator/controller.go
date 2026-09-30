@@ -130,6 +130,8 @@ type Controller struct {
 	Client       *Client
 	SubstrateURL string
 	Executions   controlpb.ExecutionServiceClient
+	AgentRuns    controlpb.AgentRunServiceClient
+	AgentNode    *AgentNode
 	Epoch        int64
 	Operation    core.Object
 }
@@ -227,6 +229,12 @@ func (c *Controller) Step(ctx context.Context) (bool, error) {
 	if _, e := c.Client.Control(ctx, "/internal/v1/controller-lease/renew", core.Object{"epoch": c.Epoch}); e != nil {
 		return false, e
 	}
+	// Quiesce can wait for an Agent end command. Service run work on every bounded step so a
+	// lifecycle operation cannot starve the command that would release its own dependency.
+	agentIdle, agentErr := c.stepAgentWork(ctx)
+	if agentErr != nil {
+		return false, agentErr
+	}
 	var snap core.Object
 	var err error
 	if c.Operation == nil {
@@ -235,7 +243,7 @@ func (c *Controller) Step(ctx context.Context) (bool, error) {
 			return false, err
 		}
 		if snap["operation"] == nil {
-			return true, nil
+			return agentIdle, nil
 		}
 		c.Operation = snap.O("operation")
 	} else {

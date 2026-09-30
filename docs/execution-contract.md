@@ -6,7 +6,7 @@
 
 Workspace 运行时跟随 desktop Node（specs `decisions/cloud/operation/0-workspace-runtime-follows-desktop-node.md`）：每个 Workspace 有自己的持久数据，被该 Workspace 的每一代 sandbox 挂载为 Node home；stop 保留，只有 `workspace_data_delete` 删除。Cloud 不再维护 Project 共享卷、bare repository、linked worktree 或维护 Job，也不生成 `ora/{workspace UUID}` 分支；`project_storage` 与 `workspace_worktrees` 只作为历史保留，数据库拒绝新行。
 
-create_project / create_workspace 依次经过 sandbox → node → clone：sandbox_ensure 返回 `nodeId`，Controller 报告的 Node 必须带相同 NodeId；clone 步骤由 Controller 先通过 gRPC `ExecutionService.RecordDispatch` 登记一次 execution（输入固定为 Project 仓库与 Workspace `requestedRef`，目标为当前 Node），再交给 Node 执行，最后用 `RecordQueriedResult` 登记 Node 报告的结果。成功结果中的 commit 写入 Workspace `baseCommitId` 后才开放准入。失败的 execution 保留，operation 进入 retry_wait，重试登记新的 execution；结果未知的 execution 阻止再次登记，operation 只能 blocked，不会自动重试。start 只到 node，不重新 clone。
+create_project / create_workspace 依次经过 sandbox → node → clone → plugin：sandbox_ensure 返回 `nodeId`，Controller 报告的 Node 必须带相同 NodeId；clone 步骤由 Controller 先通过 gRPC `ExecutionService.RecordDispatch` 登记一次 execution（输入固定为 Project 仓库与 Workspace `requestedRef`，目标为当前 Node），再交给 Node 执行，最后用 `RecordQueriedResult` 登记 Node 报告的结果。成功结果中的 commit 写入 Workspace `baseCommitId`，固定插件集合为空或 Node 全部逐项结果已接管后才开放准入。失败的 execution 保留，operation 进入 retry_wait，重试登记新的 execution；结果未知的 execution 阻止再次登记，operation 只能 blocked，不会自动重试。start 经过 node 与 plugin，不重新 clone。插件安装由 Node execution 执行，单项失败保存在实例，不阻止 Workspace ready。
 
 Node 不能自选路径、分支或仓库；克隆的 Git 凭据仍是基础设施引用，Cloud 不保存密钥值。
 
@@ -20,7 +20,7 @@ Node 不能自选路径、分支或仓库；克隆的 Git 凭据仍是基础设�
 | PUT `/effects/{effectId}` | kind、projectId、workspaceId、sandboxInstanceId? | 首次先落 journal 再执行；同 ID 同 payload 幂等，同 ID 不同 payload 409；成功后原结果保留 |
 | PUT/GET `/clones/{executionId}` | 仅模拟器：模拟 Node 执行 clone；workspaceId、repositoryUrl、branch | 同 execution 只执行一次并落 journal；返回 clone_ready+commitId 或 clone_failed+reason |
 
-kind 支持 sandbox_ensure（返回 sandboxInstanceId 与 nodeId）、sandbox_terminate（返回 terminated）、workspace_data_delete（返回 removed）以及插件 effect。storage/worktree 系列 kind 已退役，Cloud 拒绝再计划。模拟器只接受显式 repository URL→本地 fixture 映射，不接入真实私有 Git 凭据。cloud 内部的 snapshot 才向受控 Controller 提供本 Project 的 credential reference；基础设施负责解析引用、注入 Git 凭据、审计和轮换，Cloud 从不保存密钥值。Cloud 不读取远端仓库：创建 Project 必须给出具体的 `defaultBranch`（不接受 `HEAD`），isolated Workspace 的 `baseRef` 为 `HEAD` 时取 Project 的默认分支，因此下发的 `requestedRef` 总是 desktop Node 接受的具体分支名。
+kind 支持 sandbox_ensure（返回 sandboxInstanceId 与 nodeId）、sandbox_terminate（返回 terminated）、workspace_data_delete（返回 removed）。storage/worktree 与插件 effect 已退役，Cloud 拒绝再计划或接管插件 effect 结果。模拟器只接受显式 repository URL→本地 fixture 映射，不接入真实私有 Git 凭据。cloud 内部的 snapshot 才向受控 Controller 提供本 Project 的 credential reference；基础设施负责解析引用、注入 Git 凭据、审计和轮换，Cloud 从不保存密钥值。Cloud 不读取远端仓库：创建 Project 必须给出具体的 `defaultBranch`（不接受 `HEAD`），isolated Workspace 的 `baseRef` 为 `HEAD` 时取 Project 的默认分支，因此下发的 `requestedRef` 总是 desktop Node 接受的具体分支名。
 
 生产 Substrate 应用独立服务身份与受控网络保护这些接口，并验证 Project/Workspace/effect scope；模拟 HTTP handler 仅供 loopback 测试，不能作为生产公共端点发布。幂等 ensure 必须能查询“执行成功但响应丢失”的实际对象，不能以调用方超时判定不存在。terminate 返回确认旧进程不会再访问存储的证据；不确定就 blocked，不分配新 generation。
 

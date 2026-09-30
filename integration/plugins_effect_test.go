@@ -1,11 +1,8 @@
 package integration
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -18,55 +15,6 @@ import (
 	"github.com/wanglongan587/cloud/internal/core"
 	"github.com/wanglongan587/cloud/internal/simulator"
 )
-
-// substrateRun dispatches one planned effect to the simulated Node and returns
-// the journal entry; the caller asserts the expected status.
-func (f *fixture) substrateRun(t *testing.T, effect core.Object, wantStatus int) core.Object {
-	t.Helper()
-	body, e := json.Marshal(effect.O("request"))
-	must(t, e)
-	req, e := http.NewRequest(http.MethodPut, f.external.URL+"/effects/"+effect.S("id"), bytes.NewReader(body))
-	must(t, e)
-	req.Header.Set("Content-Type", "application/json")
-	resp, e := f.client.HTTP.Do(req)
-	must(t, e)
-	defer resp.Body.Close()
-	if resp.StatusCode != wantStatus {
-		t.Fatalf("substrate PUT: want %d got %d", wantStatus, resp.StatusCode)
-	}
-	var out core.Object
-	must(t, json.NewDecoder(resp.Body).Decode(&out))
-	return out
-}
-
-// substrateSucceed dispatches an effect and requires the simulated Node to
-// succeed (real digest verified against the mapped artifact).
-func (f *fixture) substrateSucceed(t *testing.T, effect core.Object) core.Object {
-	t.Helper()
-	out := f.substrateRun(t, effect, http.StatusOK)
-	if out.S("state") != "succeeded" {
-		t.Fatalf("substrate result = %v", out)
-	}
-	return out
-}
-
-// substrateFailed dispatches an effect and requires the simulated Node to
-// fail it (digest mismatch), returning the failed journal entry.
-func (f *fixture) substrateFailed(t *testing.T, effect core.Object) core.Object {
-	t.Helper()
-	out := f.substrateRun(t, effect, http.StatusServiceUnavailable)
-	if out.S("state") != "failed" {
-		t.Fatalf("substrate result = %v", out)
-	}
-	return out
-}
-
-// substrateRerun dispatches the same effect again after the failure was
-// corrected; the journal keeps the stable external binding.
-func (f *fixture) substrateRerun(t *testing.T, effect core.Object) core.Object {
-	t.Helper()
-	return f.substrateSucceed(t, effect)
-}
 
 // claimPluginOp claims the next queued operation and requires it to be the
 // plugin kind, returning its snapshot row.

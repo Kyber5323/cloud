@@ -81,11 +81,17 @@ type Store struct {
 	legacyCloneFixture bool
 	// ObjectStore signs Revision upload URLs. Nil means delivery grants are refused; Cloud still starts.
 	ObjectStore *objectstore.Config
-	// OnThreadEvents runs inside the takeover transaction for sequences stored by that call.
-	// A nil hook leaves the receipts committed. A returned error rolls the takeover back.
-	OnThreadEvents func(runID, executionID string, sequences []int64) error
+	// OnThreadEvents receives only first-taken-over events and the caller's SQL transaction.
+	// Hooks must use that transaction; starting another Store transaction would deadlock.
+	OnThreadEvents func(context.Context, *sql.Tx, string, string, []Object) error
 	// OnSessionEnded runs inside the transaction that first stores a session's terminal result.
-	OnSessionEnded func(runID, executionID string) error
+	OnSessionEnded func(context.Context, *sql.Tx, string, string, Object) error
+	// OnRunWorkspaceSettled receives ready or failed in the Workspace operation's transaction.
+	OnRunWorkspaceSettled func(context.Context, *sql.Tx, string, string) error
+	// OnRunWorkspaceDeleted runs after successful data cleanup in the deletion transaction.
+	OnRunWorkspaceDeleted func(context.Context, *sql.Tx, string) error
+	// OnDeliverySettled receives failed evidence, or verified Revision evidence once M3 is wired.
+	OnDeliverySettled func(context.Context, *sql.Tx, string, string, Object) error
 
 	// Collaboration ports (consuming-side seams; see collaboration.go). Each is nil by default
 	// ("Unavailable"); dev/demo/integration wire the in-memory fixtures, production real adapters.
@@ -137,15 +143,18 @@ type transaction struct {
 	forms          FormDescriptorProvider
 	assist         InputAssistProvider
 	// queued names operations this transaction made claimable; they are published only after commit.
-	legacyCloneFixture bool
-	pluginExecution    PluginExecutionCapability
-	objectStore        *objectstore.Config
-	onThreadEvents     func(runID, executionID string, sequences []int64) error
-	onSessionEnded     func(runID, executionID string) error
-	queued             []string
-	workSignals        []string
-	commandSignals     []string
-	events             []SpaceEvent
+	legacyCloneFixture    bool
+	pluginExecution       PluginExecutionCapability
+	objectStore           *objectstore.Config
+	onThreadEvents        func(context.Context, *sql.Tx, string, string, []Object) error
+	onSessionEnded        func(context.Context, *sql.Tx, string, string, Object) error
+	onRunWorkspaceSettled func(context.Context, *sql.Tx, string, string) error
+	onRunWorkspaceDeleted func(context.Context, *sql.Tx, string) error
+	onDeliverySettled     func(context.Context, *sql.Tx, string, string, Object) error
+	queued                []string
+	workSignals           []string
+	commandSignals        []string
+	events                []SpaceEvent
 }
 
 func (t *transaction) exec(q string, args ...any) {
@@ -252,6 +261,7 @@ func (s *Store) transact(ctx context.Context, fn func(*transaction) Object) (out
 		}
 	}()
 	t := &transaction{tx: tx, ctx: ctx, pluginExecution: s.PluginExecution, legacyCloneFixture: s.legacyCloneFixture, directory: s.Directory, contextBuilder: s.Context, forms: s.Forms, assist: s.Assist, objectStore: s.ObjectStore, onThreadEvents: s.OnThreadEvents, onSessionEnded: s.OnSessionEnded}
+	t.onRunWorkspaceSettled, t.onRunWorkspaceDeleted, t.onDeliverySettled = s.OnRunWorkspaceSettled, s.OnRunWorkspaceDeleted, s.OnDeliverySettled
 	t.exec("SELECT pg_advisory_xact_lock(67420911)")
 	out = fn(t)
 	if err = tx.Commit(); err == nil {

@@ -126,6 +126,11 @@ func run() error {
 	}
 	defer func() { _ = conn.Close() }()
 	controller := &simulator.Controller{Client: client, SubstrateURL: external.URL, Executions: controlpb.NewExecutionServiceClient(conn)}
+	controller.AgentRuns = controlpb.NewAgentRunServiceClient(conn)
+	controller.AgentNode, e = simulator.NewAgentNode(filepath.Join(*root, "agent-node"))
+	if e != nil {
+		return e
+	}
 	if e := controller.Acquire(ctx); e != nil {
 		return e
 	}

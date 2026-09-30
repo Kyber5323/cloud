@@ -214,6 +214,7 @@ func planEffect(t *transaction, r *ControlRequest, o Object) Object {
 	}
 	require(found, 403, "invalid_effect_scope")
 	requireNoForceStop(t, wid)
+	require(kind != "plugin_ensure" && kind != "plugin_delete", 409, "invalid_step")
 	if existing := effectFor(t, o.S("id"), kind, wid); existing != nil {
 		return Object{"effect": existing, "operation": o}
 	}
@@ -252,6 +253,7 @@ func effectResult(t *transaction, r *ControlRequest, o Object) Object {
 	require(validID(r.EffectID), 404, "not_found")
 	e := t.one("SELECT * FROM external_effects WHERE id=$1 AND operation_id=$2", r.EffectID, o.S("id"))
 	require(e != nil, 404, "not_found")
+	require(e.S("kind") != "plugin_ensure" && e.S("kind") != "plugin_delete", 409, "invalid_step")
 	state := r.Body.S("state")
 	require(state == "running" || state == "succeeded" || state == "failed" || state == "absent", 400, "invalid_effect_state")
 	result := r.Body.O("result")
@@ -401,6 +403,14 @@ func advance(t *transaction, r *ControlRequest, o Object) Object {
 	if next == "done" {
 		t.exec("UPDATE operations SET step='done',state='succeeded',error_code=NULL,retry_at=NULL,result=jsonb_build_object('resourceId',COALESCE(workspace_id,project_id)),version=version+1,updated_at=now() WHERE id=$1", o.S("id"))
 		finishRuntimeMaintenance(t, o.S("id"))
+		if w := t.one("SELECT issue_run_id FROM workspaces WHERE id=$1", nullable(wid)); w.S("issueRunId") != "" {
+			switch o.S("kind") {
+			case "create_workspace":
+				runWorkspaceSettled(t, w.S("issueRunId"), "ready")
+			case "delete_workspace":
+				runWorkspaceDeleted(t, w.S("issueRunId"))
+			}
+		}
 	} else {
 		t.exec("UPDATE operations SET step=$2,version=version+1,updated_at=now() WHERE id=$1", o.S("id"), next)
 	}

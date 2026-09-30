@@ -200,6 +200,7 @@ func recordPluginTargets(t *transaction, r *PublicRequest, namespace, identifier
 	}
 	if len(targets) == 0 {
 		t.exec("UPDATE space_plugins SET observed_state=desired_state,observed_version=CASE WHEN desired_state='installed' THEN desired_version END WHERE space_id=$1 AND source_namespace=$2 AND identifier=$3", r.SpaceID, namespace, identifier)
+		syncSpaceAgent(t, r.SpaceID, r.TenantID, namespace+"/"+identifier, row.S("desiredState"), row.S("desiredState"))
 	}
 }
 
@@ -282,15 +283,21 @@ func pluginInstanceWriteback(t *transaction, op Object, pluginID, state, version
 // syncSpaceAgent keeps the Space Agent row aligned with an agent-kind plugin's selection. A failed
 // instance does not retire the row; only a removed selection does.
 func syncSpaceAgent(t *transaction, spaceID, tenantID, pluginID, aggregate, desired string) {
-	entry := t.pluginCatalogEntry(pluginID)
-	if entry == nil || entry.S("kind") != "agent" {
-		return
-	}
 	if desired == "removed" {
 		t.exec("UPDATE space_agents SET status='retired',updated_at=now() WHERE space_id=$1 AND plugin_id=$2", spaceID, pluginID)
 		return
 	}
 	if aggregate != "installed" {
+		return
+	}
+	// The selected release is the accepted identity snapshot; a later catalog refresh must not
+	// change whether an existing selection represents an Agent.
+	namespace, identifier, ok := pluginIdentity(pluginID)
+	if !ok {
+		return
+	}
+	entry := t.spacePluginRow(spaceID, namespace, identifier).O("selectedRelease")
+	if entry.S("kind") != "agent" {
 		return
 	}
 	title := entry.S("title")

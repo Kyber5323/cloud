@@ -15,7 +15,7 @@ func (s *Store) DeleteRunWorkspace(ctx context.Context, runID string) (Object, e
 }
 
 func createRunWorkspace(t *transaction, runID string) Object {
-	run := t.one("SELECT r.*,i.project_ref,i.creator_user_id FROM issue_runs r JOIN issues i ON i.id=r.issue_id WHERE r.id=$1 AND r.deleted_at IS NULL AND i.deleted_at IS NULL", runID)
+	run := t.one("SELECT r.*,i.project_ref FROM issue_runs r JOIN issues i ON i.id=r.issue_id WHERE r.id=$1 AND r.deleted_at IS NULL AND i.deleted_at IS NULL", runID)
 	require(run != nil, 404, "not_found")
 	require(run.S("executorType") == "agent", 409, "invalid_run")
 	require(run.S("projectRef") != "", 409, "issue_project_required")
@@ -29,13 +29,21 @@ func createRunWorkspace(t *transaction, runID string) Object {
 		return Object{"busy": true}
 	}
 	wid := newID()
+	actor := runTriggerActor(t, run)
 	ref := p.S("defaultBranch")
 	require(ref != "" && ref != "HEAD", 400, "default_branch_required")
-	insertWorkspace(t, run.S("tenantId"), p.S("ownerUserId"), run.S("creatorUserId"), p.S("id"), wid, "isolated", ref, "Agent run")
+	insertWorkspace(t, run.S("tenantId"), p.S("ownerUserId"), actor, p.S("id"), wid, "isolated", ref, "Agent run")
 	t.exec("UPDATE workspaces SET issue_run_id=$2 WHERE id=$1", wid, runID)
-	actor := run.S("creatorUserId")
 	op := newOperation(t, &PublicRequest{TenantID: run.S("tenantId"), Key: "run-workspace-" + runID + "-create"}, actor, p.S("id"), wid, "create_workspace", "sandbox", requestHash("run-workspace", runID, Object{"kind": "create"}), Object{})
 	return Object{"busy": false, "workspace": t.one("SELECT * FROM workspaces WHERE id=$1", wid), "operation": op}
+}
+
+// The append-only enqueue evidence identifies the triggering user, not the Issue or Project owner.
+// Missing/ambiguous evidence must be reconciled by business code instead of inventing an actor.
+func runTriggerActor(t *transaction, run Object) string {
+	actors := t.list("SELECT DISTINCT actor_id FROM issue_activities WHERE tenant_id=$1 AND issue_id=$2 AND action='run.enqueued' AND actor_type='user' AND actor_id IS NOT NULL AND details->>'runId'=$3", run.S("tenantId"), run.S("issueId"), run.S("id"))
+	require(len(actors) == 1, 409, "run_actor_required")
+	return actors[0].S("actorId")
 }
 
 func deleteRunWorkspace(t *transaction, runID string) Object {

@@ -6,6 +6,7 @@ func nodeDispatch(t *transaction, r *ControlRequest) Object {
 	operation, execution, node := r.Body.S("operationId"), r.Body.S("executionId"), r.Body.S("nodeId")
 	input := r.Body.O("input")
 	require(execution != "" && node != "" && len(input) > 0, 400, "invalid_dispatch")
+	require(t.one("SELECT execution_id FROM clone_executions WHERE execution_id=$1", execution) == nil, 409, "dispatch_conflict")
 	if existing := t.one("SELECT * FROM node_executions WHERE execution_id=$1", execution); existing != nil {
 		require(existing.S("operationId") == operation && existing.S("nodeId") == node && jsonText(existing.O("input")) == jsonText(input), 409, "dispatch_conflict")
 		return existing
@@ -29,7 +30,8 @@ func dispatchPluginExecution(t *transaction, r *ControlRequest, operation, execu
 	require(jsonText(pluginInputOf(o)) == jsonText(input), 409, "dispatch_conflict")
 	wid := o.S("workspaceId")
 	requireNoForceStop(t, wid)
-	require(currentNode(t, wid).S("nodeId") == node, 409, "dispatch_conflict")
+	current := currentNode(t, wid)
+	require(current.S("nodeId") == node, 409, "dispatch_conflict")
 	require(t.one("SELECT execution_id FROM node_executions WHERE operation_id=$1 AND kind IN ('install_plugins','remove_plugins') AND terminated_by_force_stop_id IS NULL AND (result IS NULL OR result->>'outcome'='plugins_result')", operation) == nil, 409, "dispatch_conflict")
 	t.exec("INSERT INTO node_executions(execution_id,kind,operation_id,workspace_id,node_id,node_operation_id,input,dispatched_epoch) VALUES($1,$2,$3,$4,$5,$1,$6,$7)",
 		execution, input.S("kind"), operation, wid, node, jsonText(input), r.Body.N("epoch"))
@@ -44,7 +46,18 @@ func dispatchRunExecution(t *transaction, r *ControlRequest, runID, execution, n
 	require(target.S("nodeId") == node, 409, "dispatch_conflict")
 	wid := target.S("workspaceId")
 	requireNoForceStop(t, wid)
-	require(currentNode(t, wid).S("nodeId") == node, 409, "dispatch_conflict")
+	w := t.one("SELECT * FROM workspaces WHERE id=$1", wid)
+	require(w.S("issueRunId") == runID && w.S("observedState") == "ready" && w.B("admissionOpen"), 409, "dispatch_conflict")
+	c := runtimeControl(t, wid)
+	require(c.S("state") == "maintenance" && c.S("maintenanceRunId") == runID, 409, "runtime_control_required")
+	current := currentNode(t, wid)
+	require(current.S("nodeId") == node && current.S("sandboxInstanceId") == target.S("sandboxInstanceId"), 409, "dispatch_conflict")
+	if input.S("kind") == "agent_session" {
+		require(t.one("SELECT execution_id FROM node_executions WHERE operation_id=$1 AND kind='agent_session'", runID) == nil, 409, "dispatch_conflict")
+	}
+	if input.S("kind") == "deliver_revision" {
+		require(t.one("SELECT execution_id FROM node_executions WHERE execution_id=$1 AND operation_id=$2 AND workspace_id=$3 AND kind='agent_session' AND result->>'outcome'='agent_session_ended'", input.S("sessionExecutionId"), runID, wid) != nil, 409, "dispatch_conflict")
+	}
 	require(t.one("SELECT execution_id FROM node_executions WHERE operation_id=$1 AND kind IN ('agent_session','deliver_revision') AND result IS NULL AND terminated_by_force_stop_id IS NULL", runID) == nil, 409, "dispatch_conflict")
 	t.exec("INSERT INTO node_executions(execution_id,kind,operation_id,work_id,workspace_id,node_id,node_operation_id,input,dispatched_epoch) VALUES($1,$2,$3,$4,$5,$6,$1,$7,$8)",
 		execution, input.S("kind"), runID, work.S("id"), wid, node, jsonText(input), r.Body.N("epoch"))
@@ -79,12 +92,16 @@ func nodeExecutionResult(t *transaction, r *ControlRequest, withReceipt bool) Ob
 	}
 	if withReceipt || e.S("kind") == "agent_session" || e.S("kind") == "deliver_revision" {
 		require(withReceipt, 400, "invalid_receipt")
+		if !fresh {
+			require(t.one("SELECT sequence FROM node_event_receipts WHERE execution_id=$1 AND sequence=$2", execution, r.Body.N("sequence")) != nil, 409, "receipt_conflict")
+		}
 		recordNodeReceipt(t, execution, r.Body.N("sequence"), r.Body.S("event"))
 	}
-	if fresh && e.S("kind") == "agent_session" && result.S("outcome") == "agent_session_ended" && t.onSessionEnded != nil {
-		if err := t.onSessionEnded(operation, execution); err != nil {
-			reject(409, "business_hook_failed")
-		}
+	if fresh && e.S("kind") == "agent_session" {
+		sessionEnded(t, operation, execution, result)
+	}
+	if fresh && e.S("kind") == "deliver_revision" && result.S("outcome") == "revision_failed" {
+		deliverySettled(t, operation, execution, Object{"outcome": "failed", "reason": result.S("reason")})
 	}
 	return t.one("SELECT * FROM node_executions WHERE execution_id=$1", execution)
 }
@@ -101,7 +118,11 @@ func validateNodeResult(e, result Object) {
 		require(sessionEndReasons[result.S("reason")], 400, "invalid_result")
 	default:
 		switch result.S("outcome") {
-		case "revision_delivered", "revision_unchanged", "revision_failed":
+		case "revision_delivered", "revision_unchanged":
+			// Node evidence cannot settle a delivery before Cloud verifies and registers the objects.
+			// Keep it replayable until the proposed M3 verifier is implemented.
+			reject(409, "revision_verification_required")
+		case "revision_failed":
 		default:
 			reject(409, "result_conflict")
 		}

@@ -23,6 +23,7 @@ type Config struct {
 	Directory     DirectoryConfig     `mapstructure:"directory"`
 	Control       ControlConfig       `mapstructure:"control"`
 	Plugins       PluginConfig        `mapstructure:"plugins"`
+	ObjectStore   ObjectStoreConfig   `mapstructure:"object_store"`
 }
 
 // PluginConfig is the cloud-side plugin marketplace configuration. Leaf keys

@@ -145,16 +145,19 @@ func applyPluginResults(t *transaction, execution, result Object) {
 	meta := objectsOf(o.O("request")["pluginMeta"])
 	items := objectsOf(result["items"])
 	require(len(items) == len(planned), 400, "invalid_plugin_evidence")
+	seen := make(map[string]bool, len(items))
 	for _, item := range items {
 		want, ok := planned[item.S("pluginId")]
-		require(ok, 400, "invalid_plugin_evidence")
+		require(ok && !seen[item.S("pluginId")], 400, "invalid_plugin_evidence")
+		seen[item.S("pluginId")] = true
 		switch item.S("outcome") {
 		case "installed":
+			require(execution.S("kind") == "install_plugins", 400, "invalid_plugin_evidence")
 			require(item.S("version") == want.S("version") && item.S("version") != "", 400, "invalid_plugin_evidence")
-		case "removed", "failed":
-			if item.S("outcome") == "failed" {
-				require(pluginFailureCodes[item.S("reason")], 400, "invalid_plugin_evidence")
-			}
+		case "removed":
+			require(execution.S("kind") == "remove_plugins", 400, "invalid_plugin_evidence")
+		case "failed":
+			require(pluginFailureCodes[item.S("reason")], 400, "invalid_plugin_evidence")
 		default:
 			reject(400, "invalid_plugin_evidence")
 		}

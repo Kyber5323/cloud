@@ -48,12 +48,15 @@ func PresignPUT(cfg *Config, key string, now time.Time) (Grant, error) {
 	if ttl <= 0 {
 		ttl = 15 * time.Minute
 	}
+	if ttl < time.Second || ttl > 7*24*time.Hour {
+		return Grant{}, fmt.Errorf("invalid upload grant lifetime")
+	}
 	base := cfg.Endpoint
 	if cfg.PublicEndpoint != "" {
 		base = cfg.PublicEndpoint
 	}
 	endpoint, err := url.Parse(base)
-	if err != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") {
+	if err != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" || (endpoint.Path != "" && endpoint.Path != "/") {
 		return Grant{}, fmt.Errorf("invalid object store endpoint")
 	}
 	now = now.UTC()
@@ -73,6 +76,9 @@ func PresignPUT(cfg *Config, key string, now time.Time) (Grant, error) {
 		canonicalURI = "/" + url.PathEscape(cfg.Bucket) + "/" + escaped
 	}
 	host := endpoint.Host
+	if !cfg.PathStyle {
+		host = cfg.Bucket + "." + host
+	}
 	canonical := strings.Join([]string{
 		"PUT",
 		canonicalURI,
@@ -86,7 +92,12 @@ func PresignPUT(cfg *Config, key string, now time.Time) (Grant, error) {
 	signature := hex.EncodeToString(hmacSHA256(signingKey(cfg.SecretAccessKey, scopeDate, cfg.Region), stringToSign))
 	query.Set("X-Amz-Signature", signature)
 	signed := *endpoint
-	signed.Path = canonicalURI
+	signed.Host = host
+	signed.Path = "/" + key
+	if cfg.PathStyle {
+		signed.Path = "/" + cfg.Bucket + "/" + key
+	}
+	signed.RawPath = canonicalURI
 	signed.RawQuery = query.Encode()
 	return Grant{
 		URL:     signed.String(),
