@@ -67,9 +67,14 @@ func forceStopCommand(t *transaction, r *ControlRequest) Object {
 				t.exec("UPDATE sandbox_instances SET terminated_at=COALESCE(terminated_at,clock_timestamp()),observed_state='terminated' WHERE id=$1", target.S("sandboxId"))
 			}
 			t.exec("UPDATE clone_executions SET terminated_by_force_stop_id=$2 WHERE workspace_id=$1 AND result IS NULL", f.S("workspaceId"), f.S("id"))
+			t.exec("UPDATE node_executions SET terminated_by_force_stop_id=$2 WHERE workspace_id=$1 AND result IS NULL", f.S("workspaceId"), f.S("id"))
 			// Cancellation is recorded as failure with the force intent reference; the original input,
 			// actor, execution identity and any real result remain intact. Project-wide deletion resumes.
+			starting := t.one("SELECT w.issue_run_id FROM workspaces w JOIN operations o ON o.workspace_id=w.id WHERE w.id=$1 AND o.kind='create_workspace' AND o.state IN ('queued','running','retry_wait','blocked')", f.S("workspaceId"))
 			t.exec("UPDATE operations SET state='failed',error_code='administrative_force_stop',result=result||jsonb_build_object('forceStopId',$2::text),version=version+1,updated_at=clock_timestamp() WHERE workspace_id=$1 AND state IN ('queued','running','retry_wait','blocked')", f.S("workspaceId"), f.S("id"))
+			if starting.S("issueRunId") != "" {
+				runWorkspaceSettled(t, starting.S("issueRunId"), "failed")
+			}
 			// Canceling initialization preserves the shared project and the incomplete runtime.
 			// A member can create a new independent runtime; start never silently re-clones this one.
 			t.exec("UPDATE projects p SET lifecycle='active',version=version+1 WHERE p.lifecycle='provisioning' AND p.id=(SELECT project_id FROM workspaces WHERE id=$1)", f.S("workspaceId"))

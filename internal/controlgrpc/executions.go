@@ -25,11 +25,19 @@ func (s *executionService) ClaimWork(ctx context.Context, req *controlpb.ClaimWo
 	if e != nil {
 		return nil, e
 	}
+	if work := out.O("work"); work.S("id") != "" {
+		target := work.O("target")
+		return &controlpb.ClaimWorkResponse{Item: &controlpb.WorkItem{
+			OperationId: work.S("runId"),
+			Input:       input(work.O("input")),
+			Target:      &controlpb.WorkTarget{WorkspaceId: target.S("workspaceId"), SandboxInstanceId: target.S("sandboxInstanceId"), NodeId: target.S("nodeId")},
+		}}, nil
+	}
 	request := out.O("request")
-	if len(request) == 0 {
+	if request.S("id") == "" {
 		return &controlpb.ClaimWorkResponse{}, nil
 	}
-	return &controlpb.ClaimWorkResponse{Item: &controlpb.WorkItem{OperationId: request.S("id"), Input: input(core.Object{"repositoryUrl": request.S("repositoryUrl"), "branch": request.S("branch")})}}, nil
+	return &controlpb.ClaimWorkResponse{Item: &controlpb.WorkItem{OperationId: request.S("id"), Input: input(core.Object{"kind": "clone", "repositoryUrl": request.S("repositoryUrl"), "branch": request.S("branch")})}}, nil
 }
 
 func (s *executionService) RecordDispatch(ctx context.Context, req *controlpb.RecordDispatchRequest) (*controlpb.RecordDispatchResponse, error) {
@@ -112,62 +120,4 @@ func receiptSequence(sequence uint64) (int64, bool) {
 		return 0, false
 	}
 	return int64(sequence), true // #nosec G115 -- bounded above.
-}
-
-// The JSON shapes below are the durable form of the contract messages; they are what
-// clone_executions.input / result hold and what conflicts are compared against.
-
-func inputObject(in *controlpb.ExecutionInput) (core.Object, error) {
-	clone := in.GetClone()
-	if clone == nil || clone.GetRepository() == "" || clone.GetBranch() == "" {
-		return nil, status.Error(codes.InvalidArgument, "invalid_dispatch")
-	}
-	return core.Object{"kind": "clone", "repositoryUrl": clone.GetRepository(), "branch": clone.GetBranch()}, nil
-}
-
-func input(o core.Object) *controlpb.ExecutionInput {
-	return &controlpb.ExecutionInput{Spec: &controlpb.ExecutionInput_Clone{Clone: &controlpb.CloneSpec{Repository: o.S("repositoryUrl"), Branch: o.S("branch")}}}
-}
-
-func resultObject(res *controlpb.ExecutionResult) (core.Object, error) {
-	node := res.GetNode()
-	if node == nil || node.GetNodeId() == "" || node.GetNodeIncarnationId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "invalid_result")
-	}
-	out := core.Object{"node": core.Object{"nodeId": node.GetNodeId(), "nodeIncarnationId": node.GetNodeIncarnationId()}}
-	switch outcome := res.GetOutcome().(type) {
-	case *controlpb.ExecutionResult_CloneReady:
-		out["outcome"], out["path"], out["commit"] = "clone_ready", outcome.CloneReady.GetPath(), outcome.CloneReady.GetCommit()
-	case *controlpb.ExecutionResult_CloneFailed:
-		out["outcome"], out["reason"] = "clone_failed", outcome.CloneFailed.GetReason().String()
-		if outcome.CloneFailed.RetainedPath != nil {
-			out["retainedPath"] = outcome.CloneFailed.GetRetainedPath()
-		}
-	default:
-		return nil, status.Error(codes.InvalidArgument, "invalid_result")
-	}
-	return out, nil
-}
-
-func result(o core.Object) *controlpb.ExecutionResult {
-	node := o.O("node")
-	out := &controlpb.ExecutionResult{Node: &controlpb.NodeIdentity{NodeId: node.S("nodeId"), NodeIncarnationId: node.S("nodeIncarnationId")}}
-	if o.S("outcome") == "clone_ready" {
-		out.Outcome = &controlpb.ExecutionResult_CloneReady{CloneReady: &controlpb.CloneReady{Path: o.S("path"), Commit: o.S("commit")}}
-		return out
-	}
-	failed := &controlpb.CloneFailed{Reason: controlpb.CloneFailureReason(controlpb.CloneFailureReason_value[o.S("reason")])}
-	if retained, ok := o["retainedPath"].(string); ok {
-		failed.RetainedPath = &retained
-	}
-	out.Outcome = &controlpb.ExecutionResult_CloneFailed{CloneFailed: failed}
-	return out
-}
-
-func record(row core.Object) *controlpb.ExecutionRecord {
-	out := &controlpb.ExecutionRecord{OperationId: row.S("operationId"), NodeOperationId: row.S("nodeOperationId"), ExecutionId: row.S("executionId"), NodeId: row.S("nodeId"), Input: input(row.O("input"))}
-	if res := row.O("result"); len(res) > 0 {
-		out.Result = result(res)
-	}
-	return out
 }

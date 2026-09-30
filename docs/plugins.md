@@ -1,8 +1,8 @@
 # 插件市场:cloud 权威状态与 catalog 快照
 
 > 对应 `plan.md`(功能设计)与 desktop 仓的插件契约(orax.toml / 目录条目 / 命名空间)。cloud 是插件
-> **选择状态**与**市场目录快照**的唯一权威;Node 执行平面只下载与运行 cloud fan-out 出来的内容,
-> 从不自行同步市场。desktop 仓本期零改动,其本地同步与安装运行时保持原样。
+> **选择状态**与**市场目录快照**的唯一权威;Node 执行平面只下载与运行 cloud 快照出来的内容,
+> 从不自行同步市场。安装由 Node 执行,不再经过 Substrate 的 `plugin_ensure`。
 
 ## 数据归属
 
@@ -50,15 +50,18 @@
    `space.plugins_updated`。目标 project 有在途 operation 时整个安装 409 `operation_in_progress`
    (`one_project_operation` 兜底);同一 project 多 workspace 时每次安装只放行一个 operation,
    其余实例保持 pending,由下次安装收敛。
-2. Controller claim → plan `plugin_ensure`:payload 从**目录快照**自包含拼装
-   `{kind, projectId, workspaceId, pluginId, version, universal{url,sha256} | targets[{target,url,sha256}]}`,
-   与 desktop `DownloadRequest` 能力一一对应;准入与 node 步骤同门控(workspace ready 才派发)。
-   计划即回写实例 `installing`。
-3. Node(本期 simulator)下载 → **sha256 必校验** → 原子安装到 `plugins/installed/<ns>/<name>/<version>`;
-   `plugin_delete` 幂等卸载。
-4. effect_result 成功证据校验(`installed=true` 且 `version` 与计划一致,缺失 → 400
-   `invalid_plugin_evidence`);失败回写实例 failed + `install_error`。
-5. advance:实例 → installed/removed,同事务重算 space 聚合并广播 `space.plugins_updated`。
+2. 进入 `plugin` 步骤时,Cloud 把期望集合快照进 operation 的 `request.plugins`。
+   create/start 取当时 Space 里 `desired_state = installed` 的全部插件;install/remove 只含该插件。
+   每项仍是目录快照里的自包含载荷(canonical id、版本、url、sha256 或 targets),Node 不自己查市场。
+   集合为空则这一步直接结束。快照之后新装的插件不进入本次集合。
+3. Controller 用 `RecordDispatch` 登记一次 `InstallPlugins` 或 `RemovePlugins`,目标必须是该 Workspace
+   当前 generation 的 Node,输入必须等于快照。Node 在安装前校验 SHA-256。
+4. 接管逐项结果: `installed.version` 必须等于计划版本,否则整份结果以 400 `invalid_plugin_evidence` 拒绝;
+   `failed.reason` 是有界错误码,写入实例的 `install_error`。单项失败不阻止 Workspace 就绪。
+   执行整体失败(`interrupted` 等)按 clone 步骤的方式延期,并用新的执行重试。
+5. 全部插件都有结果后步骤推进,同事务重算 Space 聚合。`kind = agent` 的插件在聚合变为 `installed` 时
+   创建或恢复 `space_agents` 行;选择被移除时该行变为 `retired`,不删除。某个 Workspace 安装失败不会让
+   已有 Agent 从列表消失。
 
 聚合规则(纯函数,单测覆盖):任一实例 failed → failed;否则任一非终态 → installing/removing;
 全部终态或没有 live workspace → installed/removed。
@@ -72,8 +75,8 @@
 
 ## v1 边界与后续 phase
 
-- fan-out 只覆盖安装时刻已存在的 live workspace;之后新建 workspace 的自动补装属于
-  desired-state 收敛(后续 phase)。Q1a/Q1b 见 plan.md。
-- pack v1 禁装(目录可列出);激活/停止/配置/日志属于 Node 运行时平面(执行契约同口径),不在本期。
-- 真实 Node 侧的 `plugin_ensure`/`plugin_delete` 执行器接线为后续工作(desktop 仓另立项);
-  本期 simulator 保证 effect 载荷对现有 desktop `plugin-manager` 能力自闭合。
+- 新建或启动 Workspace 时,`plugin` 步骤补装当时 Space 里期望安装的插件。用户之后的安装仍只 fan-out
+  到已有的用户 Workspace,不打到 IssueRun 的运行 Workspace。
+- pack v1 禁装(目录可列出);激活/停止/配置/日志属于 Node 运行时平面,不在本期。
+- `plugin_ensure` / `plugin_delete` 不再新计划。历史行保留。Cloud 测试里的模拟 Controller 登记并回写
+  Node 执行结果;真实安装由 desktop Node 执行。

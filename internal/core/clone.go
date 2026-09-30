@@ -41,6 +41,20 @@ func (s *Store) signalOperations(ids []string) {
 	}
 }
 
+// signalRuns publishes one hint per run after the transaction that made the work durable committed.
+func (s *Store) signalRuns(kind ControlSignalKind, ids []string) {
+	if s.Signals == nil {
+		return
+	}
+	for _, id := range ids {
+		signal := ControlSignal{Kind: kind, OperationID: id}
+		if kind == SignalThreadCommandAvailable {
+			signal = ControlSignal{Kind: kind, RunID: id}
+		}
+		s.Signals.Publish(signal)
+	}
+}
+
 // enqueueClone records one clone request inside the caller's transaction. Repeating
 // (tenant, user, requestId) with the same input returns the original request and reports nothing
 // new; different input is a conflict. Nothing is dispatched here: a Controller claims the row.
@@ -170,30 +184,32 @@ func submitted(t *transaction, r *ControlRequest, apply func() Object) Object {
 func cloneCommand(t *transaction, r *ControlRequest) Object {
 	switch r.Action {
 	case "clone_claim":
-		if !t.legacyCloneFixture {
-			require(t.one("SELECT id FROM clone_requests WHERE state='queued'") == nil, 410, "runtime_scope_required")
-			return Object{"cloneRequest": nil}
-		}
 		// A pure read: ownership moves only when the dispatch is recorded, so a Controller that
 		// dies between claim and dispatch leaves nothing to recover.
-		work := t.one("SELECT * FROM clone_requests WHERE state='queued' ORDER BY created_at,id LIMIT 1")
-		return Object{"request": work}
+		return claimWorkItem(t)
 	case "clone_dispatch":
-		return submitted(t, r, func() Object { return cloneDispatch(t, r) })
+		return submitted(t, r, func() Object {
+			if kind := r.Body.O("input").S("kind"); kind != "" && kind != "clone" {
+				return nodeDispatch(t, r)
+			}
+			return cloneDispatch(t, r)
+		})
 	case "clone_takeover":
-		return submitted(t, r, func() Object { return cloneResult(t, r, true) })
+		return submitted(t, r, func() Object { return executionResult(t, r, true) })
 	case "clone_queried":
-		return submitted(t, r, func() Object { return cloneResult(t, r, false) })
+		return submitted(t, r, func() Object { return executionResult(t, r, false) })
 	case "clone_get":
-		e := t.one("SELECT * FROM clone_executions WHERE execution_id=$1", r.Body.S("executionId"))
-		require(e != nil, 404, "not_found")
-		return e
+		return lookupExecution(t, r.Body.S("executionId"))
 	case "clone_pending":
-		node := r.Body.S("nodeId")
-		if node == "" {
-			return Object{"executions": t.list("SELECT * FROM clone_executions WHERE result IS NULL AND terminated_by_force_stop_id IS NULL ORDER BY created_at,execution_id")}
-		}
-		return Object{"executions": t.list("SELECT * FROM clone_executions WHERE result IS NULL AND terminated_by_force_stop_id IS NULL AND node_id=$1 ORDER BY created_at,execution_id", node)}
+		return pendingExecutions(t, r.Body.S("nodeId"))
+	case "thread_events":
+		return submitted(t, r, func() Object { return takeOverThreadEvents(t, r) })
+	case "thread_claim":
+		return claimThreadCommands(t, r.Body.N("limit"))
+	case "thread_delivered":
+		return submitted(t, r, func() Object { return recordThreadCommandDelivered(t, r) })
+	case "grant_revision_upload":
+		return revisionGrants(t, r.Body.S("executionId"))
 	default:
 		reject(404, "not_found")
 	}
@@ -207,6 +223,7 @@ func cloneDispatch(t *transaction, r *ControlRequest) Object {
 	operation, execution, node := r.Body.S("operationId"), r.Body.S("executionId"), r.Body.S("nodeId")
 	input := r.Body.O("input")
 	require(validID(operation) && execution != "" && node != "" && len(input) > 0, 400, "invalid_dispatch")
+	require(t.one("SELECT execution_id FROM node_executions WHERE execution_id=$1", execution) == nil, 409, "dispatch_conflict")
 	request := t.one("SELECT * FROM clone_requests WHERE id=$1", operation)
 	if request == nil {
 		return workspaceCloneDispatch(t, r, operation, execution, node, input)
@@ -256,5 +273,8 @@ func cloneResult(t *transaction, r *ControlRequest, withReceipt bool) Object {
 	return t.one("SELECT * FROM clone_executions WHERE execution_id=$1", execution)
 }
 
-// isCloneAction reports whether a control action belongs to the execution registry.
-func isCloneAction(action string) bool { return strings.HasPrefix(action, "clone_") }
+// isCloneAction reports whether a control action belongs to the execution registry, including the
+// Agent session methods that share its lease and submission rules.
+func isCloneAction(action string) bool {
+	return strings.HasPrefix(action, "clone_") || strings.HasPrefix(action, "thread_") || action == "grant_revision_upload"
+}

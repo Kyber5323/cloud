@@ -405,7 +405,7 @@ func readPublic(t *transaction, r *PublicRequest, uid string) Object {
 	case strings.HasSuffix(r.Path, "/issues"):
 		return issueList(t, r)
 	case strings.HasSuffix(r.Path, "/resource-status"):
-		return page(t, "SELECT w.id,w.project_id,w.owner_user_id,w.kind,w.desired_state,w.observed_state,w.runtime_generation,w.version FROM workspaces w WHERE w.tenant_id=$1 AND w.deleted_at IS NULL", []any{r.TenantID}, "w.id", r)
+		return page(t, "SELECT w.id,w.project_id,w.owner_user_id,w.kind,w.desired_state,w.observed_state,w.runtime_generation,w.version FROM workspaces w WHERE w.tenant_id=$1 AND w.deleted_at IS NULL AND w.issue_run_id IS NULL", []any{r.TenantID}, "w.id", r)
 	case r.OperationID != "":
 		return ownedOperation(t, r, uid)
 	case r.WorkspaceID != "" && strings.HasSuffix(r.Path, "/control"):
@@ -532,6 +532,7 @@ func newOperation(t *transaction, r *PublicRequest, uid, pid, wid, kind, step, h
 func checkActivities(t *transaction, w Object) {
 	require(t.one("SELECT id FROM execution_tickets WHERE workspace_id=$1 AND state='active' AND terminated_by_force_stop_id IS NULL", w.S("id")) == nil, 409, "resource_in_use")
 	require(t.one("SELECT execution_id FROM clone_executions WHERE workspace_id=$1 AND result IS NULL AND terminated_by_force_stop_id IS NULL", w.S("id")) == nil, 409, "resource_in_use")
+	require(t.one("SELECT execution_id FROM node_executions WHERE workspace_id=$1 AND result IS NULL AND terminated_by_force_stop_id IS NULL", w.S("id")) == nil, 409, "resource_in_use")
 }
 
 func closeAdmission(t *transaction, w Object, desired string) {

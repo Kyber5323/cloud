@@ -14,6 +14,8 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+
+	"github.com/wanglongan587/cloud/internal/objectstore"
 )
 
 // Object is a JSON resource; database column names are converted at the persistence boundary.
@@ -73,10 +75,23 @@ type databaseFailure struct{ err error }
 type Store struct {
 	Pool *sql.DB
 
-	// PluginExecution is unavailable in production until a fenced real executor is delivered.
-	// The simulation mode exists only for explicitly wired integration fixtures.
+	// PluginExecution remains for fixtures that still name the old simulation mode. Plugin installs
+	// are Node executions and are no longer gated on it.
 	PluginExecution    PluginExecutionCapability
 	legacyCloneFixture bool
+	// ObjectStore signs Revision upload URLs. Nil means delivery grants are refused; Cloud still starts.
+	ObjectStore *objectstore.Config
+	// OnThreadEvents receives only first-taken-over events and the caller's SQL transaction.
+	// Hooks must use that transaction; starting another Store transaction would deadlock.
+	OnThreadEvents func(context.Context, *sql.Tx, string, string, []Object) error
+	// OnSessionEnded runs inside the transaction that first stores a session's terminal result.
+	OnSessionEnded func(context.Context, *sql.Tx, string, string, Object) error
+	// OnRunWorkspaceSettled receives ready or failed in the Workspace operation's transaction.
+	OnRunWorkspaceSettled func(context.Context, *sql.Tx, string, string) error
+	// OnRunWorkspaceDeleted runs after successful data cleanup in the deletion transaction.
+	OnRunWorkspaceDeleted func(context.Context, *sql.Tx, string) error
+	// OnDeliverySettled receives failed evidence, or verified Revision evidence once M3 is wired.
+	OnDeliverySettled func(context.Context, *sql.Tx, string, string, Object) error
 
 	// Collaboration ports (consuming-side seams; see collaboration.go). Each is nil by default
 	// ("Unavailable"); dev/demo/integration wire the in-memory fixtures, production real adapters.
@@ -128,9 +143,18 @@ type transaction struct {
 	forms          FormDescriptorProvider
 	assist         InputAssistProvider
 	// queued names operations this transaction made claimable; they are published only after commit.
-	legacyCloneFixture bool
-	pluginExecution    PluginExecutionCapability
-	queued             []string
+	legacyCloneFixture    bool
+	pluginExecution       PluginExecutionCapability
+	objectStore           *objectstore.Config
+	onThreadEvents        func(context.Context, *sql.Tx, string, string, []Object) error
+	onSessionEnded        func(context.Context, *sql.Tx, string, string, Object) error
+	onRunWorkspaceSettled func(context.Context, *sql.Tx, string, string) error
+	onRunWorkspaceDeleted func(context.Context, *sql.Tx, string) error
+	onDeliverySettled     func(context.Context, *sql.Tx, string, string, Object) error
+	queued                []string
+	workSignals           []string
+	commandSignals        []string
+	events                []SpaceEvent
 }
 
 func (t *transaction) exec(q string, args ...any) {
@@ -173,6 +197,11 @@ func (t *transaction) list(q string, args ...any) []Object {
 		o := Object{}
 		for k, v := range raw {
 			o[camel(k)] = v
+		}
+		// A null association is not part of the public Workspace document. Run Workspaces carry the id
+		// and are filtered out of public lists, so clients never see this column.
+		if o["issueRunId"] == nil {
+			delete(o, "issueRunId")
 		}
 		out = append(out, o)
 	}
@@ -231,11 +260,19 @@ func (s *Store) transact(ctx context.Context, fn func(*transaction) Object) (out
 			}
 		}
 	}()
-	t := &transaction{tx: tx, ctx: ctx, pluginExecution: s.PluginExecution, legacyCloneFixture: s.legacyCloneFixture, directory: s.Directory, contextBuilder: s.Context, forms: s.Forms, assist: s.Assist}
+	t := &transaction{tx: tx, ctx: ctx, pluginExecution: s.PluginExecution, legacyCloneFixture: s.legacyCloneFixture, directory: s.Directory, contextBuilder: s.Context, forms: s.Forms, assist: s.Assist, objectStore: s.ObjectStore, onThreadEvents: s.OnThreadEvents, onSessionEnded: s.OnSessionEnded}
+	t.onRunWorkspaceSettled, t.onRunWorkspaceDeleted, t.onDeliverySettled = s.OnRunWorkspaceSettled, s.OnRunWorkspaceDeleted, s.OnDeliverySettled
 	t.exec("SELECT pg_advisory_xact_lock(67420911)")
 	out = fn(t)
 	if err = tx.Commit(); err == nil {
 		s.signalOperations(t.queued)
+		s.signalRuns(SignalWorkAvailable, t.workSignals)
+		s.signalRuns(SignalThreadCommandAvailable, t.commandSignals)
+		if s.Events != nil {
+			for _, ev := range t.events {
+				s.Events.Publish(ev)
+			}
+		}
 	}
 	return out, err
 }
@@ -485,7 +522,7 @@ func project(t *transaction, tid, uid, pid string) Object {
 // workspace loads authorized runtime content. Safe summaries use runtimeOverview instead.
 func workspace(t *transaction, tid, uid, wid string, admin bool) Object {
 	require(validID(wid), 404, "not_found")
-	w := t.one("SELECT * FROM workspaces WHERE id=$1 AND tenant_id=$2 AND deleted_at IS NULL", wid, tid)
+	w := t.one("SELECT * FROM workspaces WHERE id=$1 AND tenant_id=$2 AND deleted_at IS NULL AND issue_run_id IS NULL", wid, tid)
 	require(w != nil, 404, "not_found")
 	require(runtimeUsable(t, w, uid), 403, "runtime_use_forbidden")
 	if admin {

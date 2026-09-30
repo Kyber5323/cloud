@@ -48,7 +48,7 @@ func TestTenantMigrationFrom0016PreservesRuntimeCloneAndPlugins(t *testing.T) {
 	snapshot := func(table string) string {
 		t.Helper()
 		var value string
-		must(t, pool.QueryRow("SELECT (to_jsonb(r) - 'creator_user_id' - 'creator_operation_id' - 'creator_evidence' - 'requested_by_user_id' - 'desired_revision' - 'selected_release' - 'pending_reason' - 'maintenance_operation_id' - 'repository_credential_ref_id')::text FROM "+table+" r").Scan(&value))
+		must(t, pool.QueryRow("SELECT (to_jsonb(r) - 'creator_user_id' - 'creator_operation_id' - 'creator_evidence' - 'requested_by_user_id' - 'desired_revision' - 'selected_release' - 'pending_reason' - 'maintenance_operation_id' - 'repository_credential_ref_id' - 'issue_run_id')::text FROM "+table+" r").Scan(&value))
 		return value
 	}
 	before := make(map[string]string, len(tables))
