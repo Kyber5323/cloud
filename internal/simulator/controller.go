@@ -130,6 +130,8 @@ type Controller struct {
 	Client       *Client
 	SubstrateURL string
 	Executions   controlpb.ExecutionServiceClient
+	AgentRuns    controlpb.AgentRunServiceClient
+	AgentNode    *AgentNode
 	Epoch        int64
 	Operation    core.Object
 }
@@ -227,6 +229,12 @@ func (c *Controller) Step(ctx context.Context) (bool, error) {
 	if _, e := c.Client.Control(ctx, "/internal/v1/controller-lease/renew", core.Object{"epoch": c.Epoch}); e != nil {
 		return false, e
 	}
+	// Quiesce can wait for an Agent end command. Service run work on every bounded step so a
+	// lifecycle operation cannot starve the command that would release its own dependency.
+	agentIdle, agentErr := c.stepAgentWork(ctx)
+	if agentErr != nil {
+		return false, agentErr
+	}
 	var snap core.Object
 	var err error
 	if c.Operation == nil {
@@ -235,7 +243,7 @@ func (c *Controller) Step(ctx context.Context) (bool, error) {
 			return false, err
 		}
 		if snap["operation"] == nil {
-			return true, nil
+			return agentIdle, nil
 		}
 		c.Operation = snap.O("operation")
 	} else {
@@ -306,6 +314,10 @@ func (c *Controller) Step(ctx context.Context) (bool, error) {
 		if e := c.clone(ctx, snap, workspaces, nodes); e != nil {
 			return false, e
 		}
+	case "plugin":
+		if e := c.plugins(ctx, snap, nodes); e != nil {
+			return false, e
+		}
 	case "quiesce":
 		for _, w := range workspaces {
 			if c.Operation.S("workspaceId") != "" && w.S("id") != c.Operation.S("workspaceId") {
@@ -330,14 +342,6 @@ func (c *Controller) Step(ctx context.Context) (bool, error) {
 	default:
 		kinds := map[string]string{"sandbox": "sandbox_ensure", "terminate": "sandbox_terminate", "cleanup": "workspace_data_delete"}
 		kind := kinds[step]
-		if step == "plugin" {
-			// The plugin step's effect follows the operation intent: an
-			// install fans out plugin_ensure, a removal plugin_delete.
-			kind = "plugin_ensure"
-			if c.Operation.S("kind") == "remove_plugin" {
-				kind = "plugin_delete"
-			}
-		}
 		if kind == "" {
 			return false, fmt.Errorf("unknown step %s", step)
 		}

@@ -19,6 +19,8 @@
 
 ## 边界与不变量
 
+`object_store` 为可选的 S3 上传授权配置。`enabled=true` 时 server 在启动阶段读取独立挂载的 `access_key_id_file` 与 `secret_access_key_file`，只保存在进程内存，检查私网 endpoint 与 Node 可达的 public_endpoint、region、bucket、path_style 和 1 秒至 7 天的 upload_grant_ttl。每个字段可由 `CLOUD_OBJECT_STORE_*` 覆盖；默认关闭，授权请求明确返回不可用。它提供短期 PUT 授权，Revision 对象验证与登记仍需 M3。
+
 - **不存储机密信息**：配置文件只存储公开验证密钥和基础设施引用。明文部署机密信息和私钥绝不得出现在配置文件中。
 - **运行时不可变**：配置在命令启动时加载一次，并作为就绪可用的值传递。不存在全局可变配置单例。
 

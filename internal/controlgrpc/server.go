@@ -121,6 +121,7 @@ func newServer(store *core.Store, unary grpc.UnaryServerInterceptor, stream grpc
 	controlpb.RegisterWorkspaceOperationServiceServer(server, &operationService{store: store})
 	controlpb.RegisterNodeReportServiceServer(server, &nodeService{store: store})
 	controlpb.RegisterRuntimeControlServiceServer(server, &runtimeControlService{store: store})
+	controlpb.RegisterAgentRunServiceServer(server, &agentRunService{store: store})
 	return server
 }
 

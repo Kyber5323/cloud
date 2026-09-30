@@ -653,6 +653,11 @@
             "format": "uuid",
             "type": "string"
           },
+          "issueRunId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
           "kind": {
             "type": "string"
           },
@@ -2036,6 +2041,84 @@
         ],
         "type": "object"
       },
+      "NodeExecution": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "dispatchedEpoch": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "executionId": {
+            "type": "string"
+          },
+          "input": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lastEventSequence": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "nodeOperationId": {
+            "type": "string"
+          },
+          "operationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "result": {
+            "additionalProperties": true,
+            "nullable": true,
+            "type": "object"
+          },
+          "terminatedByForceStopId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "workId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "workspaceId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "executionId",
+          "kind",
+          "operationId",
+          "workId",
+          "workspaceId",
+          "nodeId",
+          "nodeOperationId",
+          "input",
+          "result",
+          "dispatchedEpoch",
+          "lastEventSequence",
+          "terminatedByForceStopId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
       "Operation": {
         "additionalProperties": false,
         "properties": {
@@ -2161,6 +2244,33 @@
           },
           "pluginId": {
             "type": "string"
+          },
+          "pluginMeta": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "desiredRevision": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "pluginId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "pluginId",
+                "desiredRevision"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "plugins": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
           },
           "previous": {
             "additionalProperties": {
@@ -2676,6 +2786,16 @@
           "operation": {
             "$ref": "#/components/schemas/Operation"
           },
+          "pluginExecutions": {
+            "items": {
+              "$ref": "#/components/schemas/NodeExecution"
+            },
+            "type": "array"
+          },
+          "pluginInput": {
+            "additionalProperties": true,
+            "type": "object"
+          },
           "project": {
             "$ref": "#/components/schemas/ControllerProject"
           },
@@ -2699,7 +2819,8 @@
           "sandboxes",
           "nodes",
           "effects",
-          "clones"
+          "clones",
+          "pluginExecutions"
         ],
         "type": "object"
       },
@@ -22126,7 +22247,9 @@
                       "node_unavailable",
                       "external_failure",
                       "clone_failed",
-                      "clone_result_unknown"
+                      "clone_result_unknown",
+                      "plugin_execution_failed",
+                      "plugin_result_unknown"
                     ],
                     "type": "string"
                   },

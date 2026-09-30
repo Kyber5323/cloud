@@ -11,6 +11,7 @@ package core
 var deferCodes = map[string]bool{
 	"substrate_timeout": true, "termination_unconfirmed": true, "git_cleanup_failed": true, "node_unavailable": true,
 	"external_failure": true, "clone_failed": true, "clone_result_unknown": true,
+	"plugin_execution_failed": true, "plugin_result_unknown": true,
 }
 
 // workspaceCloneDispatch registers the clone of a Workspace operation in its clone step. Replaying

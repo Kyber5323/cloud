@@ -22,7 +22,7 @@ docs/
       adding-features.md        ← how-to: add an endpoint / sub-resource safely
     onboarding/                 ← for new teammates: readable, tables & diagrams
       overview.md               ← what Ora Cloud is, the moving parts, glossary
-      progress.md               ← what's built / in-progress / deferred (status board)
+      progress.md               ← historical process board, not a contract; new PR notes belong in /plans
   migrations/
     multica-issue-board/        ← single-migration archive (analysis → design → test → final)
     workspace-integration-stage-a.md ← Stage A：origin/main → workspace合并 上游对齐融合决策记录（含迁移重编号 + 前端验证）
@@ -48,7 +48,7 @@ docs/
 
 | Topic | Where | Notes |
 | --- | --- | --- |
-| **Project status / roadmap** | [progress.md](development/onboarding/progress.md) | done / in-progress / planned / deferred / blocked |
+| **Project status / roadmap** | [progress.md](development/onboarding/progress.md) | Historical process board left under `docs/`. Not a contract. New PR notes go in [`/plans`](../plans/README.md) and are deleted before that work merges |
 | **Issue architecture** | [agent/architecture.md](development/agent/architecture.md) + [12-collaboration-architecture.md](migrations/multica-issue-board/12-collaboration-architecture.md) | the latter is the frozen Wave-3 design (rev. 2, plus §36/§37 revisions) |
 | **API** | [agent/api-reference.md](development/agent/api-reference.md) | live endpoint/field reference; `api/openapi.json` is the machine truth |
 | **Database** | [agent/database.md](development/agent/database.md) + [migration README](../internal/core/migrations/README.md) | Current table inventory and immutable migration history |
@@ -76,8 +76,9 @@ docs/
 | `integration/` | End-to-end tests against real PostgreSQL (isolated schema per test). |
 | `api/openapi.json` | **Generated** — do not hand-edit; run `go run ./cmd/openapi`. |
 | `scripts/` | Dev/demo shell wrappers. |
+| `plans/` | PR working notes. The README stays; each topic directory is deleted before that work merges. |
 
-## Current status (see [progress.md](development/onboarding/progress.md) for detail)
+## Current status (see [progress.md](development/onboarding/progress.md) for the historical board)
 
 - ✅ Core platform: tenants, memberships, identity, projects, workspaces, operations.
 - ✅ **Issue Board** — wave 1 (core Kanban), wave 2 (status catalog, comments, labels, subscribers,

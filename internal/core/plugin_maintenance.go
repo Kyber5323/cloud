@@ -27,10 +27,8 @@ func schedulePluginMaintenance(t *transaction) {
 			reason = "waiting_control"
 		case w.S("observedState") != "ready" || t.one("SELECT id FROM operations WHERE project_id=$1 AND state IN ('queued','running','retry_wait','blocked')", w.S("projectId")) != nil:
 			reason = "waiting_lifecycle"
-		case t.one("SELECT id FROM execution_tickets WHERE workspace_id=$1 AND state='active' AND terminated_by_force_stop_id IS NULL", w.S("id")) != nil || t.one("SELECT execution_id FROM clone_executions WHERE workspace_id=$1 AND result IS NULL AND terminated_by_force_stop_id IS NULL", w.S("id")) != nil:
+		case t.one("SELECT id FROM execution_tickets WHERE workspace_id=$1 AND state='active' AND terminated_by_force_stop_id IS NULL", w.S("id")) != nil || t.one("SELECT execution_id FROM clone_executions WHERE workspace_id=$1 AND result IS NULL AND terminated_by_force_stop_id IS NULL", w.S("id")) != nil || t.one("SELECT execution_id FROM node_executions WHERE workspace_id=$1 AND result IS NULL AND terminated_by_force_stop_id IS NULL", w.S("id")) != nil:
 			reason = "waiting_execution"
-		case t.pluginExecution != PluginExecutionSimulation:
-			reason = "executor_capability_unavailable"
 		}
 		t.exec("UPDATE workspace_plugin_instances SET pending_reason=$4 WHERE workspace_id=$1 AND source_namespace=$2 AND identifier=$3", w.S("id"), row.S("sourceNamespace"), row.S("identifier"), nullable(reason))
 		if reason != "" {
@@ -43,6 +41,7 @@ func schedulePluginMaintenance(t *transaction) {
 		req := Object{"pluginId": row.S("sourceNamespace") + "/" + row.S("identifier"), "version": row.S("desiredVersion"), "desiredRevision": row.N("desiredRevision"), "release": row.O("selectedRelease")}
 		r := &PublicRequest{TenantID: row.S("tenantId"), Key: "maintenance-" + newID()}
 		op := newOperation(t, r, row.S("requestedByUserId"), w.S("projectId"), w.S("id"), kind, "plugin", requestHash("maintenance", w.S("id"), req), req)
+		enterPluginStep(t, op)
 		reserveRuntimeMaintenance(t, w.S("id"), op.S("id"))
 		t.exec("UPDATE workspace_plugin_instances SET maintenance_operation_id=$4 WHERE workspace_id=$1 AND source_namespace=$2 AND identifier=$3", w.S("id"), row.S("sourceNamespace"), row.S("identifier"), op.S("id"))
 	}

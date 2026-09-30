@@ -1,70 +1,20 @@
 package integration
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
+
+	"github.com/wanglongan587/cloud/internal/controlpb"
 	"github.com/wanglongan587/cloud/internal/core"
 	"github.com/wanglongan587/cloud/internal/simulator"
 )
-
-// substrateRun dispatches one planned effect to the simulated Node and returns
-// the journal entry; the caller asserts the expected status.
-func (f *fixture) substrateRun(t *testing.T, effect core.Object, wantStatus int) core.Object {
-	t.Helper()
-	body, e := json.Marshal(effect.O("request"))
-	must(t, e)
-	req, e := http.NewRequest(http.MethodPut, f.external.URL+"/effects/"+effect.S("id"), bytes.NewReader(body))
-	must(t, e)
-	req.Header.Set("Content-Type", "application/json")
-	resp, e := f.client.HTTP.Do(req)
-	must(t, e)
-	defer resp.Body.Close()
-	if resp.StatusCode != wantStatus {
-		t.Fatalf("substrate PUT: want %d got %d", wantStatus, resp.StatusCode)
-	}
-	var out core.Object
-	must(t, json.NewDecoder(resp.Body).Decode(&out))
-	return out
-}
-
-// substrateSucceed dispatches an effect and requires the simulated Node to
-// succeed (real digest verified against the mapped artifact).
-func (f *fixture) substrateSucceed(t *testing.T, effect core.Object) core.Object {
-	t.Helper()
-	out := f.substrateRun(t, effect, http.StatusOK)
-	if out.S("state") != "succeeded" {
-		t.Fatalf("substrate result = %v", out)
-	}
-	return out
-}
-
-// substrateFailed dispatches an effect and requires the simulated Node to
-// fail it (digest mismatch), returning the failed journal entry.
-func (f *fixture) substrateFailed(t *testing.T, effect core.Object) core.Object {
-	t.Helper()
-	out := f.substrateRun(t, effect, http.StatusServiceUnavailable)
-	if out.S("state") != "failed" {
-		t.Fatalf("substrate result = %v", out)
-	}
-	return out
-}
-
-// substrateRerun dispatches the same effect again after the failure was
-// corrected; the journal keeps the stable external binding.
-func (f *fixture) substrateRerun(t *testing.T, effect core.Object) core.Object {
-	t.Helper()
-	return f.substrateSucceed(t, effect)
-}
 
 // claimPluginOp claims the next queued operation and requires it to be the
 // plugin kind, returning its snapshot row.
@@ -93,50 +43,44 @@ func (f *fixture) controlStep(t *testing.T, op core.Object, path string, body co
 	return out
 }
 
-// TestPluginEffectChainAndEvidence covers IT-4.1/4.2/4.6: the effect payload is
-// self-contained, the digest verification is real and mandatory, failed
-// effects surface on the fan-out rows, and success evidence is validated.
+// TestPluginEffectChainAndEvidence covers the Node execution that replaced plugin_ensure:
+// the input is the catalog snapshot, a failed item is recorded without blocking the step, and an
+// installed version that is not the planned one is refused before any writeback.
 func TestPluginEffectChainAndEvidence(t *testing.T) {
 	f := setup(t)
-	repo, artifacts := marketplaceFixture(t, f.root)
+	repo, _ := marketplaceFixture(t, f.root)
 	f.syncMarketplace(t, repo)
 	sid := f.defaultSpaceID()
 	created := f.spaceProject(t, sid, "space-project")
 	wid := created.O("workspace").S("id")
-	// Map a WRONG artifact first: the digest in the manifest cannot match.
-	wrong := filepath.Join(f.root, "wrong.orax")
-	must(t, os.WriteFile(wrong, []byte("tampered bytes\n"), 0o600))
-	f.substrate.MapArtifact("https://example.invalid/artifacts/hello-1.0.0.orax", wrong)
 
 	f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/hello-world"}, "install-effect", 200)
 	op := f.claimPluginOp(t, "install_plugin")
-	planned := f.controlStep(t, op, "/effects", core.Object{"kind": "plugin_ensure", "workspaceId": wid}, 200)
-	effect := planned.O("effect")
-	request := effect.O("request")
-	// IT-4.1: the payload carries the complete release straight from the
-	// catalog snapshot — the Node needs no registry index of its own.
-	if request.S("pluginId") != "official/hello-world" || request.S("version") != "1.0.0" {
-		t.Fatalf("effect request = %v", request)
+	plugins := objectList(op.O("request")["plugins"])
+	if len(plugins) != 1 || plugins[0].S("pluginId") != "official/hello-world" || plugins[0].S("version") != "1.0.0" {
+		t.Fatalf("plugin input = %v", plugins)
 	}
-	universal := request.O("universal")
+	universal := plugins[0].O("universal")
 	if universal.S("url") != "https://example.invalid/artifacts/hello-1.0.0.orax" || len(universal.S("sha256")) != 64 {
-		t.Fatalf("effect universal release = %v", universal)
+		t.Fatalf("plugin universal release = %v", universal)
 	}
-	row := f.spacePlugin(sid, "official/hello-world")
-	if row.S("observedState") != "installing" {
-		t.Fatalf("planned install must mark the row installing: %v", row)
+	if f.spacePlugin(sid, "official/hello-world").S("observedState") != "installing" {
+		t.Fatalf("entering the step must mark the row installing: %v", f.spacePlugin(sid, "official/hello-world"))
+	}
+	if _, e := f.store.Pool.Exec(`INSERT INTO external_effects(id,operation_id,project_id,workspace_id,kind,state,request) VALUES($1,$2,$3,$4,'plugin_ensure','planned','{}')`, uuid.NewString(), op.S("id"), op.S("projectId"), wid); e == nil {
+		t.Fatal("new plugin effects must be refused")
 	}
 
-	// IT-4.2: the simulated Node verifies the digest and fails the download.
-	// Subscribe before the writeback so the broadcast is not missed.
-	op = planned.O("operation")
 	stream, cancelEvents := f.store.Events.Subscribe(sid)
 	defer cancelEvents()
-	failed := f.substrateFailed(t, effect)
-	result := f.controlStep(t, op, "/effects/"+effect.S("id")+"/result", core.Object{"state": "failed", "externalId": failed.S("externalId"), "result": failed.O("result")}, 200)
-	row = f.spacePlugin(sid, "official/hello-world")
-	if row.S("observedState") != "failed" || row.S("installError") == "" {
-		t.Fatalf("failed download must surface on the row: %v", row)
+	f.dispatchPlugin(t, op, "exec-fail")
+	must(t, f.reportPlugin(t, op, "exec-fail", []*controlpb.PluginItemResult{{
+		PluginId: "official/hello-world",
+		Outcome:  &controlpb.PluginItemResult_Failed{Failed: &controlpb.PluginItemFailed{Reason: controlpb.PluginFailureReason_PLUGIN_FAILURE_REASON_CHECKSUM_MISMATCH}},
+	}}))
+	row := f.spacePlugin(sid, "official/hello-world")
+	if row.S("observedState") != "failed" || row.S("installError") != "checksum_mismatch" {
+		t.Fatalf("failed item must surface on the row: %v", row)
 	}
 	select {
 	case ev := <-stream:
@@ -146,29 +90,21 @@ func TestPluginEffectChainAndEvidence(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("failed writeback must broadcast space.plugins_updated")
 	}
-
-	// Fix the artifact and retry the same effect by stable id: the journal is
-	// reused, the download succeeds, evidence is validated, advance converges.
-	f.substrate.MapArtifact("https://example.invalid/artifacts/hello-1.0.0.orax", artifacts["https://example.invalid/artifacts/hello-1.0.0.orax"])
-	op = result.O("operation")
-	external := f.substrateRerun(t, effect)
-	succeeded := f.controlStep(t, op, "/effects/"+effect.S("id")+"/result", core.Object{"state": "succeeded", "externalId": external.S("externalId"), "result": external.O("result")}, 200)
-	op = succeeded.O("operation")
 	f.controlStep(t, op, "/advance", core.Object{}, 200)
-	row = f.spacePlugin(sid, "official/hello-world")
-	if row.S("observedState") != "installed" || row.S("observedVersion") != "1.0.0" {
-		t.Fatalf("successful install must converge the row: %v", row)
+	if f.ws(wid).S("observedState") != "ready" {
+		t.Fatal("one failed plugin must not block the workspace")
 	}
 
-	// IT-4.6: success evidence is validated strictly — an installed flag
-	// without the exact version is refused before any writeback.
 	f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/native-tool"}, "install-evidence", 200)
 	op = f.claimPluginOp(t, "install_plugin")
-	planned = f.controlStep(t, op, "/effects", core.Object{"kind": "plugin_ensure", "workspaceId": wid}, 200)
-	badEvidence := f.controlStep(t, planned.O("operation"), "/effects/"+planned.O("effect").S("id")+"/result",
-		core.Object{"state": "succeeded", "externalId": "sim-evidence", "result": core.Object{"installed": true}}, 400)
-	if badEvidence.S("code") != "invalid_plugin_evidence" {
-		t.Fatalf("missing evidence = %v", badEvidence)
+	f.dispatchPlugin(t, op, "exec-bad-version")
+	err := f.reportPlugin(t, op, "exec-bad-version", []*controlpb.PluginItemResult{{
+		PluginId: "official/native-tool",
+		Outcome:  &controlpb.PluginItemResult_Installed{Installed: &controlpb.PluginItemInstalled{Version: "9.9.9"}},
+	}})
+	expectStatus(t, err, codes.InvalidArgument, controlpb.ErrorCode_ERROR_CODE_INVALID_INPUT)
+	if f.spacePlugin(sid, "official/native-tool").S("observedState") != "installing" {
+		t.Fatal("rejected evidence must leave the instance unchanged")
 	}
 }
 
@@ -212,35 +148,20 @@ func TestPluginAggregationMatrix(t *testing.T) {
 
 	f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/hello-world"}, "install-agg", 200)
 
-	// First workspace: plan → installing; complete → still installing (the
-	// second workspace is pending).
 	op := f.claimPluginOp(t, "install_plugin")
 	wid1 := op.S("workspaceId")
-	planned := f.controlStep(t, op, "/effects", core.Object{"kind": "plugin_ensure", "workspaceId": wid1}, 200)
 	if f.spacePlugin(sid, "official/hello-world").S("observedState") != "installing" {
 		t.Fatal("one in-flight install must aggregate to installing")
 	}
-	effect := planned.O("effect")
-	external := f.substrateSucceed(t, effect)
-	op = planned.O("operation")
-	result := f.controlStep(t, op, "/effects/"+effect.S("id")+"/result", core.Object{"state": "succeeded", "externalId": external.S("externalId"), "result": external.O("result")}, 200)
-	f.controlStep(t, result.O("operation"), "/advance", core.Object{}, 200)
+	f.finishClaimedPlugin(t, op)
 	if f.spacePlugin(sid, "official/hello-world").S("observedState") != "installing" {
 		t.Fatal("one installed plus one pending must aggregate to installing")
 	}
-
-	// Second workspace completes → installed.
 	op = f.claimPluginOp(t, "install_plugin")
-	wid2 := op.S("workspaceId")
-	if wid2 == wid1 {
+	if op.S("workspaceId") == wid1 {
 		t.Fatal("second operation must bind the second workspace")
 	}
-	planned = f.controlStep(t, op, "/effects", core.Object{"kind": "plugin_ensure", "workspaceId": wid2}, 200)
-	effect = planned.O("effect")
-	external = f.substrateSucceed(t, effect)
-	op = planned.O("operation")
-	result = f.controlStep(t, op, "/effects/"+effect.S("id")+"/result", core.Object{"state": "succeeded", "externalId": external.S("externalId"), "result": external.O("result")}, 200)
-	f.controlStep(t, result.O("operation"), "/advance", core.Object{}, 200)
+	f.finishClaimedPlugin(t, op)
 	if f.spacePlugin(sid, "official/hello-world").S("observedState") != "installed" {
 		t.Fatal("all instances installed must aggregate to installed")
 	}
@@ -290,8 +211,7 @@ func TestPluginIsolationSerializationAndRecovery(t *testing.T) {
 	// is lost before dispatch; a second controller reconciles by stable id.
 	f.acknowledgeSimulatorBindings()
 	f.call("POST", f.pluginSpacePath(sid)+"/plugins", core.Object{"identifier": "official/native-tool", "version": f.spacePlugin(sid, "official/native-tool").N("version")}, "install-recover", 200)
-	op := f.claimPluginOp(t, "install_plugin")
-	_ = f.controlStep(t, op, "/effects", core.Object{"kind": "plugin_ensure", "workspaceId": op.S("workspaceId")}, 200)
+	_ = f.claimPluginOp(t, "install_plugin")
 	if _, e := f.client.Control(context.Background(), "/internal/v1/controller-lease/release", core.Object{"epoch": f.controller.Epoch}); e != nil {
 		t.Fatal(e)
 	}
@@ -352,19 +272,95 @@ func TestPluginConcurrentInstallsAcrossSpaces(t *testing.T) {
 	}
 }
 
-// completeNextPlugin drives one explicitly acknowledged simulator maintenance intent. Its disk/digest
-// assertions are useful Cloud contract evidence, never real Node execution evidence.
+// completeNextPlugin claims the next plugin operation and reports a successful Node execution.
+// The report is simulated evidence of Cloud's writeback rules, not of a package installed on disk.
 func (f *fixture) completeNextPlugin(t *testing.T, kind string) {
 	t.Helper()
 	f.acknowledgeSimulatorBindings()
-	op := f.claimPluginOp(t, kind)
-	effectKind := "plugin_ensure"
-	if kind == "remove_plugin" {
-		effectKind = "plugin_delete"
+	f.finishClaimedPlugin(t, f.claimPluginOp(t, kind))
+}
+
+func (f *fixture) finishClaimedPlugin(t *testing.T, op core.Object) {
+	t.Helper()
+	execution := "exec-" + op.S("id")
+	f.dispatchPlugin(t, op, execution)
+	must(t, f.reportPlugin(t, op, execution, successPluginItems(op)))
+	f.controlStep(t, op, "/advance", core.Object{}, 200)
+}
+
+func (f *fixture) dispatchPlugin(t *testing.T, op core.Object, execution string) {
+	t.Helper()
+	nodeID, _ := f.workspaceNode(t, op.S("workspaceId"))
+	_, e := f.executions.RecordDispatch(asController(f.client.Subject), &controlpb.RecordDispatchRequest{
+		SubmissionId: "dispatch-" + execution, Epoch: op.N("controllerEpoch"), OperationId: op.S("id"),
+		ExecutionId: execution, NodeId: nodeID, Input: pluginInputProto(op),
+	})
+	must(t, e)
+}
+
+func (f *fixture) reportPlugin(t *testing.T, op core.Object, execution string, items []*controlpb.PluginItemResult) error {
+	t.Helper()
+	nodeID, incarnation := f.workspaceNode(t, op.S("workspaceId"))
+	_, e := f.executions.RecordQueriedResult(asController(f.client.Subject), &controlpb.RecordQueriedResultRequest{
+		SubmissionId: "result-" + execution, Epoch: op.N("controllerEpoch"), OperationId: op.S("id"), ExecutionId: execution,
+		Result: &controlpb.ExecutionResult{
+			Node:    &controlpb.NodeIdentity{NodeId: nodeID, NodeIncarnationId: incarnation},
+			Outcome: &controlpb.ExecutionResult_PluginsResult{PluginsResult: &controlpb.PluginsResult{Items: items}},
+		},
+	})
+	return e
+}
+
+func (f *fixture) workspaceNode(t *testing.T, wid string) (string, string) {
+	t.Helper()
+	var id, incarnation string
+	must(t, f.store.Pool.QueryRow(`SELECT n.node_id,n.node_incarnation_id FROM node_instances n JOIN sandbox_instances s ON s.id=n.sandbox_instance_id WHERE s.workspace_id=$1 AND n.ended_at IS NULL ORDER BY n.id DESC LIMIT 1`, wid).Scan(&id, &incarnation))
+	return id, incarnation
+}
+
+func successPluginItems(op core.Object) []*controlpb.PluginItemResult {
+	plugins := objectList(op.O("request")["plugins"])
+	items := make([]*controlpb.PluginItemResult, 0, len(plugins))
+	for _, plugin := range plugins {
+		if op.S("kind") == "remove_plugin" {
+			items = append(items, &controlpb.PluginItemResult{PluginId: plugin.S("pluginId"), Outcome: &controlpb.PluginItemResult_Removed{Removed: &controlpb.PluginItemRemoved{}}})
+			continue
+		}
+		items = append(items, &controlpb.PluginItemResult{PluginId: plugin.S("pluginId"), Outcome: &controlpb.PluginItemResult_Installed{Installed: &controlpb.PluginItemInstalled{Version: plugin.S("version")}}})
 	}
-	planned := f.controlStep(t, op, "/effects", core.Object{"kind": effectKind, "workspaceId": op.S("workspaceId")}, 200)
-	effect := planned.O("effect")
-	external := f.substrateSucceed(t, effect)
-	result := f.controlStep(t, planned.O("operation"), "/effects/"+effect.S("id")+"/result", core.Object{"state": "succeeded", "externalId": external.S("externalId"), "result": external.O("result")}, 200)
-	f.controlStep(t, result.O("operation"), "/advance", core.Object{}, 200)
+	return items
+}
+
+func pluginInputProto(op core.Object) *controlpb.ExecutionInput {
+	plugins := objectList(op.O("request")["plugins"])
+	if op.S("kind") == "remove_plugin" {
+		items := make([]*controlpb.PluginRemoval, 0, len(plugins))
+		for _, plugin := range plugins {
+			items = append(items, &controlpb.PluginRemoval{PluginId: plugin.S("pluginId"), Version: plugin.S("version")})
+		}
+		return &controlpb.ExecutionInput{Spec: &controlpb.ExecutionInput_RemovePlugins{RemovePlugins: &controlpb.RemovePluginsSpec{Plugins: items}}}
+	}
+	items := make([]*controlpb.PluginInstall, 0, len(plugins))
+	for _, plugin := range plugins {
+		item := &controlpb.PluginInstall{PluginId: plugin.S("pluginId"), Version: plugin.S("version")}
+		if universal := plugin.O("universal"); universal.S("url") != "" {
+			item.Universal = &controlpb.PluginDownload{Url: universal.S("url"), Sha256: universal.S("sha256")}
+		}
+		for _, target := range objectList(plugin["targets"]) {
+			item.Targets = append(item.Targets, &controlpb.PluginTargetDownload{Target: target.S("target"), Download: &controlpb.PluginDownload{Url: target.S("url"), Sha256: target.S("sha256")}})
+		}
+		items = append(items, item)
+	}
+	return &controlpb.ExecutionInput{Spec: &controlpb.ExecutionInput_InstallPlugins{InstallPlugins: &controlpb.InstallPluginsSpec{Plugins: items}}}
+}
+
+func objectList(v any) []core.Object {
+	list, _ := v.([]any)
+	out := make([]core.Object, 0, len(list))
+	for _, item := range list {
+		if m, ok := item.(map[string]any); ok {
+			out = append(out, core.Object(m))
+		}
+	}
+	return out
 }

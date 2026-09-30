@@ -24,6 +24,10 @@
   - Advances or defers operations with proper monotonic epoch fencing.
   - Drives the clone step (`clone.go`) through the gRPC `ExecutionService`: registers the execution, lets the simulated Node run it, records the queried result, and defers `clone_failed` to retry_wait.
 
+### Agent session double (`agent.go`)
+
+Every bounded Controller step services run work, Thread commands and Node evidence so quiesce cannot starve its own end-command dependency. The disk-backed `AgentNode` fixes execution input, deduplicates command IDs, echoes initial/additional turns and reports termination after an end command. A replacement Controller reopens the same journal. This proves Cloud control flow only: delivery explicitly reports upload_failed until a real object uploader and verified Revision path exist.
+
 ### Ephemeral credential issuer
 - `NewCredentials()` generates in-memory Ed25519 cryptographic keypairs for the four distinct actor roles: `gateway`, `controller`, `node`, and `user`.
 - Signs short-lived JWT tokens on demand for simulator test runs, matching production cryptographic token structures without requiring external authentication infrastructure.

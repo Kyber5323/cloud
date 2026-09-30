@@ -72,6 +72,10 @@ func run() (runErr error) {
 		return e
 	}
 	defer func() { runErr = errors.Join(runErr, store.Pool.Close()) }()
+	store.ObjectStore, e = cfg.ObjectStore.Open()
+	if e != nil {
+		return e
+	}
 	configureCollaboration(store, cfg.Collaboration.DevelopmentFixtures, log)
 	if e := store.CheckSchema(ctx); e != nil {
 		return e

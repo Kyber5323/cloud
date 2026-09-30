@@ -145,6 +145,9 @@ func setup(t *testing.T) *fixture {
 	f.controlConn = controlConn(t, store)
 	f.executions = controlpb.NewExecutionServiceClient(f.controlConn)
 	f.controller = &simulator.Controller{Client: client, SubstrateURL: external.URL, Executions: f.executions}
+	f.controller.AgentRuns = controlpb.NewAgentRunServiceClient(f.controlConn)
+	f.controller.AgentNode, e = simulator.NewAgentNode(filepath.Join(root, "agent-node"))
+	must(t, e)
 	f.external, f.pgConfig = external, config
 	validateHTTP(t, f)
 	must(t, f.controller.Acquire(context.Background()))
@@ -270,7 +273,7 @@ func (f *fixture) acknowledgeSimulatorBindings() {
 	list, err := api.ListBindings(ctx, &controlpb.ListBindingsRequest{Epoch: f.controller.Epoch})
 	must(f.t, err)
 	for _, b := range list.Bindings {
-		if f.scalar("SELECT count(*) FROM execution_tickets WHERE workspace_id=$1 AND state='active'", b.WorkspaceId) != 0 || f.scalar("SELECT count(*) FROM clone_executions WHERE workspace_id=$1 AND result IS NULL", b.WorkspaceId) != 0 {
+		if f.scalar("SELECT count(*) FROM execution_tickets WHERE workspace_id=$1 AND state='active'", b.WorkspaceId) != 0 || f.scalar("SELECT count(*) FROM clone_executions WHERE workspace_id=$1 AND result IS NULL", b.WorkspaceId) != 0 || f.scalar("SELECT count(*) FROM node_executions WHERE workspace_id=$1 AND result IS NULL", b.WorkspaceId) != 0 {
 			continue
 		}
 		_, err = api.AcknowledgeBinding(ctx, &controlpb.AcknowledgeBindingRequest{SubmissionId: uuid.NewString(), Epoch: f.controller.Epoch, WorkspaceId: b.WorkspaceId, NodeInstanceId: b.NodeInstanceId, ControlEpoch: b.ControlEpoch, ControlVersion: b.ControlVersion, InputClosed: b.InputClosed})
