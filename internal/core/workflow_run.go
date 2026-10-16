@@ -91,7 +91,13 @@ func createWorkflowRun(t *transaction, r *PublicRequest, uid string) Object {
 	input := r.Body.O("input")
 	requireWorkflowRunInput(s.O("graph"), input)
 	id := newID()
-	t.exec("INSERT INTO workflow_runs(id,tenant_id,workflow_id,snapshot_id,name,status,input) VALUES($1,$2,$3,$4,$5,$6,$7)", id, r.TenantID, r.WorkflowID, s.S("id"), name, "pending", jsonText(input))
+	// The invocation identity freezes here (D3): created_by is the aggregate's actor for the whole
+	// run — the run Workspace lifecycle reads it instead of re-resolving who pressed Run. The
+	// authenticated Identity, not a /users path parameter, is who that is. project_id stays unset on
+	// this path; the invocation path that knows a project (@, #71) freezes it too.
+	require(r.Identity != nil, 401, "user_credential_required")
+	createdBy := identityWithAlias(t, r.Identity).S("id")
+	t.exec("INSERT INTO workflow_runs(id,tenant_id,workflow_id,snapshot_id,name,status,input,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)", id, r.TenantID, r.WorkflowID, s.S("id"), name, "pending", jsonText(input), createdBy)
 	if t.simulator != nil {
 		nodeStates, rounds, status := t.simulator.SimulateWorkflowRun(s.O("graph"), input)
 		t.exec("UPDATE workflow_runs SET node_states=$1,rounds=$2,status=$3,started_at=now(),finished_at=now(),version=version+1,updated_at=now() WHERE id=$4", jsonText(nodeStates), jsonText(rounds), status, id)
