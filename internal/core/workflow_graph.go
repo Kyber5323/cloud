@@ -390,11 +390,10 @@ func validateWorkflowSlots(graph Object, nodes []any) []workflowGraphProblem {
 // and `modelId`, when present, are non-empty strings. A hint never resolves an executor, so it is
 // checked only far enough to keep the document well formed for the runner that reads it.
 func validSlotHint(hint any) bool {
-	o, ok := hint.(map[string]any)
+	h, ok := asWorkflowObject(hint)
 	if !ok {
 		return false
 	}
-	h := Object(o)
 	for _, key := range []string{"agentCli", "modelId"} {
 		value, present := h[key]
 		if !present || value == nil {
@@ -415,8 +414,8 @@ func workflowSlotDeclarations(graph Object) []Object {
 	declared, _ := graph["executorSlots"].([]any)
 	out := []Object{}
 	for _, item := range declared {
-		if slot, ok := item.(map[string]any); ok {
-			out = append(out, Object(slot))
+		if slot, ok := asWorkflowObject(item); ok {
+			out = append(out, slot)
 		}
 	}
 	return out
@@ -443,11 +442,10 @@ func workflowReferencedSlots(nodes []any) []workflowSlotReference {
 	index := map[string]int{}
 	out := []workflowSlotReference{}
 	for _, raw := range nodes {
-		node, ok := raw.(map[string]any)
+		o, ok := asWorkflowObject(raw)
 		if !ok {
 			continue
 		}
-		o := Object(node)
 		data := o.O("data")
 		if data.S("kind") != "agent" {
 			continue

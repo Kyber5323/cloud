@@ -21,10 +21,12 @@ type PublicRequest struct {
 	ModelConnectionID string
 	// Session filters are independent of resource IDs used by public route dispatch.
 	SessionProjectID, SessionStatus, SessionAgent, SessionFrom, SessionTo string
-	Limit                                                                 int
-	Body                                                                  Object
-	Identity                                                              *Claims
-	Person                                                                *DirectoryPerson
+	// SlotName addresses one executor-slot mapping under /api/v1/me/executor-slot-mappings/:slot.
+	SlotName string
+	Limit    int
+	Body     Object
+	Identity *Claims
+	Person   *DirectoryPerson
 }
 
 // Public executes one authorized public request in a short database transaction.
@@ -54,6 +56,11 @@ func (s *Store) Public(ctx context.Context, r *PublicRequest) (Object, int, erro
 		if strings.HasPrefix(r.Path, "/api/v1/me/model-connections") || r.Path == "/api/v1/me/model-default" {
 			var out Object
 			out, status = personalModelsPublic(t, r, uid)
+			return out
+		}
+		if strings.HasPrefix(r.Path, "/api/v1/me/executor-slot-mappings") {
+			var out Object
+			out, status = personalSlotMappingsPublic(t, r, uid)
 			return out
 		}
 		if r.Path == "/api/v1/me/git-identity" {

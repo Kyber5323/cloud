@@ -1,10 +1,10 @@
 package core
 
 // DB tests for the Cloud-side workflow scheduler's advance pass (workflow_scheduler.go): a pending
-// run is claimed and settled from the frozen snapshot's graph, agent nodes fail the run honestly
-// until the execution wiring lands, and the pass is idempotent against already-advanced runs. Each
-// test is a real isolated schema (dispatcherDB), and the graph reaches the pass the way production
-// delivers it — jsonb round-tripped, so every document is plain map[string]any.
+// run is claimed and settled from the frozen snapshot's graph, an agent node a run cannot execute
+// fails it honestly, and the pass is idempotent against already-advanced runs. Each test is a real
+// isolated schema (dispatcherDB), and the graph reaches the pass the way production delivers it —
+// jsonb round-tripped, so every document is plain map[string]any.
 
 import (
 	"context"
@@ -94,9 +94,10 @@ func TestWorkflowAdvanceSucceedsLinearRun(t *testing.T) {
 	}
 }
 
-// A ready agent node settles the run failed with an explicit reason: the node never ran, so it is
-// never recorded as succeeded (invariant 5) and nothing downstream of it committed a state.
-func TestWorkflowAdvanceFailsRunOnUnwiredAgentNode(t *testing.T) {
+// A ready agent node on a run with no project settles the run failed with an explicit reason: the
+// session has nowhere to run, so the node is never recorded as succeeded (invariant 5) and nothing
+// downstream of it committed a state.
+func TestWorkflowAdvanceFailsRunOnProjectlessAgentNode(t *testing.T) {
 	store := dispatcherDB(t)
 	runID := seedWorkflowRunScene(t, store, wfGraph(
 		[]Object{wfNode("s", "start", ""), wfNode("a", "agent", "worker"), wfNode("o", "output", "")},
@@ -110,12 +111,8 @@ func TestWorkflowAdvanceFailsRunOnUnwiredAgentNode(t *testing.T) {
 	if status != "failed" {
 		t.Fatalf("run settled %q; want failed", status)
 	}
-	// The unwired-agent path is the one failure that writes a run error of its own rather than
-	// reusing the node's reason, and the point of it is that the run names the node. The assertion
-	// is the whole sentence: a substring check on the id would assert nothing here, because the node
-	// is named "a" and every non-empty string contains it.
-	if runErr != "agent node a is not wired to execution yet" {
-		t.Fatalf("run error %q; want it to name the unwired agent node", runErr)
+	if runErr != "workflow_run_project_required" {
+		t.Fatalf("run error %q; want workflow_run_project_required", runErr)
 	}
 	agent, ok := asWorkflowObject(states["a"])
 	if !ok {
@@ -124,11 +121,11 @@ func TestWorkflowAdvanceFailsRunOnUnwiredAgentNode(t *testing.T) {
 	if agent.S("status") != "failed" {
 		t.Fatalf("agent node status = %q; want failed", agent.S("status"))
 	}
-	if agent.O("output").S("reason") != "agent_execution_not_wired" {
-		t.Fatalf("agent node reason = %q; want agent_execution_not_wired", agent.O("output").S("reason"))
+	if agent.O("output").S("reason") != "workflow_run_project_required" {
+		t.Fatalf("agent node reason = %q; want workflow_run_project_required", agent.O("output").S("reason"))
 	}
 	if _, ran := states["o"]; ran {
-		t.Fatal("output node downstream of the unwired agent committed a state")
+		t.Fatal("output node downstream of the failed agent committed a state")
 	}
 	if _, ran := states["s"]; !ran {
 		t.Fatal("start node before the agent did not commit its state")

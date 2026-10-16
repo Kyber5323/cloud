@@ -96,6 +96,46 @@ func (s *Store) AdvanceWorkflowRunsOnce(ctx context.Context) error {
 			_ = err
 		}
 	}
+	return s.redeclareWorkflowRunWorkspaceDeletes(ctx)
+}
+
+// redeclareWorkflowRunWorkspaceDeletes re-declares the Workspace deletion of every terminal run
+// still holding a live Workspace. finishWorkflowRunCleanup declares delete in the pass that
+// settles the run; a busy Project (another operation in flight) returns busy, so the declaration
+// waits for a later pass — this second scan is the retry. Idempotent: deleteWorkflowRunWorkspace
+// treats an already-declared or already-deleted Workspace as done.
+func (s *Store) redeclareWorkflowRunWorkspaceDeletes(ctx context.Context) error {
+	rows, err := s.Pool.QueryContext(ctx, `
+		SELECT r.id FROM workflow_runs r
+		JOIN workspaces w ON w.workflow_run_id=r.id
+		WHERE r.status IN ('failed','cancelled','succeeded') AND r.deleted_at IS NULL
+		  AND w.deleted_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM operations o WHERE o.workspace_id=w.id AND o.kind='delete_workspace'
+		   AND o.state IN ('queued','running','retry_wait','blocked','succeeded'))
+		ORDER BY r.created_at, r.id LIMIT $1`, workflowAdvanceBatchSize)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if _, err := s.transact(ctx, func(t *transaction) Object {
+			finishWorkflowRunCleanup(t, id)
+			return Object{}
+		}); err != nil {
+			_ = err
+		}
+	}
 	return nil
 }
 
@@ -396,6 +436,19 @@ func advanceWorkflowRun(t *transaction, runID string) {
 		return
 	}
 	states := workflowStatesFromJSON(run.O("nodeStates"))
+	// A committed running agent node settles from its session execution's terminal evidence before
+	// anything else runs: sessions serialize per run (one unregistered agent_session work item per
+	// run), and the next wave waits for the terminal commit. The pass returns after any outcome —
+	// a settled node lets the next tick execute its downstream wave.
+	if nodeID, running := workflowRunningAgentNode(states); running {
+		if _, cont := workflowAgentSessionOutcome(t, runID, version, nodeID, states); !cont {
+			return
+		}
+		// A settled session commits its terminal state and continues the pass; that commit bumped
+		// the row's version, so the wave it unblocks must CAS against the new one — a stale version
+		// would make the pass's final settle a silent no-op and leave the run in `running`.
+		version = workflowRunVersion(t, runID, version)
+	}
 	for {
 		projection := projectWorkflowNodes(graph, states)
 		node, ready := projection.readyNode()
@@ -403,18 +456,11 @@ func advanceWorkflowRun(t *transaction, runID string) {
 			break
 		}
 		if node.Kind == "agent" {
-			// Phase-1 boundary: agent execution through the control plane is the next step of
-			// the same decision. Failing the run here is the honest terminal state — the node
-			// never ran, so it is never recorded as succeeded, and the run names the gap.
-			states[node.ID] = workflowNodeState{
-				Status:      "failed",
-				DisplayName: workflowNodeDisplayName(node),
-				StartedAt:   nowRFC3339(),
-				FinishedAt:  nowRFC3339(),
-				Output:      Object{"reason": "agent_execution_not_wired"},
-			}
-			settleWorkflowRunStates(t, runID, version, "failed",
-				"agent node "+node.ID+" is not wired to execution yet", states)
+			// The session path: provision the Workspace, wait for a connected Node, build the
+			// spec from the frozen per-slot bindings, commit running and release the work item.
+			// The pass returns either way — a started session commits running, and the next tick
+			// settles it from terminal evidence.
+			startWorkflowAgentSession(t, run, node, version, states)
 			return
 		}
 		states[node.ID] = executeWorkflowNode(node, run.O("input"), states)
@@ -426,10 +472,14 @@ func advanceWorkflowRun(t *transaction, runID string) {
 	// succeeded otherwise; the failure check reads committed state, never the pass's own reasoning.
 	states = workflowInactiveStates(graph, states)
 	if projectWorkflowNodes(graph, states).hasFailure() {
-		settleWorkflowRunStates(t, runID, version, "failed", workflowRunFailureReason(graph, states), states)
+		finishWorkflowRun(t, runID, version, "failed", workflowRunFailureReason(graph, states), states)
 		return
 	}
-	settleWorkflowRunStates(t, runID, version, "succeeded", "", states)
+	if workflowAnyCancelled(states) {
+		finishWorkflowRun(t, runID, version, "cancelled", "", states)
+		return
+	}
+	finishWorkflowRun(t, runID, version, "succeeded", "", states)
 }
 
 // workflowInactiveStates adds a committed inactive state for every node the projection resolved as
@@ -464,6 +514,17 @@ func settleWorkflowRunStates(t *transaction, runID string, version int64, status
 	}
 	t.exec(`UPDATE workflow_runs SET node_states=$2, status=$3, error=$4, finished_at=now(), version=version+1, updated_at=now()
 		WHERE id=$1 AND version=$5 AND deleted_at IS NULL`, runID, jsonText(encoded), status, runErr, version)
+}
+
+// workflowRunVersion re-reads the row's version after a mid-pass settle bumped it: one pass commits
+// more than once (a settled session, then the wave it unblocks), and every later commit CASes
+// against the version the earlier one left behind. A row that vanished keeps the caller's version,
+// so the following settle fails its CAS and the pass writes nothing.
+func workflowRunVersion(t *transaction, runID string, fallback int64) int64 {
+	if row := t.one("SELECT version FROM workflow_runs WHERE id=$1", runID); row != nil {
+		return row.N("version")
+	}
+	return fallback
 }
 
 // executeWorkflowNode commits one ready non-agent node's result from committed state. start reports

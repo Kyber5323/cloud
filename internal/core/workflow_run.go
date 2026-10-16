@@ -67,7 +67,28 @@ func composeWorkflowRun(t *transaction, run Object) Object {
 	}
 	summary["workflowName"] = workflowName
 	summary["definitionSnapshot"] = graph
+	// The frozen per-slot bindings (mappings decision D3: the run uses these forever). Detail
+	// read only — the history list stays a plain projection of the run row, like definitionSnapshot.
+	summary["modelBindings"] = workflowRunBindings(t, run.S("id"))
 	return summary
+}
+
+// workflowRunBindings projects a run's frozen per-slot model bindings, ordered by slot name so
+// the detail page reads deterministically. `revoked` is the only mutable part: the binding row
+// itself (connection name, model, protocol) is the frozen truth the session will run against.
+func workflowRunBindings(t *transaction, runID string) []any {
+	rows := t.list("SELECT slot_name, connection_name, model, revoked_at FROM run_model_bindings WHERE workflow_run_id=$1 ORDER BY slot_name", runID)
+	out := make([]any, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, Object{
+			"slot":           r.S("slotName"),
+			"connectionName": r.S("connectionName"),
+			"modelId":        r.O("model").S("id"),
+			"modelName":      r.O("model").S("name"),
+			"revoked":        r["revokedAt"] != nil,
+		})
+	}
+	return out
 }
 
 // createWorkflowRun records one execution against one frozen snapshot. Cloud has no
@@ -105,6 +126,13 @@ func createWorkflowRun(t *transaction, r *PublicRequest, uid string) Object {
 	if t.simulator != nil {
 		nodeStates, rounds, status := t.simulator.SimulateWorkflowRun(s.O("graph"), input)
 		t.exec("UPDATE workflow_runs SET node_states=$1,rounds=$2,status=$3,started_at=now(),finished_at=now(),version=version+1,updated_at=now() WHERE id=$4", jsonText(nodeStates), jsonText(rounds), status, id)
+	} else {
+		// The run-creation gate (mappings decision D2): every slot the snapshot references must
+		// resolve against the invoker's personal configuration before the run exists, and each
+		// resolution freezes one binding. Same transaction as the run INSERT — any gap rolls back
+		// the whole creation, so no run ever survives with an unresolved slot. A simulated run
+		// (dev fixtures) filled its whole trace above and never executes, so it freezes nothing.
+		freezeWorkflowRunExecutors(t, id, createdBy, s.O("graph"))
 	}
 	return composeWorkflowRun(t, t.one("SELECT * FROM workflow_runs WHERE id=$1 AND tenant_id=$2", id, r.TenantID))
 }
