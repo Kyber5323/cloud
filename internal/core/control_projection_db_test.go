@@ -10,7 +10,7 @@ import (
 // column of the table is on the Controller wire and must appear in nodeExecutionColumns.
 //
 // workflow_node_id is the graph node a session ran for. It is denormalized onto the row (migration
-// 0038) so the one_session_per_workflow_node partial index has a predicate to test and so the
+// 0040) so the one_session_per_workflow_node partial index has a predicate to test and so the
 // scheduler can attribute a result without joining through execution_work. No Controller contract
 // declares it: the proto ExecutionRecord has no such field, and the JSON binding's NodeExecution
 // schema is closed.
@@ -19,7 +19,7 @@ var nodeExecutionInternalColumns = map[string]bool{
 }
 
 // TestControllerExecutionProjectionIsExplicit is the regression guard for the contract break
-// migration 0038 caused. The Controller-facing reads of node_executions were `SELECT *`, so adding
+// migration 0040 caused. The Controller-facing reads of node_executions were `SELECT *`, so adding
 // the column silently put workflowNodeId into response bodies the closed NodeExecution schema
 // forbids, and the integration suite failed with:
 //

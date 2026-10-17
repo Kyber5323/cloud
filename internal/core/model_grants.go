@@ -85,7 +85,7 @@ func liveIssueRunModelBinding(t *transaction, scope ModelRuntimeScope, bindingID
 // Belonging to the run is not enough here, which is where this differs from its IssueRun
 // counterpart. An IssueRun owns exactly one binding (0033's `run_id ... UNIQUE`), so "the binding's
 // run is the execution's run" names one row. A WorkflowRun owns one binding per executor slot
-// (0036 drops that uniqueness), so the same test admits every slot's binding at once — and the
+// (0039 drops that uniqueness), so the same test admits every slot's binding at once — and the
 // binding id is the caller's to state, since a model mTLS certificate is bound to a tenant,
 // workspace and runtime generation, never to a slot. Node A holding slot `fast` could therefore
 // present node B's `slow` binding id and be handed B's credential and model.

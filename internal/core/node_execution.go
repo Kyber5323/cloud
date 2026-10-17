@@ -4,7 +4,7 @@ package core
 // table except workflow_node_id. That column is Cloud-internal routing — which graph node a session
 // ran for — and no Controller contract has a field for it: the proto ExecutionRecord declares none,
 // and the JSON binding's NodeExecution schema is closed, so a `SELECT *` that carried the column
-// failed the response contract the moment migration 0038 added it.
+// failed the response contract the moment migration 0040 added it.
 //
 // So a row that reaches a response body is projected explicitly, the way workflowRunSummary projects
 // a run row, rather than read whole. A column added to the table therefore does not reach the wire by

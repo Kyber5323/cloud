@@ -70,7 +70,7 @@ func seedWorkflowSessionSceneGraph(t *testing.T, store *Store, graph Object) (ru
 		exec("connection", `INSERT INTO personal_model_connections(id,user_id,credential_id,name,protocol,base_url,auth_mode,models,enabled) VALUES($1,$2,$3,'Personal Provider','openai-completions','https://models.example.invalid/v1','bearer',$4::jsonb,true)`, conn, uid, cred, jsonText([]any{map[string]any{"id": "vendor/model-v1", "name": "Model V1"}}))
 		exec("default", `INSERT INTO personal_model_defaults(user_id,connection_id,model_id,version) VALUES($1,$2,'vendor/model-v1',1)`, uid, conn)
 		// A named slot too, so a graph that references one freezes a second binding on the same run.
-		// 0036 keys a workflow binding by (run, slot) rather than by run alone, which is what makes
+		// 0039 keys a workflow binding by (run, slot) rather than by run alone, which is what makes
 		// "belongs to this run" too weak a test for a session to redeem one (liveWorkflowModelBinding).
 		exec("slot", `INSERT INTO executor_slot_mappings(user_id,slot_name,agent_cli,connection_id,model_id,version) VALUES($1,'strong','official/ora-space.opencode',$2,'vendor/model-v1',1)`, uid, conn)
 		freezeWorkflowRunExecutors(tx, rid, uid, graph)

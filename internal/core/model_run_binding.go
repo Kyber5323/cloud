@@ -48,7 +48,7 @@ func bindRunModel(t *transaction, runID, uid string, input Object) {
 		}
 	}
 	id := newID()
-	// An IssueRun binds the implicit `default` slot: the run_model_bindings migration (0036)
+	// An IssueRun binds the implicit `default` slot: the run_model_bindings migration (0039)
 	// carries slot_name for both run kinds, so a session's binding lookup is uniform
 	// (workflow_run_session.go resolves the same way).
 	t.exec(`INSERT INTO run_model_bindings(id,run_id,slot_name,user_id,connection_id,connection_version,credential_id,connection_name,protocol,base_url,auth_mode,model)
