@@ -253,3 +253,68 @@ func TestWorkflowExecutionWorkDispatchSeam(t *testing.T) {
 		t.Fatalf("permit binding actor=%q operation=%q; want the frozen creator and the workflow run", permit.S("actorUserId"), permit.S("operationId"))
 	}
 }
+
+// The claim hands the Controller the run its work belongs to, and the dispatch that echoes that value
+// back is accepted. This is the whole chain — clone_claim -> clone_dispatch -> node_executions —
+// driven through the real control actions rather than by calling nodeDispatch directly.
+//
+// The seam test above dispatches directly and so cannot see this: a workflow work item carries
+// workflow_run_id and leaves run_id NULL by 0035's mutual-exclusion CHECK, so a claim that projects
+// the agent-only column hands the Controller the empty string, and every dispatch of that item then
+// matches no row and is refused as a conflict it can never resolve.
+func TestWorkflowExecutionWorkClaimCarriesItsRunID(t *testing.T) {
+	store := dispatcherDB(t)
+	runID, _, _ := seedWorkflowIdentityScene(t, store, true)
+	seedControllerLease(t, store)
+
+	var wsID string
+	if _, err := store.transact(context.Background(), func(tx *transaction) Object {
+		created := createWorkflowRunWorkspace(tx, runID)
+		if created.B("busy") {
+			t.Fatal("the project must be idle")
+		}
+		wsID = created.O("workspace").S("id")
+		settleCreateWorkspaceOperation(t, tx, created.O("operation").S("id"))
+		runWorkspaceSettled(tx, runID, "ready")
+		tx.exec(`UPDATE workspaces SET observed_state='ready', admission_open=true, version=version+1 WHERE id=$1`, wsID)
+		return Object{}
+	}); err != nil {
+		t.Fatalf("stage ready workspace: %v", err)
+	}
+	sandbox, nodeService := bindConnectedNode(t, store, wsID)
+
+	input := Object{"kind": "agent_session"}
+	target := Object{"workspaceId": wsID, "sandboxInstanceId": sandbox, "nodeId": nodeService}
+	work, err := store.EnqueueExecutionWork(context.Background(), runID, "agent_session", input, target, time.Time{})
+	if err != nil {
+		t.Fatalf("enqueue workflow work: %v", err)
+	}
+
+	claims := controllerClaims()
+	pick, err := store.Control(context.Background(), &ControlRequest{Action: "clone_claim", Body: Object{"epoch": 1}, Service: claims})
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	claimed := pick.O("work")
+	if claimed.S("id") != work.S("id") {
+		t.Fatalf("claim returned work %v; want the declared workflow item", claimed)
+	}
+	if claimed.S("claimedRunId") != runID {
+		t.Fatalf("claim projected run %q; want the workflow run %q — an empty value is refused at every dispatch", claimed.S("claimedRunId"), runID)
+	}
+
+	execution := "exec-claim-" + runID[:8]
+	if _, err := store.Control(context.Background(), &ControlRequest{
+		Action: "clone_dispatch", SubmissionID: "claim-dispatch", Service: claims,
+		Body: Object{"epoch": int64(1), "operationId": claimed.S("claimedRunId"), "executionId": execution, "nodeId": nodeService, "input": input},
+	}); err != nil {
+		t.Fatalf("dispatch the claimed run id: %v", err)
+	}
+	var operation, workID string
+	if err := store.Pool.QueryRow(`SELECT coalesce(operation_id::text,''),coalesce(work_id::text,'') FROM node_executions WHERE execution_id=$1`, execution).Scan(&operation, &workID); err != nil {
+		t.Fatalf("read node execution: %v", err)
+	}
+	if operation != runID || workID != work.S("id") {
+		t.Fatalf("node execution operation=%q work=%q; want the workflow run and the claimed item", operation, workID)
+	}
+}

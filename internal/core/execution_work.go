@@ -105,7 +105,21 @@ func claimWorkItem(t *transaction) Object {
 	} else if t.one("SELECT id FROM clone_requests WHERE state='queued'") != nil {
 		reject(410, "runtime_scope_required")
 	}
-	work := t.one("SELECT * FROM execution_work ew WHERE execution_id IS NULL AND available_at<=clock_timestamp() AND NOT EXISTS(SELECT 1 FROM agent_run_residuals ar WHERE ar.run_id=ew.run_id) ORDER BY created_at,id LIMIT 1")
+	// A work item names the run it belongs to in one of two columns: agent work carries run_id (an
+	// issue_runs id), workflow work carries workflow_run_id (a workflow_runs id) and leaves run_id
+	// NULL by the mutual-exclusion CHECK 0035 added. The Controller is handed the run id as the
+	// operation id and echoes it back on dispatch, which resolves either column — so the claim has to
+	// project one value. Reading the agent-only column instead hands back the empty string a workflow
+	// row produces, and every dispatch of that item is then refused as a conflict it cannot resolve.
+	//
+	// The alias is deliberate rather than coalescing over run_id: the row is serialized with
+	// row_to_json, which keeps both copies of a repeated column name, and which one the decoder ends
+	// up with is not something this query should depend on.
+	work := t.one(`SELECT ew.*, coalesce(ew.run_id, ew.workflow_run_id) AS claimed_run_id
+		FROM execution_work ew
+		WHERE execution_id IS NULL AND available_at<=clock_timestamp()
+		  AND NOT EXISTS(SELECT 1 FROM agent_run_residuals ar WHERE ar.run_id=ew.run_id)
+		ORDER BY created_at,id LIMIT 1`)
 	if work != nil && (request == nil || work.S("createdAt") < request.S("createdAt")) {
 		return Object{"work": work}
 	}
