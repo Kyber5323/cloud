@@ -155,7 +155,7 @@ func (s *Store) settleSessionEnded(t *transaction, runID, executionID string, en
 	if err != nil {
 		return err
 	}
-	enqueueExecutionWork(t, runID, "deliver_revision", spec, sessionStartTarget(t, o.S("workspaceId")), time.Time{})
+	enqueueExecutionWork(t, runID, "deliver_revision", spec, sessionStartTarget(t, o.S("workspaceId")), "", time.Time{})
 
 	// Last, so lastSeq is the high-water mark this transaction is about to commit. `ended` is a
 	// state-only change with a cleared idleSince, and the discards change per-turn status: both

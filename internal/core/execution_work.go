@@ -9,15 +9,18 @@ import (
 // Repeating the same unregistered input returns the original item. A different input conflicts.
 func (s *Store) EnqueueExecutionWork(ctx context.Context, runID, kind string, input, target Object, availableAt time.Time) (Object, error) {
 	return s.transact(ctx, func(t *transaction) Object {
-		return enqueueExecutionWork(t, runID, kind, input, target, availableAt)
+		return enqueueExecutionWork(t, runID, kind, input, target, "", availableAt)
 	})
 }
 
-func enqueueExecutionWork(t *transaction, runID, kind string, input, target Object, availableAt time.Time) Object {
+// graphNode names the workflow graph node a WorkflowRun's session work belongs to, so the scheduler
+// can read that node's own execution back (workflowAgentSessionOutcome). IssueRun work has no graph
+// and passes "".
+func enqueueExecutionWork(t *transaction, runID, kind string, input, target Object, graphNode string, availableAt time.Time) Object {
 	require(validID(runID), 400, "invalid_dispatch")
 	run := t.one("SELECT * FROM issue_runs WHERE id=$1 AND deleted_at IS NULL", runID)
 	if run == nil {
-		return enqueueWorkflowExecutionWork(t, runID, kind, input, target, availableAt)
+		return enqueueWorkflowExecutionWork(t, runID, kind, input, target, graphNode, availableAt)
 	}
 	require(t.one("SELECT run_id FROM agent_run_residuals WHERE run_id=$1", runID) == nil, 409, "dispatch_conflict")
 	if kind == "deliver_revision" {
@@ -59,21 +62,26 @@ func enqueueExecutionWork(t *transaction, runID, kind string, input, target Obje
 // enqueueWorkflowExecutionWork releases one workflow run's session work for Controllers to claim.
 // D8: the item registers against workflow_runs — exactly one unregistered item per run (the
 // workflow partial index), kind fixed to agent_session, and no delivery variant (D7 defers
-// 成果交付). Repeating the same unregistered input returns the original item; a different input conflicts.
-func enqueueWorkflowExecutionWork(t *transaction, runID, kind string, input, target Object, availableAt time.Time) Object {
+// 成果交付). graphNode records which graph node's session this is: a run has one agent node
+// running at a time but several over its life (D4), and the scheduler reads the node's terminal
+// evidence back through this link. Repeating the same unregistered input returns the original item;
+// a different input conflicts.
+func enqueueWorkflowExecutionWork(t *transaction, runID, kind string, input, target Object, graphNode string, availableAt time.Time) Object {
 	require(t.one("SELECT id FROM workflow_runs WHERE id=$1 AND deleted_at IS NULL", runID) != nil, 404, "not_found")
 	require(kind == "agent_session", 400, "invalid_dispatch")
 	require(input.S("kind") == kind, 400, "invalid_dispatch")
 	require(target.S("workspaceId") != "" && target.S("sandboxInstanceId") != "" && target.S("nodeId") != "", 400, "invalid_dispatch")
 	if existing := t.one("SELECT * FROM execution_work WHERE workflow_run_id=$1 AND execution_id IS NULL", runID); existing != nil {
-		require(existing.S("kind") == kind && jsonText(existing.O("input")) == jsonText(input) && jsonText(existing.O("target")) == jsonText(target), 409, "dispatch_conflict")
+		require(existing.S("kind") == kind && existing.S("workflowNodeId") == graphNode && jsonText(existing.O("input")) == jsonText(input) && jsonText(existing.O("target")) == jsonText(target), 409, "dispatch_conflict")
 		return existing
 	}
 	id := newID()
+	// Work released without a graph node (the public seam) stores NULL, not the empty string: the
+	// column's CHECK and the scheduler's node-scoped lookups both read "no node" as NULL.
 	if availableAt.IsZero() {
-		t.exec("INSERT INTO execution_work(id,workflow_run_id,kind,input,target) VALUES($1,$2,$3,$4,$5)", id, runID, kind, jsonText(input), jsonText(target))
+		t.exec("INSERT INTO execution_work(id,workflow_run_id,kind,input,target,workflow_node_id) VALUES($1,$2,$3,$4,$5,NULLIF($6,''))", id, runID, kind, jsonText(input), jsonText(target), graphNode)
 	} else {
-		t.exec("INSERT INTO execution_work(id,workflow_run_id,kind,input,target,available_at) VALUES($1,$2,$3,$4,$5,$6)", id, runID, kind, jsonText(input), jsonText(target), availableAt)
+		t.exec("INSERT INTO execution_work(id,workflow_run_id,kind,input,target,workflow_node_id,available_at) VALUES($1,$2,$3,$4,$5,NULLIF($6,''),$7)", id, runID, kind, jsonText(input), jsonText(target), graphNode, availableAt)
 	}
 	t.workSignals = append(t.workSignals, runID)
 	return t.one("SELECT * FROM execution_work WHERE id=$1", id)

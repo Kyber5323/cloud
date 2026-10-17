@@ -62,14 +62,22 @@ func dispatchRunExecution(t *transaction, r *ControlRequest, runID, execution, n
 		if input.S("modelBindingId") != "" {
 			require(current.B("modelProxy"), 409, "model_proxy_required")
 		}
-		require(t.one("SELECT execution_id FROM node_executions WHERE operation_id=$1 AND kind='agent_session'", runID) == nil, 409, "dispatch_conflict")
+		// An IssueRun runs exactly one agent session in its life. A WorkflowRun runs one per agent
+		// node (D4 executes them serially through one Workspace), so its sessions are bounded by the
+		// work item this dispatch consumes — the unregistered item is gone once dispatched (below),
+		// and the in-flight check that follows admits only one at a time. The per-run lifetime
+		// uniqueness would refuse every node after the first.
+		if w.S("issueRunId") == runID {
+			require(t.one("SELECT execution_id FROM node_executions WHERE operation_id=$1 AND kind='agent_session'", runID) == nil, 409, "dispatch_conflict")
+		}
 	}
 	if input.S("kind") == "deliver_revision" {
 		require(t.one("SELECT execution_id FROM node_executions WHERE execution_id=$1 AND operation_id=$2 AND workspace_id=$3 AND kind='agent_session' AND result->>'outcome'='agent_session_ended'", input.S("sessionExecutionId"), runID, wid) != nil, 409, "dispatch_conflict")
 	}
 	require(t.one("SELECT execution_id FROM node_executions WHERE operation_id=$1 AND kind IN ('agent_session','deliver_revision') AND result IS NULL AND terminated_by_force_stop_id IS NULL", runID) == nil, 409, "dispatch_conflict")
-	t.exec("INSERT INTO node_executions(execution_id,kind,operation_id,work_id,workspace_id,node_id,node_operation_id,input,dispatched_epoch) VALUES($1,$2,$3,$4,$5,$6,$1,$7,$8)",
-		execution, input.S("kind"), runID, work.S("id"), wid, node, jsonText(input), r.Body.N("epoch"))
+	t.exec(`INSERT INTO node_executions(execution_id,kind,operation_id,work_id,workspace_id,node_id,node_operation_id,input,dispatched_epoch,workflow_node_id)
+		VALUES($1,$2,$3,$4,$5,$6,$1,$7,$8,NULLIF($9,''))`,
+		execution, input.S("kind"), runID, work.S("id"), wid, node, jsonText(input), r.Body.N("epoch"), work.S("workflowNodeId"))
 	t.exec("UPDATE execution_work SET execution_id=$2 WHERE id=$1", work.S("id"), execution)
 	return t.one("SELECT * FROM node_executions WHERE execution_id=$1", execution)
 }

@@ -50,19 +50,25 @@ func workflowRunningAgentNode(states map[string]workflowNodeState) (string, bool
 	return "", false
 }
 
-// workflowAgentSessionOutcome settles a committed running agent node. Terminal evidence (the
-// session execution's result) commits the node's terminal state; a dispatched-but-unreported
-// session is held (the Node owns it); a session that never dispatched fails the node once the
-// startup deadline passes. The run advances on the next tick after any commit.
+// workflowAgentSessionOutcome settles a committed running agent node. Terminal evidence (this
+// node's own session execution's result) commits the node's terminal state; a
+// dispatched-but-unreported session is held (the Node owns it); a session that never dispatched
+// fails the node once the startup deadline passes. The run advances on the next tick after any
+// commit.
+//
+// Every lookup is scoped to the node being settled. A run has several agent sessions over its life
+// (D4 executes its agent nodes serially through one Workspace), so evidence read at run scope —
+// "the newest agent_session result for this run" — would let the second node inherit the first
+// node's result and be recorded succeeded without ever executing (invariant 5).
 func workflowAgentSessionOutcome(t *transaction, runID string, version int64, nodeID string, states map[string]workflowNodeState) (map[string]workflowNodeState, bool) {
 	e := t.one(`SELECT result FROM node_executions
-		WHERE operation_id=$1 AND kind='agent_session' AND result IS NOT NULL
-		ORDER BY created_at DESC LIMIT 1`, runID)
+		WHERE operation_id=$1 AND workflow_node_id=$2 AND kind='agent_session' AND result IS NOT NULL`, runID, nodeID)
 	if e != nil {
 		return commitWorkflowAgentTerminal(t, runID, version, nodeID, states, e.O("result"))
 	}
 	// Dispatched but not yet terminal: the Node owns the session until it reports.
-	if t.one("SELECT 1 FROM node_executions WHERE operation_id=$1 AND kind='agent_session' LIMIT 1", runID) != nil {
+	if t.one(`SELECT execution_id FROM node_executions
+		WHERE operation_id=$1 AND workflow_node_id=$2 AND kind='agent_session'`, runID, nodeID) != nil {
 		return states, false
 	}
 	// Never dispatched: the startup deadline applies. A node committed running with no registered
@@ -245,7 +251,7 @@ func startWorkflowAgentSession(t *transaction, run Object, node workflowNodeView
 	}
 	states[node.ID] = workflowNodeState{Status: "running", DisplayName: workflowNodeDisplayName(node), StartedAt: nowRFC3339()}
 	settleWorkflowRunStates(t, runID, version, "running", "", states)
-	enqueueExecutionWork(t, runID, "agent_session", spec, target, time.Time{})
+	enqueueExecutionWork(t, runID, "agent_session", spec, target, node.ID, time.Time{})
 }
 
 // failWorkflowAgentNode commits one agent node failed with a named reason and finishes the run.

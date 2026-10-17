@@ -19,10 +19,32 @@ func workflowSessionGraph() Object {
 	return g
 }
 
+// workflowTwoAgentGraph is start -> agent a1 -> agent a2 -> output: one run with two agent nodes,
+// which D4 executes serially through the run's single Workspace.
+func workflowTwoAgentGraph() Object {
+	return wfGraph(
+		[]Object{
+			wfNode("s", "start", ""),
+			wfAgentNode("a1", Object{"prompt": "First"}),
+			wfAgentNode("a2", Object{"prompt": "Second"}),
+			wfNode("o", "output", ""),
+		},
+		[][3]string{{"s", "a1", ""}, {"a1", "a2", ""}, {"a2", "o", ""}},
+	)
+}
+
 // seedWorkflowSessionScene stages a project-backed run one advance away from session start: the
 // binding (the same freeze the creation gate performs), and the project space carries the
 // production plugin. Returns the ids the tests read back.
 func seedWorkflowSessionScene(t *testing.T, store *Store) (runID, tid, uid, space, project string) {
+	t.Helper()
+	return seedWorkflowSessionSceneGraph(t, store, workflowSessionGraph())
+}
+
+// seedWorkflowSessionSceneGraph is seedWorkflowSessionScene for a caller-supplied graph: the
+// snapshot, the live document and the frozen bindings all carry the same document, the way
+// publishing freezes a version.
+func seedWorkflowSessionSceneGraph(t *testing.T, store *Store, graph Object) (runID, tid, uid, space, project string) {
 	t.Helper()
 	_, uid = modelUser(t, store, "wf-session")
 	tid, wid, sid, rid := uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()
@@ -37,16 +59,16 @@ func seedWorkflowSessionScene(t *testing.T, store *Store) (runID, tid, uid, spac
 		exec("project", `INSERT INTO projects(id,tenant_id,owner_user_id,space_id,name,repository_url,default_branch,lifecycle) VALUES($1,$2,$3,$4,'wfs','https://example.invalid/wfs.git','main','active')`, project, tid, uid, space)
 		exec("main", `INSERT INTO workspaces(id,tenant_id,owner_user_id,creator_user_id,creator_evidence,project_id,kind,desired_state,observed_state,runtime_generation,requested_ref) VALUES($1,$2,$3,$3,'verified_request',$4,'main','running','ready',1,'HEAD')`, uuid.NewString(), tid, uid, project)
 		exec("plugin", `INSERT INTO space_plugins(space_id,tenant_id,source_namespace,identifier,desired_state,desired_version,observed_state) VALUES($1,$2,'official','ora-space.opencode','installed','1.0.0','installed')`, space, tid)
-		graph, _ := json.Marshal(workflowSessionGraph())
-		exec("workflow", `INSERT INTO workflows(id,tenant_id,name,graph) VALUES($1,$2,'wfs',$3::jsonb)`, wid, tid, string(graph))
-		exec("snapshot", `INSERT INTO workflow_snapshots(id,tenant_id,workflow_id,version,name,graph) VALUES($1,$2,$3,1,'v1',$4::jsonb)`, sid, tid, wid, string(graph))
+		graphJSON, _ := json.Marshal(graph)
+		exec("workflow", `INSERT INTO workflows(id,tenant_id,name,graph) VALUES($1,$2,'wfs',$3::jsonb)`, wid, tid, string(graphJSON))
+		exec("snapshot", `INSERT INTO workflow_snapshots(id,tenant_id,workflow_id,version,name,graph) VALUES($1,$2,$3,1,'v1',$4::jsonb)`, sid, tid, wid, string(graphJSON))
 		exec("run", `INSERT INTO workflow_runs(id,tenant_id,workflow_id,snapshot_id,name,status,input,created_by,project_id) VALUES($1,$2,$3,$4,'disp','pending','{}'::jsonb,$5,$6)`, rid, tid, wid, sid, uid, project)
 		cred := uuid.NewString()
 		conn := uuid.NewString()
 		exec("credential", `INSERT INTO personal_model_credentials(id,user_id,ciphertext,key_id) VALUES($1,$2,repeat('c',64),'test-key')`, cred, uid)
 		exec("connection", `INSERT INTO personal_model_connections(id,user_id,credential_id,name,protocol,base_url,auth_mode,models,enabled) VALUES($1,$2,$3,'Personal Provider','openai-completions','https://models.example.invalid/v1','bearer',$4::jsonb,true)`, conn, uid, cred, jsonText([]any{map[string]any{"id": "vendor/model-v1", "name": "Model V1"}}))
 		exec("default", `INSERT INTO personal_model_defaults(user_id,connection_id,model_id,version) VALUES($1,$2,'vendor/model-v1',1)`, uid, conn)
-		freezeWorkflowRunExecutors(tx, rid, uid, workflowSessionGraph())
+		freezeWorkflowRunExecutors(tx, rid, uid, graph)
 		return Object{}
 	}); err != nil {
 		t.Fatalf("seed scene: %v", err)
@@ -76,8 +98,9 @@ func settleSessionWorkspace(t *testing.T, store *Store, runID string) string {
 }
 
 // startSessionNode connects a Node to the settled Workspace, advances until the agent node is
-// committed running, and returns the Node's service id and the released session spec.
-func startSessionNode(t *testing.T, store *Store, runID, wsID string) (string, Object) {
+// committed running, and returns the Node's service id and the released session spec. graphNode
+// names which agent node of the graph the pass is expected to start.
+func startSessionNode(t *testing.T, store *Store, runID, wsID, graphNode string) (string, Object) {
 	t.Helper()
 	_, nodeService := bindConnectedNode(t, store, wsID)
 	if _, err := store.Pool.Exec(`UPDATE node_instances SET model_proxy=true WHERE workspace_id=$1`, wsID); err != nil {
@@ -87,18 +110,11 @@ func startSessionNode(t *testing.T, store *Store, runID, wsID string) (string, O
 		t.Fatalf("advance to session start: %v", err)
 	}
 	status, _, states, _ := readWorkflowRun(t, store, runID)
-	agent, _ := asWorkflowObject(states["a"])
+	agent, _ := asWorkflowObject(states[graphNode])
 	if status != "running" || agent == nil || agent.S("status") != "running" {
-		t.Fatalf("after session start: %q states=%v; want agent a running", status, states)
+		t.Fatalf("after session start: %q states=%v; want agent %s running", status, states, graphNode)
 	}
-	var rawSpec []byte
-	if err := store.Pool.QueryRow(`SELECT input FROM execution_work WHERE workflow_run_id=$1 AND kind='agent_session'`, runID).Scan(&rawSpec); err != nil {
-		t.Fatalf("read session work: %v", err)
-	}
-	spec := Object{}
-	if err := json.Unmarshal(rawSpec, &spec); err != nil {
-		t.Fatal(err)
-	}
+	spec := sessionWorkSpec(t, store, runID, graphNode)
 	if spec.S("agentPluginId") != opencodeAgentCLI || spec.S("agentPluginVersion") != "1.0.0" || spec.S("modelBindingId") == "" {
 		t.Fatalf("spec = %v", spec)
 	}
@@ -111,22 +127,37 @@ func startSessionNode(t *testing.T, store *Store, runID, wsID string) (string, O
 	return nodeService, spec
 }
 
+// sessionWorkSpec reads back the unregistered session work item a graph node's start released.
+func sessionWorkSpec(t *testing.T, store *Store, runID, graphNode string) Object {
+	t.Helper()
+	var rawSpec []byte
+	if err := store.Pool.QueryRow(`SELECT input FROM execution_work
+		WHERE workflow_run_id=$1 AND workflow_node_id=$2 AND execution_id IS NULL`, runID, graphNode).Scan(&rawSpec); err != nil {
+		t.Fatalf("read session work for node %s: %v", graphNode, err)
+	}
+	spec := Object{}
+	if err := json.Unmarshal(rawSpec, &spec); err != nil {
+		t.Fatal(err)
+	}
+	return spec
+}
+
 // dispatchSession dispatches the released session work from the Node and advances: the pass holds
 // the committed running node until terminal evidence arrives.
-func dispatchSession(t *testing.T, store *Store, runID, nodeService string, spec Object) string {
+func dispatchSession(t *testing.T, store *Store, runID, graphNode, nodeService string, spec Object) string {
 	t.Helper()
-	execution := "exec-" + runID[:8]
+	execution := "exec-" + graphNode + "-" + runID[:8]
 	if _, err := store.transact(context.Background(), func(tx *transaction) Object {
 		nodeDispatch(tx, &ControlRequest{Body: Object{"operationId": runID, "executionId": execution, "nodeId": nodeService, "input": spec, "epoch": int64(1)}})
 		return Object{}
 	}); err != nil {
-		t.Fatalf("dispatch: %v", err)
+		t.Fatalf("dispatch node %s: %v", graphNode, err)
 	}
 	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
 		t.Fatalf("advance after dispatch: %v", err)
 	}
 	_, _, held, _ := readWorkflowRun(t, store, runID)
-	h, _ := asWorkflowObject(held["a"])
+	h, _ := asWorkflowObject(held[graphNode])
 	if h == nil || h.S("status") != "running" {
 		t.Fatalf("dispatched session held: %v", held)
 	}
@@ -168,8 +199,8 @@ func TestWorkflowSessionRunsEndToEnd(t *testing.T) {
 	if _, _, held, _ := readWorkflowRun(t, store, runID); len(held) != 0 {
 		t.Fatalf("advance 2 committed states %v without a connected node", held)
 	}
-	nodeService, spec := startSessionNode(t, store, runID, wsID)
-	execution := dispatchSession(t, store, runID, nodeService, spec)
+	nodeService, spec := startSessionNode(t, store, runID, wsID, "a")
+	execution := dispatchSession(t, store, runID, "a", nodeService, spec)
 	// The Node reports a natural end; the run drains to succeeded and cleans up.
 	reportSessionEnd(t, store, runID, execution, nodeService, "idle_timeout")
 	var runErr string
@@ -202,6 +233,153 @@ func TestWorkflowSessionRunsEndToEnd(t *testing.T) {
 	}
 }
 
+// A run's agent nodes execute serially and settle from their own evidence. The second node starts on
+// the pass that settles the first, so it must be committed running and carry no terminal state: a
+// run-scoped evidence lookup (the newest agent_session result for the run) hands it the first node's
+// result and records it succeeded without it ever executing — and the per-run session uniqueness
+// refuses its dispatch outright, so the node can neither run nor be settled honestly.
+func TestWorkflowSessionRunsTwoAgentNodesInOrder(t *testing.T) {
+	store := dispatcherDB(t)
+	runID, _, _, _, _ := seedWorkflowSessionSceneGraph(t, store, workflowTwoAgentGraph())
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance 1: %v", err)
+	}
+	wsID := settleSessionWorkspace(t, store, runID)
+	nodeService, spec1 := startSessionNode(t, store, runID, wsID, "a1")
+	execution1 := dispatchSession(t, store, runID, "a1", nodeService, spec1)
+	reportSessionEnd(t, store, runID, execution1, nodeService, "idle_timeout")
+
+	// One pass settled a1 and started a2. The loop keeps ticking while a2's session is in flight —
+	// and a2 must still be running: it has no execution of its own, and a run-scoped evidence lookup
+	// hands it a1's result and records it succeeded without it ever executing.
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance while a2 is in flight: %v", err)
+	}
+	status, runErr, states, _ := readWorkflowRun(t, store, runID)
+	a1, _ := asWorkflowObject(states["a1"])
+	a2, _ := asWorkflowObject(states["a2"])
+	if status != "running" || runErr != "" {
+		t.Fatalf("run settled %q error %q states=%v; want running with a2 in flight", status, runErr, states)
+	}
+	if a1 == nil || a1.S("status") != "succeeded" || a1.O("output").S("reason") != "idle_timeout" {
+		t.Fatalf("a1 state = %v; want succeeded/idle_timeout", states["a1"])
+	}
+	if a2 == nil || a2.S("status") != "running" {
+		t.Fatalf("a2 state = %v; want running — a node with no result of its own is never succeeded", states["a2"])
+	}
+	if _, ran := states["o"]; ran {
+		t.Fatalf("the output node ran before a2 settled: %v", states)
+	}
+
+	// The second node dispatches on its own work item and settles from its own result.
+	spec2 := sessionWorkSpec(t, store, runID, "a2")
+	execution2 := dispatchSession(t, store, runID, "a2", nodeService, spec2)
+	if execution2 == execution1 {
+		t.Fatalf("both nodes dispatched as %s; each node needs its own execution", execution1)
+	}
+	reportSessionEnd(t, store, runID, execution2, nodeService, "user_ended")
+
+	status, runErr, states, _ = readWorkflowRun(t, store, runID)
+	if status != "succeeded" || runErr != "" {
+		t.Fatalf("run settled %q error %q states=%v; want succeeded", status, runErr, states)
+	}
+	a1, _ = asWorkflowObject(states["a1"])
+	a2, _ = asWorkflowObject(states["a2"])
+	outs, _ := asWorkflowObject(states["o"])
+	if a1 == nil || a1.S("status") != "succeeded" || a2 == nil || a2.S("status") != "succeeded" || outs == nil || outs.S("status") != "succeeded" {
+		t.Fatalf("node states = %v; want both agents and the output succeeded", states)
+	}
+	// Each node carries its own evidence: a2's reason is its own, not a1's.
+	if reason := a2.O("output").S("reason"); reason != "user_ended" {
+		t.Fatalf("a2 output reason = %q; want user_ended (a1 ended idle_timeout)", reason)
+	}
+
+	// Two executions, each registered against the work item of the node it ran for.
+	rows, err := store.Pool.Query(`SELECT ew.workflow_node_id, ne.execution_id, ne.result->>'reason'
+		FROM node_executions ne JOIN execution_work ew ON ew.id=ne.work_id
+		WHERE ew.workflow_run_id=$1 AND ne.kind='agent_session' ORDER BY ew.workflow_node_id`, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	type session struct{ node, execution, reason string }
+	var sessions []session
+	for rows.Next() {
+		var s session
+		if err := rows.Scan(&s.node, &s.execution, &s.reason); err != nil {
+			t.Fatal(err)
+		}
+		sessions = append(sessions, s)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	want := []session{{"a1", execution1, "idle_timeout"}, {"a2", execution2, "user_ended"}}
+	if len(sessions) != len(want) {
+		t.Fatalf("registered sessions = %v; want one per agent node", sessions)
+	}
+	for i, w := range want {
+		if sessions[i] != w {
+			t.Fatalf("session %d = %v; want %v", i, sessions[i], w)
+		}
+	}
+}
+
+// Dispatch stays bounded now that the per-run agent_session uniqueness applies to IssueRuns alone:
+// the work item is consumed by its dispatch, so no second execution can register against a node's
+// work, and a replayed dispatch is the same fact rather than a second session.
+func TestWorkflowSessionDispatchIsNotRepeatable(t *testing.T) {
+	store := dispatcherDB(t)
+	runID, _, _, _, _ := seedWorkflowSessionSceneGraph(t, store, workflowTwoAgentGraph())
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance 1: %v", err)
+	}
+	wsID := settleSessionWorkspace(t, store, runID)
+	nodeService, spec1 := startSessionNode(t, store, runID, wsID, "a1")
+	dispatch := func(executionID string, input Object) error {
+		_, err := store.transact(context.Background(), func(tx *transaction) Object {
+			nodeDispatch(tx, &ControlRequest{Body: Object{"operationId": runID, "executionId": executionID, "nodeId": nodeService, "input": input, "epoch": int64(1)}})
+			return Object{}
+		})
+		return err
+	}
+	execution1 := "exec-a1-" + runID[:8]
+	if err := dispatch(execution1, spec1); err != nil {
+		t.Fatalf("first dispatch: %v", err)
+	}
+	// The same execution and input is the same fact replayed, not a second session.
+	if err := dispatch(execution1, spec1); err != nil {
+		t.Fatalf("replayed dispatch: %v", err)
+	}
+	// A second execution cannot register against the consumed work item: a run runs one session at
+	// a time, and a node's work item names exactly that node's session.
+	if err := dispatch("exec-a1-again-"+runID[:8], spec1); ErrorCode(err).Code != "dispatch_conflict" {
+		t.Fatalf("second execution for the same node: err = %v; want dispatch_conflict", err)
+	}
+	var executions int
+	if err := store.Pool.QueryRow(`SELECT count(*) FROM node_executions WHERE operation_id=$1 AND kind='agent_session'`, runID).Scan(&executions); err != nil {
+		t.Fatal(err)
+	}
+	if executions != 1 {
+		t.Fatalf("%d agent_session executions registered; want 1", executions)
+	}
+
+	// Once a1 settles, its dispatch cannot be replayed onto a2's released work item: the input a
+	// work item carries is the session it admits, so a settled node's spec is refused rather than
+	// run a second time as the next node.
+	reportSessionEnd(t, store, runID, execution1, nodeService, "idle_timeout")
+	if err := dispatch("exec-a1-late-"+runID[:8], spec1); ErrorCode(err).Code != "dispatch_conflict" {
+		t.Fatalf("late dispatch of a settled node: err = %v; want dispatch_conflict", err)
+	}
+	var stillOne int
+	if err := store.Pool.QueryRow(`SELECT count(*) FROM node_executions WHERE operation_id=$1 AND kind='agent_session'`, runID).Scan(&stillOne); err != nil {
+		t.Fatal(err)
+	}
+	if stillOne != 1 {
+		t.Fatalf("%d agent_session executions after the late dispatch; want 1", stillOne)
+	}
+}
+
 // A session that ends `agent_failed` fails its node and the run with that reason — the evidence
 // decides, not a policy — and the terminal cleanup still runs.
 func TestWorkflowSessionFailureFailsRun(t *testing.T) {
@@ -211,8 +389,8 @@ func TestWorkflowSessionFailureFailsRun(t *testing.T) {
 		t.Fatalf("advance 1: %v", err)
 	}
 	wsID := settleSessionWorkspace(t, store, runID)
-	nodeService, spec := startSessionNode(t, store, runID, wsID)
-	execution := dispatchSession(t, store, runID, nodeService, spec)
+	nodeService, spec := startSessionNode(t, store, runID, wsID, "a")
+	execution := dispatchSession(t, store, runID, "a", nodeService, spec)
 	reportSessionEnd(t, store, runID, execution, nodeService, "agent_failed")
 	status, runErr, states, _ := readWorkflowRun(t, store, runID)
 	if status != "failed" || runErr != "agent_failed" {
@@ -240,7 +418,7 @@ func TestWorkflowSessionStartDeadlineFailsNode(t *testing.T) {
 		t.Fatalf("advance 1: %v", err)
 	}
 	wsID := settleSessionWorkspace(t, store, runID)
-	startSessionNode(t, store, runID, wsID)
+	startSessionNode(t, store, runID, wsID, "a")
 	// The Node never picks the work item up: the committed start ages past the deadline.
 	stale := time.Now().Add(-workflowSessionStartDeadline - time.Minute).UTC().Format(time.RFC3339)
 	if _, err := store.Pool.Exec(`UPDATE workflow_runs SET node_states=jsonb_set(node_states,'{a,startedAt}',to_jsonb($2::text)) WHERE id=$1`, runID, stale); err != nil {
@@ -266,6 +444,40 @@ func TestWorkflowSessionStartDeadlineFailsNode(t *testing.T) {
 	}
 }
 
+// A replayed terminal receipt for a settled run changes nothing: the run's status, its committed
+// node states and its version are exactly what the first settle left, and the extra passes write
+// nothing. Late or duplicate evidence is a no-op (invariant 3).
+func TestWorkflowSessionLateReceiptIsANoOp(t *testing.T) {
+	store := dispatcherDB(t)
+	runID, _, _, _, _ := seedWorkflowSessionScene(t, store)
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance 1: %v", err)
+	}
+	wsID := settleSessionWorkspace(t, store, runID)
+	nodeService, spec := startSessionNode(t, store, runID, wsID, "a")
+	execution := dispatchSession(t, store, runID, "a", nodeService, spec)
+	reportSessionEnd(t, store, runID, execution, nodeService, "idle_timeout")
+	status, runErr, states, version := readWorkflowRun(t, store, runID)
+	if status != "succeeded" {
+		t.Fatalf("run settled %q error %q; want succeeded", status, runErr)
+	}
+	// The Node replays the same terminal fact, and the loop keeps ticking.
+	reportSessionEnd(t, store, runID, execution, nodeService, "idle_timeout")
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance after replay: %v", err)
+	}
+	replayedStatus, replayedErr, replayedStates, replayedVersion := readWorkflowRun(t, store, runID)
+	if replayedStatus != status || replayedErr != runErr {
+		t.Fatalf("replay moved the run to %q error %q; want %q error %q", replayedStatus, replayedErr, status, runErr)
+	}
+	if replayedVersion != version {
+		t.Fatalf("replay bumped the version to %d; want %d", replayedVersion, version)
+	}
+	if jsonText(replayedStates) != jsonText(states) {
+		t.Fatalf("replay rewrote the node states:\n got %v\nwant %v", replayedStates, states)
+	}
+}
+
 // The model grant's live binding resolves a WorkflowRun session through the workflow branch: the
 // frozen slot binding, the dispatched session execution and the confirmed runtime binding authorize
 // it, and an execution that is not this run's session is refused rather than resolved to some other
@@ -277,8 +489,8 @@ func TestWorkflowLiveModelBindingResolvesRun(t *testing.T) {
 		t.Fatalf("advance 1: %v", err)
 	}
 	wsID := settleSessionWorkspace(t, store, runID)
-	nodeService, spec := startSessionNode(t, store, runID, wsID)
-	execution := dispatchSession(t, store, runID, nodeService, spec)
+	nodeService, spec := startSessionNode(t, store, runID, wsID, "a")
+	execution := dispatchSession(t, store, runID, "a", nodeService, spec)
 	// The runtime confirms the Node binding once the session is dispatched — the state the model
 	// gateway's certificate-bound lookups run against.
 	if _, err := store.Pool.Exec(`UPDATE runtime_controls SET binding_confirmed=true,
