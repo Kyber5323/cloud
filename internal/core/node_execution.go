@@ -201,7 +201,7 @@ func pendingExecutions(t *transaction, node string) Object {
 	var clones, nodes []Object
 	if node == "" {
 		clones = t.list("SELECT * FROM clone_executions WHERE result IS NULL AND terminated_by_force_stop_id IS NULL ORDER BY created_at,execution_id")
-		nodes = t.list("SELECT "+nodeExecutionColumns+" FROM node_executions WHERE result IS NULL AND terminated_by_force_stop_id IS NULL ORDER BY created_at,execution_id")
+		nodes = t.list("SELECT " + nodeExecutionColumns + " FROM node_executions WHERE result IS NULL AND terminated_by_force_stop_id IS NULL ORDER BY created_at,execution_id")
 	} else {
 		clones = t.list("SELECT * FROM clone_executions WHERE result IS NULL AND terminated_by_force_stop_id IS NULL AND node_id=$1 ORDER BY created_at,execution_id", node)
 		nodes = t.list("SELECT "+nodeExecutionColumns+" FROM node_executions WHERE result IS NULL AND terminated_by_force_stop_id IS NULL AND node_id=$1 ORDER BY created_at,execution_id", node)

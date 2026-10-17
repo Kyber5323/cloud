@@ -254,7 +254,8 @@ func TestValidateWorkflowGraph(t *testing.T) {
 			graph: workflowGraph(
 				[]any{graphStart("s"), graphAgent("a", "", false), graphAgent("b", "", false), graphAgent("c", "", false)},
 				[]any{graphEdge("s", "a"), graphEdge("s", "b"), graphEdge("a", "c"), graphEdge("b", "c")},
-				nil),
+				nil,
+			),
 		},
 		{
 			// The shortest cycle there is, and one the editor can produce by dragging an edge back onto
@@ -277,7 +278,8 @@ func TestValidateWorkflowGraph(t *testing.T) {
 			graph: workflowGraph(
 				[]any{graphStart("s"), graphAgent("a", "", false), graphAgent("b", "", false), graphAgent("c", "", false), graphAgent("o", "", false)},
 				[]any{graphEdge("s", "a"), graphEdge("a", "b"), graphEdge("b", "a"), graphEdge("b", "c"), graphEdge("c", "o")},
-				nil),
+				nil,
+			),
 			want: []any{Object{"code": "graph_cycle", "nodeId": "b"}},
 		},
 		{
@@ -289,7 +291,8 @@ func TestValidateWorkflowGraph(t *testing.T) {
 			graph: workflowGraph(
 				[]any{graphStart("s"), graphAgent("a", "", false), graphAgent("u", "", false), graphAgent("v", "", false), graphAgent("w", "", false), graphAgent("x", "", false)},
 				[]any{graphEdge("s", "a"), graphEdge("a", "u"), graphEdge("u", "a"), graphEdge("u", "v"), graphEdge("v", "w"), graphEdge("w", "x"), graphEdge("x", "w")},
-				nil),
+				nil,
+			),
 			want: []any{Object{"code": "graph_cycle", "nodeId": "u"}},
 		},
 		{

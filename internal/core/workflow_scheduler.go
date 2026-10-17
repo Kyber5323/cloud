@@ -205,7 +205,7 @@ func readWorkflowGraph(graph Object) workflowGraphView {
 // workflowGraphCycle reports whether the graph contains a cycle, naming the source of the back edge the
 // walk found — a node that is on a cycle by construction — or "" when the graph is a DAG.
 //
-// It is a depth-first walk with three colours: a node still on the current path that is reached again
+// It is a depth-first walk with three colors: a node still on the current path that is reached again
 // closes a cycle. The walk is deterministic — it roots at nodes in document order and follows edges in
 // document order — so the node it names is too. Two cheaper-looking tests are wrong here and are worth
 // naming so they are not reintroduced: peeling nodes with no incoming or no outgoing edge leaves the
@@ -269,8 +269,10 @@ type workflowNodeState struct {
 	Output Object
 }
 
-// object renders the state in the shape the run viewer reads (and the simulator writes).
-func (s workflowNodeState) object() Object {
+// object renders the state in the shape the run viewer reads (and the simulator writes). The receiver
+// is a pointer because the state is large enough that copying it per render is waste, and its one
+// caller already holds it in a range variable.
+func (s *workflowNodeState) object() Object {
 	out := Object{"status": s.Status, "displayName": s.DisplayName, "startedAt": s.StartedAt, "finishedAt": s.FinishedAt}
 	if s.Error != "" {
 		out["error"] = s.Error
