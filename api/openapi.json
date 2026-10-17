@@ -5446,7 +5446,7 @@
             }
           },
           {
-            "description": "Scoped to tenant and user. Same key and canonical method/path/body returns the original response before version validation; changed request is 409.",
+            "description": "Scoped to the verified user before tenant membership exists. Same key and canonical method/path/body returns the original response before version validation; changed request is 409.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": true,
