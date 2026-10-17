@@ -109,7 +109,7 @@ func createWorkflowRun(t *transaction, r *PublicRequest, uid string) Object {
 	return composeWorkflowRun(t, t.one("SELECT * FROM workflow_runs WHERE id=$1 AND tenant_id=$2", id, r.TenantID))
 }
 
-// resolveWorkflowRunProject authorizes and returns the optional Project a direct run freezes (D3).
+// resolveWorkflowRunProject authorizes and returns the Project a direct run freezes (D3).
 // The Project is the one thing that says where the run's Workspace may provision —
 // createWorkflowRunWorkspace refuses a run without one — and it is stated by the caller rather than
 // inferred, because nothing else knows it: a workflow document belongs to a tenant, not to a Project,

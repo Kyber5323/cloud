@@ -22306,7 +22306,7 @@
                     "type": "string"
                   },
                   "projectId": {
-                    "description": "The Project the run's Workspace provisions in. Frozen at creation for the run's whole lifetime. Authorized against the caller's own collaboration space: an unknown, archived or foreign Project is 404. Omit it for a graph with no agent node; a run without one fails honestly at its first agent node.",
+                    "description": "The Project the run's Workspace provisions in. Required: a run that names none is refused with 409 workflow_run_project_required, never persisted without one. Frozen at creation for the run's whole lifetime. Authorized against the caller's own collaboration space: an unknown, archived or foreign Project is 404.",
                     "format": "uuid",
                     "type": "string"
                   },
@@ -22314,6 +22314,9 @@
                     "type": "string"
                   }
                 },
+                "required": [
+                  "projectId"
+                ],
                 "type": "object"
               }
             }

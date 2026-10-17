@@ -885,10 +885,6 @@ func optionalField(name string, r router.Route) bool {
 	case "snapshotId":
 		// A run may omit the snapshot to pin the latest published one.
 		return strings.HasSuffix(r.Path, "/runs")
-	case "projectId":
-		// A run states the Project its Workspace provisions in; a graph with no agent node
-		// needs no Workspace, so a run may omit it and fail honestly at its first agent node.
-		return strings.HasSuffix(r.Path, "/runs")
 	case "pluginVersion":
 		// Omitted install pins the catalog's current version.
 		return true
@@ -963,7 +959,7 @@ func inputSchema(name string, r router.Route) obj {
 	case "labelId", "userId", "assigneeId", "executorId", "refId", "parentId", "projectRef", "targetId":
 		return uuid()
 	case "projectId":
-		return obj{"type": "string", "format": "uuid", "description": "The Project the run's Workspace provisions in. Frozen at creation for the run's whole lifetime. Authorized against the caller's own collaboration space: an unknown, archived or foreign Project is 404. Omit it for a graph with no agent node; a run without one fails honestly at its first agent node."}
+		return obj{"type": "string", "format": "uuid", "description": "The Project the run's Workspace provisions in. Required: a run that names none is refused with 409 workflow_run_project_required, never persisted without one. Frozen at creation for the run's whole lifetime. Authorized against the caller's own collaboration space: an unknown, archived or foreign Project is 404."}
 	case "ids":
 		return array(uuid())
 	case "filter", "properties", "input", "values", "graph":
