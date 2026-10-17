@@ -26,6 +26,18 @@ func runCount(t *testing.T, f *fixture, wfid string) int {
 	return len(issueItems(f.call("GET", f.path("/workflows/"+wfid+"/runs"), nil, "", 200)))
 }
 
+// runProject creates a Project the fixture actor may start runs in and returns its id. Every direct
+// run names one, so a test that creates a run needs a reachable Project even when its graph never
+// provisions a Workspace. The Project is deliberately left `provisioning`: a Project still converging
+// is an accepted place to freeze a run against, and draining it would make each of these tests wait
+// on an operation it does not care about.
+func runProject(t *testing.T, f *fixture, key string) string {
+	t.Helper()
+	return f.call("POST", f.path("/projects"), core.Object{
+		"name": "Run project", "repositoryUrl": "https://example.invalid/repo.git", "defaultBranch": "main",
+	}, key, 202).O("resource").S("id")
+}
+
 // archiveProject takes a fully provisioned Project into `deleting` and stops there — the caller
 // drains when it wants the delete to settle. The runtime control the clone left on the Project's main
 // workspace has to be handed back first, or the Project API refuses the delete as held.
@@ -153,11 +165,44 @@ func TestWorkflowRunRefusesUnreachableProject(t *testing.T) {
 		t.Fatalf("deleted project: code = %q; want not_found", refused.S("code"))
 	}
 
-	// Omitting the Project stays accepted: a graph with no agent node needs no Workspace, and the
-	// editor's Run button has no Project to offer. Such a run is identity-incomplete and fails
-	// honestly at its first agent node rather than guessing a Project.
-	unbound := f.call("POST", f.path("/workflows/"+wfid+"/runs"), core.Object{}, "guard-run-unbound", 200).O("resource")
-	if got := frozenRunProject(t, f, unbound.S("id")); got != "" {
-		t.Fatalf("unbound run froze project %q; want none", got)
+	// Omitting the Project is refused at creation, and refused as the same condition
+	// createWorkflowRunWorkspace raises it as: a run with no frozen Project is an aggregate that can
+	// never provision the Workspace its agent nodes need, so it must not be persisted at all. A
+	// missing Project is a distinct case from an unreachable one — nothing was named, so nothing was
+	// authorized — which is why it is asserted here rather than as another row of the table above.
+	missing := f.call("POST", f.path("/workflows/"+wfid+"/runs"), core.Object{}, "guard-run-unbound", 409)
+	if missing.S("code") != "workflow_run_project_required" {
+		t.Fatalf("missing project: code = %q; want workflow_run_project_required", missing.S("code"))
 	}
+	if got := runCount(t, f, wfid); got != baseline {
+		t.Fatalf("a run naming no project was created anyway: %d rows, want %d", got, baseline)
+	}
+}
+
+// Naming a Project is mandatory for every direct run, including one whose graph never provisions a
+// Workspace. project_id is half of the run's frozen identity (D3), so a run created without one would
+// be born unable to finish rather than merely incomplete, and the place to say so is the creation
+// transaction rather than an execution that can never proceed. A start -> input graph is refused
+// exactly like an agent graph: that is the part a "only graphs that need a Workspace" reading of the
+// rule would get wrong, so it is the case this test pins.
+func TestWorkflowRunWithoutProjectIsRefused(t *testing.T) {
+	f := setup(t)
+	wf := f.call("POST", f.path("/workflows"), core.Object{
+		"name": "No project", "graph": startInputGraph(nil),
+	}, "no-project-wf", 200).O("resource")
+	wfid := wf.S("id")
+	publishWorkflow(t, f, wfid, "no-project-pub")
+	baseline := runCount(t, f, wfid)
+
+	refused := f.call("POST", f.path("/workflows/"+wfid+"/runs"), core.Object{}, "no-project-run", 409)
+	if refused.S("code") != "workflow_run_project_required" {
+		t.Fatalf("code = %q; want workflow_run_project_required", refused.S("code"))
+	}
+	if got := runCount(t, f, wfid); got != baseline {
+		t.Fatalf("a refused start left %d runs, want %d", got, baseline)
+	}
+
+	// The same graph runs once the caller names a Project, so the refusal is about the missing
+	// identity and not about the graph shape.
+	f.call("POST", f.path("/workflows/"+wfid+"/runs"), core.Object{"projectId": runProject(t, f, "no-project-project")}, "no-project-run-2", 200)
 }

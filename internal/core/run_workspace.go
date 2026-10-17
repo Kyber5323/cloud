@@ -51,7 +51,9 @@ func runTriggerActor(t *transaction, run Object) string {
 // frozen identity is the whole basis (specs#99 D3): project_id names the Project the Workspace
 // provisions in, and created_by is the actor the Workspace and its operation record. A run without a
 // frozen project has no place to provision in — the caller fails it honestly rather than guessing a
-// Project; an unbound run is the editor path today, and the invocation path (#71) freezes one.
+// Project. Creation now refuses to persist such a run at all (resolveWorkflowRunProject), so the two
+// checks agree by construction: this one still guards runs written before that gate, or by a future
+// entry that inserts a run row without going through the shared creation point.
 func createWorkflowRunWorkspace(t *transaction, runID string) Object {
 	run := t.one("SELECT * FROM workflow_runs WHERE id=$1 AND deleted_at IS NULL", runID)
 	require(run != nil, 404, "not_found")

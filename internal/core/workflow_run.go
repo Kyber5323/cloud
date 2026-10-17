@@ -83,7 +83,7 @@ func composeWorkflowRun(t *transaction, run Object) Object {
 // which is why the uid is part of the request rather than inferred later.
 //
 // The run's Project comes from the caller (D3): see resolveWorkflowRunProject for why it is stated
-// rather than inferred, and why omitting it is still accepted.
+// rather than inferred, and why a request that names none is refused rather than accepted.
 func createWorkflowRun(t *transaction, r *PublicRequest, uid string) Object {
 	w := workflow(t, r.TenantID, r.WorkflowID)
 	name := w.S("name")
@@ -127,14 +127,23 @@ func createWorkflowRun(t *transaction, r *PublicRequest, uid string) Object {
 // tick and no terminal state. A Project still provisioning is accepted: that state is transient, and
 // the scheduler waits for it the same way it waits for any other admission.
 //
-// Omitting it stays legal. A graph whose nodes are all start/condition/output needs no Workspace, and
-// the editor's Run button has no Project to offer; such a run stays identity-incomplete and fails
-// honestly at its first agent node (workflow_run_project_required) rather than guessing.
+// Naming one is mandatory, not optional. A run with no frozen Project is not a run that has not
+// needed one yet — it is an identity-incomplete aggregate that can never provision the Workspace its
+// agent nodes require, so accepting it would persist a row that is born unable to finish and would
+// only ever report the gap later, from inside an execution that cannot proceed. This is the same
+// reason created_by is required one line up: project_id is the "where" half of the frozen identity,
+// and freezing half an identity is not freezing one. A graph that genuinely needs no Workspace still
+// names the Project it would provision in, which costs its caller one choice and keeps every run's
+// identity whole.
+//
+// The gate lives on this resolver rather than on the one caller so that every entry which creates a
+// run — the editor today, the @ confirm and the manual run once they are linked to the same creation
+// point — makes one shared decision in the creation transaction instead of each writing its own
+// "no Project" rule. Refusal reuses the code createWorkflowRunWorkspace already raises for the same
+// condition, so a missing Project reads the same whether it is caught here or there.
 func resolveWorkflowRunProject(t *transaction, r *PublicRequest, uid string) any {
 	pid := r.Body.S("projectId")
-	if pid == "" {
-		return nil
-	}
+	require(pid != "", 409, "workflow_run_project_required")
 	p := project(t, r.TenantID, uid, pid)
 	require(p.S("lifecycle") != "deleting", 409, "resource_unavailable")
 	return p.S("id")
