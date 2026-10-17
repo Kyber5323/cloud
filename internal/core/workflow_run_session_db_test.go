@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"testing"
 	"time"
@@ -34,8 +35,8 @@ func workflowTwoAgentGraph() Object {
 }
 
 // seedWorkflowSessionScene stages a project-backed run one advance away from session start: the
-// binding (the same freeze the creation gate performs), and the project space carries the
-// production plugin. Returns the ids the tests read back.
+// binding and the plugin version (the same freezes the creation transaction performs), and the
+// project space carries the production plugin. Returns the ids the tests read back.
 func seedWorkflowSessionScene(t *testing.T, store *Store) (runID, tid, uid, space, project string) {
 	t.Helper()
 	return seedWorkflowSessionSceneGraph(t, store, workflowSessionGraph())
@@ -62,7 +63,7 @@ func seedWorkflowSessionSceneGraph(t *testing.T, store *Store, graph Object) (ru
 		graphJSON, _ := json.Marshal(graph)
 		exec("workflow", `INSERT INTO workflows(id,tenant_id,name,graph) VALUES($1,$2,'wfs',$3::jsonb)`, wid, tid, string(graphJSON))
 		exec("snapshot", `INSERT INTO workflow_snapshots(id,tenant_id,workflow_id,version,name,graph) VALUES($1,$2,$3,1,'v1',$4::jsonb)`, sid, tid, wid, string(graphJSON))
-		exec("run", `INSERT INTO workflow_runs(id,tenant_id,workflow_id,snapshot_id,name,status,input,created_by,project_id) VALUES($1,$2,$3,$4,'disp','pending','{}'::jsonb,$5,$6)`, rid, tid, wid, sid, uid, project)
+		exec("run", `INSERT INTO workflow_runs(id,tenant_id,workflow_id,snapshot_id,name,status,input,created_by,project_id,plugin_version) VALUES($1,$2,$3,$4,'disp','pending','{}'::jsonb,$5,$6,$7)`, rid, tid, wid, sid, uid, project, resolveWorkflowRunPluginVersion(tx, tid, project))
 		cred := uuid.NewString()
 		conn := uuid.NewString()
 		exec("credential", `INSERT INTO personal_model_credentials(id,user_id,ciphertext,key_id) VALUES($1,$2,repeat('c',64),'test-key')`, cred, uid)
@@ -406,6 +407,115 @@ func TestWorkflowSessionFailureFailsRun(t *testing.T) {
 	}
 	if unregistered != 0 {
 		t.Fatalf("%d unregistered work items survived a failed run", unregistered)
+	}
+}
+
+// readFrozenPluginVersion reads the plugin version off the run row: the frozen identity is a stored
+// fact, so the only way to tell "the API froze it" from "something resolved it later" is to look at
+// what the creation transaction left behind.
+func readFrozenPluginVersion(t *testing.T, store *Store, runID string) string {
+	t.Helper()
+	var frozen sql.NullString
+	if err := store.Pool.QueryRow(`SELECT plugin_version FROM workflow_runs WHERE id=$1`, runID).Scan(&frozen); err != nil {
+		t.Fatalf("read run plugin version: %v", err)
+	}
+	return frozen.String
+}
+
+// pluginVersionOf runs the creation-time resolver in its own transaction and returns what it would
+// freeze right now — the same read createWorkflowRun makes, so a run created at this moment freezes
+// exactly this.
+func pluginVersionOf(t *testing.T, store *Store, tid, project string) string {
+	t.Helper()
+	frozen := ""
+	if _, err := store.transact(context.Background(), func(tx *transaction) Object {
+		frozen, _ = resolveWorkflowRunPluginVersion(tx, tid, project).(string)
+		return Object{}
+	}); err != nil {
+		t.Fatalf("resolve plugin version: %v", err)
+	}
+	return frozen
+}
+
+// An upgrade of the space's plugin while a run is in flight cannot change what that run executes: the
+// version is frozen in the creation transaction and the session spec carries the frozen one. Before
+// this, the version was read at session start, so a run created against 1.0.0 and dispatched after an
+// operator upgraded to 2.0.0 executed 2.0.0 — the run's execution content decided by a change made
+// after it was created, which is the one thing the frozen identity exists to prevent.
+func TestWorkflowRunFreezesPluginVersionAgainstUpgrade(t *testing.T) {
+	store := dispatcherDB(t)
+	runID, tid, _, space, project := seedWorkflowSessionScene(t, store)
+	if frozen := readFrozenPluginVersion(t, store, runID); frozen != "1.0.0" {
+		t.Fatalf("run froze plugin version %q; want the space's 1.0.0", frozen)
+	}
+
+	// The upgrade an operator performs without knowing a run is open.
+	if _, err := store.Pool.Exec(`UPDATE space_plugins SET desired_version='2.0.0', version=version+1 WHERE space_id=$1`, space); err != nil {
+		t.Fatalf("upgrade plugin: %v", err)
+	}
+
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance to workspace create: %v", err)
+	}
+	wsID := settleSessionWorkspace(t, store, runID)
+	_, spec := startSessionNode(t, store, runID, wsID, "a")
+	if spec.S("agentPluginVersion") != "1.0.0" {
+		t.Fatalf("session plugin version = %q; want the frozen 1.0.0", spec.S("agentPluginVersion"))
+	}
+	// The freeze reads the live value at creation rather than a constant: a run created after the
+	// upgrade freezes 2.0.0, and the run already in flight still carries 1.0.0.
+	if after := pluginVersionOf(t, store, tid, project); after != "2.0.0" {
+		t.Fatalf("a run created after the upgrade would freeze %q; want 2.0.0", after)
+	}
+	if frozen := readFrozenPluginVersion(t, store, runID); frozen != "1.0.0" {
+		t.Fatalf("the upgrade rewrote the in-flight run's frozen version to %q", frozen)
+	}
+}
+
+// A run created before the version was frozen carries none, and the session start must not read the
+// space to find one: the space still has the plugin installed here, so a live read would succeed and
+// would silently execute a version the run was never created against. The node fails with its own
+// reason instead, which is what makes such rows countable while the compatibility rule is undecided.
+func TestWorkflowSessionRefusesAnUnfrozenPluginVersion(t *testing.T) {
+	store := dispatcherDB(t)
+	runID, _, _, space, _ := seedWorkflowSessionScene(t, store)
+	if _, err := store.Pool.Exec(`UPDATE workflow_runs SET plugin_version=NULL WHERE id=$1`, runID); err != nil {
+		t.Fatalf("clear frozen version: %v", err)
+	}
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance to workspace create: %v", err)
+	}
+	wsID := settleSessionWorkspace(t, store, runID)
+	bindConnectedNode(t, store, wsID)
+	if _, err := store.Pool.Exec(`UPDATE node_instances SET model_proxy=true WHERE workspace_id=$1`, wsID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance to session start: %v", err)
+	}
+
+	status, runErr, states, _ := readWorkflowRun(t, store, runID)
+	if status != "failed" || runErr != "agent_plugin_version_unfrozen" {
+		t.Fatalf("run settled %q error %q; want failed/agent_plugin_version_unfrozen", status, runErr)
+	}
+	agent, _ := asWorkflowObject(states["a"])
+	if agent == nil || agent.S("status") != "failed" || agent.O("output").S("reason") != "agent_plugin_version_unfrozen" {
+		t.Fatalf("agent state = %v; want the unfrozen-version failure", states["a"])
+	}
+	// Nothing was dispatched: the run must not have reached the Node with a version read from the space.
+	var work int
+	if err := store.Pool.QueryRow(`SELECT count(*) FROM execution_work WHERE workflow_run_id=$1`, runID).Scan(&work); err != nil {
+		t.Fatal(err)
+	}
+	if work != 0 {
+		t.Fatalf("%d work items were released for a run with no frozen plugin version", work)
+	}
+	var installed string
+	if err := store.Pool.QueryRow(`SELECT desired_version FROM space_plugins WHERE space_id=$1`, space).Scan(&installed); err != nil {
+		t.Fatal(err)
+	}
+	if installed != "1.0.0" {
+		t.Fatalf("the space's plugin moved to %q; the case no longer proves a live read was refused", installed)
 	}
 }
 

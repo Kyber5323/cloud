@@ -18,3 +18,6 @@ internal/core/migrations/0033_revision_resume.sql text eol=lf
 # Everything introduced since main is pinned here instead, while no released database has recorded
 # it yet; after merge that would no longer be true.
 internal/core/migrations/0038_workflow_run_identity.sql text eol=lf
+internal/core/migrations/0039_executor_slot_bindings.sql text eol=lf
+internal/core/migrations/0040_workflow_execution_node.sql text eol=lf
+internal/core/migrations/0041_workflow_run_plugin_version.sql text eol=lf

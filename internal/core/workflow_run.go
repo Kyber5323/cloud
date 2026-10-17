@@ -104,7 +104,10 @@ func workflowRunBindings(t *transaction, runID string) []any {
 // which is why the uid is part of the request rather than inferred later.
 //
 // The run's Project comes from the caller (D3): see resolveWorkflowRunProject for why it is stated
-// rather than inferred, and why a request that names none is refused rather than accepted.
+// rather than inferred, and why a request that names none is refused rather than accepted. The plugin
+// version is read here rather than at session start for the same reason — see
+// resolveWorkflowRunPluginVersion — so that upgrading the space's plugin while the run is in flight
+// cannot change what it executes.
 func createWorkflowRun(t *transaction, r *PublicRequest, uid string) Object {
 	w := workflow(t, r.TenantID, r.WorkflowID)
 	name := w.S("name")
@@ -122,7 +125,8 @@ func createWorkflowRun(t *transaction, r *PublicRequest, uid string) Object {
 	require(r.Identity != nil, 401, "user_credential_required")
 	createdBy := identityWithAlias(t, r.Identity).S("id")
 	projectID := resolveWorkflowRunProject(t, r, uid)
-	t.exec("INSERT INTO workflow_runs(id,tenant_id,workflow_id,snapshot_id,name,status,input,created_by,project_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", id, r.TenantID, r.WorkflowID, s.S("id"), name, "pending", jsonText(input), createdBy, projectID)
+	pluginVersion := resolveWorkflowRunPluginVersion(t, r.TenantID, projectID)
+	t.exec("INSERT INTO workflow_runs(id,tenant_id,workflow_id,snapshot_id,name,status,input,created_by,project_id,plugin_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)", id, r.TenantID, r.WorkflowID, s.S("id"), name, "pending", jsonText(input), createdBy, projectID, pluginVersion)
 	if t.simulator != nil {
 		nodeStates, rounds, status := t.simulator.SimulateWorkflowRun(s.O("graph"), input)
 		t.exec("UPDATE workflow_runs SET node_states=$1,rounds=$2,status=$3,started_at=now(),finished_at=now(),version=version+1,updated_at=now() WHERE id=$4", jsonText(nodeStates), jsonText(rounds), status, id)
@@ -175,4 +179,36 @@ func resolveWorkflowRunProject(t *transaction, r *PublicRequest, uid string) any
 	p := project(t, r.TenantID, uid, pid)
 	require(p.S("lifecycle") != "deleting", 409, "resource_unavailable")
 	return p.S("id")
+}
+
+// resolveWorkflowRunPluginVersion reads the plugin version the run will execute with, so the creation
+// transaction freezes it alongside the rest of the run's identity (D3). The plugin lives in the
+// Project's space, which is why this takes the Project the same transaction just froze: a run that
+// named none has no space to read from and freezes nothing.
+//
+// It is the same read the session start used to make, moved earlier rather than changed. The version
+// is whatever the space's desired state says at creation; nothing here consults the observed state, so
+// an install still converging freezes the version it is converging to, and a removal freezes the
+// version it is removing from — both are what the run's author asked for at the moment they asked.
+//
+// A missing plugin freezes nothing rather than refusing the creation. The run's Workspace provisions
+// and its first agent node then fails honestly with `agent_plugin_version_unfrozen`, which is where
+// every other permanent gap in a run's identity is reported. Refusing at creation is a defensible
+// alternative — the executor-slot gate beside this does refuse — but it would turn a request the API
+// accepts today into a 400, so it stays an owner decision rather than a change made here.
+func resolveWorkflowRunPluginVersion(t *transaction, tenantID string, projectID any) any {
+	pid := ""
+	if s, ok := projectID.(string); ok {
+		pid = s
+	}
+	if pid == "" {
+		return nil
+	}
+	pv := t.one(`SELECT p.desired_version FROM projects pr JOIN space_plugins p ON p.space_id=pr.space_id
+		AND p.source_namespace=split_part($3,'/',1) AND p.identifier=split_part($3,'/',2)
+		WHERE pr.id=$1 AND pr.tenant_id=$2 AND pr.deleted_at IS NULL`, pid, tenantID, opencodeAgentCLI)
+	if pv == nil || pv.S("desiredVersion") == "" {
+		return nil
+	}
+	return pv.S("desiredVersion")
 }

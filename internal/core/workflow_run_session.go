@@ -159,17 +159,21 @@ func workflowSessionTarget(t *transaction, wid string) Object {
 
 // workflowSessionSpec builds the AgentSession snapshot for a workflow node's session — the same
 // wire shape sessionStartSpec produces for an IssueRun. The plugin identity is fixed (slots
-// decision D4); the version is read at start from the run project's space_plugins, matching how
-// an IssueRun resolves its plugin. The initial turn is the node's prompt rendered as one text
-// block; the model binding is the frozen binding of the node's slot. A permanent gap returns a
-// named reason instead of an error so the node fails honestly rather than retrying forever.
+// decision D4) and its version is the one the creation transaction froze (D3), never the space's
+// current version: the IssueRun path pins agentPluginVersion in the run input at create and never
+// re-reads it (see agent_run_settle.go), and a workflow run now does the same, so an upgrade during
+// the run cannot change what it executes. The initial turn is the node's prompt rendered as one
+// text block; the model binding is the frozen binding of the node's slot. A permanent gap returns
+// a named reason instead of an error so the node fails honestly rather than retrying forever.
 func workflowSessionSpec(t *transaction, run Object, node workflowNodeView, w, target Object) (spec Object, reason string) {
 	runID := run.S("id")
-	pv := t.one(`SELECT p.desired_version FROM projects pr JOIN space_plugins p ON p.space_id=pr.space_id
-		AND p.source_namespace=split_part($3,'/',1) AND p.identifier=split_part($3,'/',2)
-		WHERE pr.id=$1 AND pr.tenant_id=$2 AND pr.deleted_at IS NULL`, run.S("projectId"), run.S("tenantId"), opencodeAgentCLI)
-	if pv == nil || pv.S("desiredVersion") == "" {
-		return nil, "agent_plugin_unavailable"
+	// A run created before the plugin version was frozen carries none, and there is no honest value to
+	// substitute: the space's current version is not what this run was created against. It is reported
+	// as its own reason rather than as `agent_plugin_unavailable` so that rows affected by the missing
+	// freeze are countable, because what should happen to them is still an open owner decision.
+	pv := run.S("pluginVersion")
+	if pv == "" {
+		return nil, "agent_plugin_version_unfrozen"
 	}
 	base := w.S("baseCommitId")
 	if !commitID(base) {
@@ -196,7 +200,7 @@ func workflowSessionSpec(t *transaction, run Object, node workflowNodeView, w, t
 	spec = Object{
 		"kind":                "agent_session",
 		"agentPluginId":       opencodeAgentCLI,
-		"agentPluginVersion":  pv.S("desiredVersion"),
+		"agentPluginVersion":  pv,
 		"checkoutExecutionId": checkout.S("executionId"),
 		"gitIdentity":         git,
 		"initialTurn":         Object{"turnId": newID(), "content": []Object{{"text": prompt}}},
