@@ -81,6 +81,9 @@ func composeWorkflowRun(t *transaction, run Object) Object {
 // entry accepts exactly what a manual workflow IssueRun and a confirmed @ interaction accept. The
 // initiator matters here: the executor slots are resolved against *their* personal configuration,
 // which is why the uid is part of the request rather than inferred later.
+//
+// The run's Project comes from the caller (D3): see resolveWorkflowRunProject for why it is stated
+// rather than inferred, and why omitting it is still accepted.
 func createWorkflowRun(t *transaction, r *PublicRequest, uid string) Object {
 	w := workflow(t, r.TenantID, r.WorkflowID)
 	name := w.S("name")
@@ -93,14 +96,46 @@ func createWorkflowRun(t *transaction, r *PublicRequest, uid string) Object {
 	id := newID()
 	// The invocation identity freezes here (D3): created_by is the aggregate's actor for the whole
 	// run — the run Workspace lifecycle reads it instead of re-resolving who pressed Run. The
-	// authenticated Identity, not a /users path parameter, is who that is. project_id stays unset on
-	// this path; the invocation path that knows a project (@, #71) freezes it too.
+	// authenticated Identity, not a /users path parameter, is who that is. The project freezes in the
+	// same statement, so the two halves of the identity can never disagree about who ran what where.
 	require(r.Identity != nil, 401, "user_credential_required")
 	createdBy := identityWithAlias(t, r.Identity).S("id")
-	t.exec("INSERT INTO workflow_runs(id,tenant_id,workflow_id,snapshot_id,name,status,input,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)", id, r.TenantID, r.WorkflowID, s.S("id"), name, "pending", jsonText(input), createdBy)
+	projectID := resolveWorkflowRunProject(t, r, uid)
+	t.exec("INSERT INTO workflow_runs(id,tenant_id,workflow_id,snapshot_id,name,status,input,created_by,project_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", id, r.TenantID, r.WorkflowID, s.S("id"), name, "pending", jsonText(input), createdBy, projectID)
 	if t.simulator != nil {
 		nodeStates, rounds, status := t.simulator.SimulateWorkflowRun(s.O("graph"), input)
 		t.exec("UPDATE workflow_runs SET node_states=$1,rounds=$2,status=$3,started_at=now(),finished_at=now(),version=version+1,updated_at=now() WHERE id=$4", jsonText(nodeStates), jsonText(rounds), status, id)
 	}
 	return composeWorkflowRun(t, t.one("SELECT * FROM workflow_runs WHERE id=$1 AND tenant_id=$2", id, r.TenantID))
+}
+
+// resolveWorkflowRunProject authorizes and returns the optional Project a direct run freezes (D3).
+// The Project is the one thing that says where the run's Workspace may provision —
+// createWorkflowRunWorkspace refuses a run without one — and it is stated by the caller rather than
+// inferred, because nothing else knows it: a workflow document belongs to a tenant, not to a Project,
+// so there is no project to default to and defaulting to one would place a run's Workspace, its clone
+// and its whole checkout in a Project nobody named.
+//
+// The value is authorized by the same helper every project-scoped route uses, so an unknown, foreign,
+// archived or foreign-space project is the same 404 and a run can never be created against a Project
+// its creator could not open. The frozen value is the row's own id, never the string the caller sent.
+//
+// A Project already being deleted is refused outright (the `resource_unavailable` rule the rest of the
+// Project API applies). Freezing one would be worse than refusing it: the run would commit, and its
+// Workspace — which can never be created, because createWorkflowRunWorkspace reads a deleting Project
+// as busy and a deleted one as gone — would leave the run `running` for good, one failed advance per
+// tick and no terminal state. A Project still provisioning is accepted: that state is transient, and
+// the scheduler waits for it the same way it waits for any other admission.
+//
+// Omitting it stays legal. A graph whose nodes are all start/condition/output needs no Workspace, and
+// the editor's Run button has no Project to offer; such a run stays identity-incomplete and fails
+// honestly at its first agent node (workflow_run_project_required) rather than guessing.
+func resolveWorkflowRunProject(t *transaction, r *PublicRequest, uid string) any {
+	pid := r.Body.S("projectId")
+	if pid == "" {
+		return nil
+	}
+	p := project(t, r.TenantID, uid, pid)
+	require(p.S("lifecycle") != "deleting", 409, "resource_unavailable")
+	return p.S("id")
 }

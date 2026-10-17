@@ -3247,6 +3247,8 @@ export type PostApiV1TenantsTidWorkflowsWfidRunsBodyInput = { [key: string]: unk
 export type PostApiV1TenantsTidWorkflowsWfidRunsBody = {
   input?: PostApiV1TenantsTidWorkflowsWfidRunsBodyInput;
   name?: string;
+  /** The Project the run's Workspace provisions in. Frozen at creation for the run's whole lifetime. Authorized against the caller's own collaboration space: an unknown, archived or foreign Project is 404. Omit it for a graph with no agent node; a run without one fails honestly at its first agent node. */
+  projectId?: string;
   snapshotId?: string;
 };
 
