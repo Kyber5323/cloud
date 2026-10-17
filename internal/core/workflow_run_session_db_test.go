@@ -415,6 +415,55 @@ func TestWorkflowSessionCancelledReleasesTheRunWorkspace(t *testing.T) {
 	assertRunWorkspaceReleased(t, store, runID)
 }
 
+// readRunFinishedAt reads the run's terminal timestamp; "" means the run has not finished, which is
+// what the projection's finishedAt carries.
+func readRunFinishedAt(t *testing.T, store *Store, runID string) string {
+	t.Helper()
+	var finished sql.NullTime
+	if err := store.Pool.QueryRow(`SELECT finished_at FROM workflow_runs WHERE id=$1`, runID).Scan(&finished); err != nil {
+		t.Fatalf("read run finished_at: %v", err)
+	}
+	if !finished.Valid {
+		return ""
+	}
+	return finished.Time.UTC().Format(time.RFC3339)
+}
+
+// A run that is still executing carries no finished_at. The timestamp is the run's terminal moment,
+// and the projection is what a client reads: a non-empty finishedAt is how it renders a run as over.
+// The progress passes stamp it too — committing an agent node running, and settling one so the next
+// wave starts — so a live run used to report the moment it "finished" while its session was still
+// executing. Only a terminal status writes it, and the first terminal write wins.
+func TestWorkflowRunningCarriesNoFinishedAt(t *testing.T) {
+	store := dispatcherDB(t)
+	runID, _, _, _, _ := seedWorkflowSessionScene(t, store)
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance 1: %v", err)
+	}
+	wsID := settleSessionWorkspace(t, store, runID)
+	nodeService, spec := startSessionNode(t, store, runID, wsID, "a")
+	// The pass that committed the node running is a progress settle: the run is `running`.
+	if finished := readRunFinishedAt(t, store, runID); finished != "" {
+		t.Fatalf("a run whose session just started carries finished_at %q; want none", finished)
+	}
+	execution := dispatchSession(t, store, runID, "a", nodeService, spec)
+	if finished := readRunFinishedAt(t, store, runID); finished != "" {
+		t.Fatalf("a run with a dispatched session carries finished_at %q; want none", finished)
+	}
+	reportSessionEnd(t, store, runID, execution, nodeService, "idle_timeout")
+	finished := readRunFinishedAt(t, store, runID)
+	if finished == "" {
+		t.Fatal("a succeeded run carries no finished_at; want the terminal moment")
+	}
+	// A later pass re-declaring the terminal status cannot move the moment the run stopped.
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance after terminal: %v", err)
+	}
+	if again := readRunFinishedAt(t, store, runID); again != finished {
+		t.Fatalf("finished_at moved from %q to %q on a later pass", finished, again)
+	}
+}
+
 // assertRunWorkspaceReleased asserts the D7 half of a terminal settle: the run's Workspace has its
 // deletion declared, and no unregistered session work survives to be claimed. Every terminal status
 // owes this, and the failing and cancelled ones owe it most — a run that stops holding a live

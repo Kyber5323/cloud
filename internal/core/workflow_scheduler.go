@@ -562,18 +562,34 @@ func workflowInactiveStates(graph workflowGraphView, states map[string]workflowN
 // compare-and-swap that makes a late or duplicate pass a no-op (invariant 3). Zero affected rows
 // (a concurrent pass committed first) discards this pass's local view; the next tick recomputes
 // from the committed row.
+//
+// finished_at is the run's terminal timestamp, so only a terminal status writes it. This function is
+// also how a pass reports progress — committing a node `running`, or settling one and letting the
+// next wave start — and those passes used to stamp finished_at too, so a run that was still
+// executing carried the moment it "finished". The projection is what a client reads: `finishedAt`
+// non-empty is how it renders a run as over, so the field has to mean what it says. COALESCE keeps
+// the first terminal write, so a later pass re-declaring a terminal status cannot move the moment
+// the run actually stopped. started_at is not this function's business: it is set once, where the
+// run first leaves `pending`.
 func settleWorkflowRunStates(t *transaction, runID string, version int64, status, runErr string, states map[string]workflowNodeState) {
+	// The statuses a run never leaves. `pending`, `running` and `awaiting_input` are the others the
+	// column admits, and all three are states a run is still in.
+	terminal := status == "succeeded" || status == "failed" || status == "cancelled"
 	if states == nil {
-		t.exec(`UPDATE workflow_runs SET status=$2, error=$3, finished_at=now(), version=version+1, updated_at=now()
-			WHERE id=$1 AND version=$4 AND deleted_at IS NULL`, runID, status, runErr, version)
+		t.exec(`UPDATE workflow_runs SET status=$2, error=$3,
+			finished_at=CASE WHEN $5 THEN COALESCE(finished_at,now()) ELSE finished_at END,
+			version=version+1, updated_at=now()
+			WHERE id=$1 AND version=$4 AND deleted_at IS NULL`, runID, status, runErr, version, terminal)
 		return
 	}
 	encoded := Object{}
 	for id, state := range states {
 		encoded[id] = state.object()
 	}
-	t.exec(`UPDATE workflow_runs SET node_states=$2, status=$3, error=$4, finished_at=now(), version=version+1, updated_at=now()
-		WHERE id=$1 AND version=$5 AND deleted_at IS NULL`, runID, jsonText(encoded), status, runErr, version)
+	t.exec(`UPDATE workflow_runs SET node_states=$2, status=$3, error=$4,
+		finished_at=CASE WHEN $6 THEN COALESCE(finished_at,now()) ELSE finished_at END,
+		version=version+1, updated_at=now()
+		WHERE id=$1 AND version=$5 AND deleted_at IS NULL`, runID, jsonText(encoded), status, runErr, version, terminal)
 }
 
 // workflowRunVersion re-reads the row's version after a mid-pass settle bumped it: one pass commits
