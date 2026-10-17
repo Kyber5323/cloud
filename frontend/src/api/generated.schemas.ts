@@ -1866,7 +1866,7 @@ export type WorkflowRunDefinitionSnapshot = { [key: string]: unknown } | null;
 export type WorkflowRunInput = { [key: string]: unknown };
 
 /**
- * Per-node execution state keyed by node id: status, output, error, timestamps.
+ * Per-node execution state keyed by node id: status, displayName, startedAt, finishedAt, output, and error — the reason, present only when the node failed.
  */
 export type WorkflowRunNodeStates = { [key: string]: unknown };
 
@@ -1911,7 +1911,7 @@ export interface WorkflowRun {
      */
   modelBindings?: WorkflowRunModelBinding[] | null;
   name: string;
-  /** Per-node execution state keyed by node id: status, output, error, timestamps. */
+  /** Per-node execution state keyed by node id: status, displayName, startedAt, finishedAt, output, and error — the reason, present only when the node failed. */
   nodeStates: WorkflowRunNodeStates;
   rounds: WorkflowRunRoundsItem[];
   snapshotId: string;

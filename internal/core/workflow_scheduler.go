@@ -260,12 +260,21 @@ type workflowNodeState struct {
 	DisplayName string
 	StartedAt   string
 	FinishedAt  string
-	Output      Object
+	// Error is the node's failure reason, and only a failed node has one: a cancelled node was
+	// cancelled, not broken, and an idle or succeeded one has nothing to report. The run viewer
+	// renders it in its own Error section, which is why it is a field of the state rather than
+	// something the viewer has to dig out of Output — a node's Output is what it produced, and a
+	// failed node produced nothing.
+	Error  string
+	Output Object
 }
 
 // object renders the state in the shape the run viewer reads (and the simulator writes).
 func (s workflowNodeState) object() Object {
 	out := Object{"status": s.Status, "displayName": s.DisplayName, "startedAt": s.StartedAt, "finishedAt": s.FinishedAt}
+	if s.Error != "" {
+		out["error"] = s.Error
+	}
 	if s.Output != nil {
 		out["output"] = s.Output
 	}
@@ -288,6 +297,7 @@ func workflowStatesFromJSON(raw Object) map[string]workflowNodeState {
 			DisplayName: node.S("displayName"),
 			StartedAt:   node.S("startedAt"),
 			FinishedAt:  node.S("finishedAt"),
+			Error:       node.S("error"),
 		}
 		if output, ok := asWorkflowObject(node["output"]); ok {
 			state.Output = output
@@ -626,6 +636,7 @@ func executeWorkflowNode(node workflowNodeView, input Object, states map[string]
 		// Unreachable: the ready pass only yields executable kinds, and the agent case returned
 		// earlier. A future kind that reaches here must not be recorded as success.
 		state.Status = "failed"
+		state.Error = "unsupported_node_kind"
 		state.Output = Object{"reason": "unsupported_node_kind"}
 	}
 	return state

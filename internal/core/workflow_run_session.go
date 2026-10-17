@@ -78,6 +78,7 @@ func workflowAgentSessionOutcome(t *transaction, runID string, version int64, no
 	if err == nil && time.Since(started) > workflowSessionStartDeadline {
 		state.Status = "failed"
 		state.FinishedAt = nowRFC3339()
+		state.Error = "session_start_deadline_exceeded"
 		state.Output = Object{"reason": "session_start_deadline_exceeded"}
 		states[nodeID] = state
 		finishWorkflowRun(t, runID, version, "failed", "session start deadline exceeded", states)
@@ -109,6 +110,10 @@ func commitWorkflowAgentTerminal(t *transaction, runID string, version int64, no
 	state.Status = workflowSessionEndReason(result.S("reason"))
 	state.FinishedAt = nowRFC3339()
 	state.Output = Object{"reason": result.S("reason")}
+	// Only a failed node carries an error: a cancelled node was cancelled, not broken.
+	if state.Status == "failed" {
+		state.Error = result.S("reason")
+	}
 	states[nodeID] = state
 	switch state.Status {
 	case "failed":
@@ -260,7 +265,7 @@ func startWorkflowAgentSession(t *transaction, run Object, node workflowNodeView
 
 // failWorkflowAgentNode commits one agent node failed with a named reason and finishes the run.
 func failWorkflowAgentNode(t *transaction, runID string, version int64, states map[string]workflowNodeState, node workflowNodeView, reason string) {
-	states[node.ID] = workflowNodeState{Status: "failed", DisplayName: workflowNodeDisplayName(node), StartedAt: nowRFC3339(), FinishedAt: nowRFC3339(), Output: Object{"reason": reason}}
+	states[node.ID] = workflowNodeState{Status: "failed", DisplayName: workflowNodeDisplayName(node), StartedAt: nowRFC3339(), FinishedAt: nowRFC3339(), Error: reason, Output: Object{"reason": reason}}
 	finishWorkflowRun(t, runID, version, "failed", reason, states)
 }
 

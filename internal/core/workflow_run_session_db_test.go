@@ -388,6 +388,12 @@ func TestWorkflowSessionFailureFailsRun(t *testing.T) {
 	if agent == nil || agent.S("status") != "failed" || agent.O("output").S("reason") != "agent_failed" {
 		t.Fatalf("agent state = %v; want failed with agent_failed", states["a"])
 	}
+	// A failed node carries its reason as `error`, the field the run viewer's Error section reads.
+	// It was described in the contract and read by the client but never written, so a failed node
+	// showed an empty Error section while its reason sat unrendered inside output.
+	if got := agent.S("error"); got != "agent_failed" {
+		t.Fatalf("failed agent error = %q; want agent_failed", got)
+	}
 	assertRunWorkspaceReleased(t, store, runID)
 }
 
@@ -411,6 +417,11 @@ func TestWorkflowSessionCancelledReleasesTheRunWorkspace(t *testing.T) {
 	agent, _ := asWorkflowObject(states["a"])
 	if agent == nil || agent.S("status") != "cancelled" || agent.O("output").S("reason") != "cancelled" {
 		t.Fatalf("agent state = %v; want cancelled carrying the session's own reason", states["a"])
+	}
+	// A cancelled node was cancelled, not broken, so it carries no error: the viewer's Error section
+	// is for nodes that failed.
+	if _, present := agent["error"]; present {
+		t.Fatalf("a cancelled node carries error %v; want none", agent["error"])
 	}
 	assertRunWorkspaceReleased(t, store, runID)
 }
@@ -624,6 +635,9 @@ func TestWorkflowSessionStartDeadlineFailsNode(t *testing.T) {
 	agent, _ := asWorkflowObject(states["a"])
 	if agent == nil || agent.S("status") != "failed" || agent.O("output").S("reason") != "session_start_deadline_exceeded" {
 		t.Fatalf("agent state = %v; want the deadline failure", states["a"])
+	}
+	if got := agent.S("error"); got != "session_start_deadline_exceeded" {
+		t.Fatalf("failed agent error = %q; want session_start_deadline_exceeded", got)
 	}
 	assertRunWorkspaceReleased(t, store, runID)
 }

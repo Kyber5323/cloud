@@ -4470,7 +4470,7 @@
           },
           "nodeStates": {
             "additionalProperties": true,
-            "description": "Per-node execution state keyed by node id: status, output, error, timestamps.",
+            "description": "Per-node execution state keyed by node id: status, displayName, startedAt, finishedAt, output, and error — the reason, present only when the node failed.",
             "type": "object"
           },
           "rounds": {
