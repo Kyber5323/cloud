@@ -131,8 +131,33 @@ func validateWorkflowGraph(graph Object) []workflowGraphProblem {
 	}
 	problems = append(problems, validateWorkflowNodes(nodes)...)
 	problems = append(problems, validateWorkflowEdges(graph, nodes)...)
+	problems = append(problems, validateWorkflowAcyclic(graph)...)
 	problems = append(problems, validateWorkflowSlots(graph, nodes)...)
 	return problems
+}
+
+// validateWorkflowAcyclic refuses a graph that contains a cycle. The first phase executes a DAG and
+// nothing else (#67 结论 4, D1 条件④): the projection that decides what runs is a topological read of
+// committed state, so a node on a cycle either waits for an upstream that waits for it or goes round
+// once and drops its back edge, and neither is what its author drew. Publishing would freeze a
+// document whose run cannot mean what it says, which is exactly what this gate exists to prevent.
+// Loops and iterations are not part of the first phase, so a graph that wants one is refused rather
+// than executed as something else.
+//
+// The reported node is the source of the back edge the walk found, which is on a cycle by
+// construction; a node merely downstream of one is not reported, because the author has nothing to
+// fix there. The walk itself is shared with the run's advance pass — see workflowGraphCycle — so a
+// graph Cloud refuses to publish and a graph Cloud refuses to run are the same graph.
+//
+// The graph is read by the same reader the run uses, so a document whose nodes are not a list is
+// simply empty here: validateWorkflowNodes has already said so, and this pass must not pile a second,
+// less useful complaint on top of it.
+func validateWorkflowAcyclic(graph Object) []workflowGraphProblem {
+	source := workflowGraphCycle(readWorkflowGraph(graph))
+	if source == "" {
+		return nil
+	}
+	return []workflowGraphProblem{{Code: "graph_cycle", NodeID: source}}
 }
 
 // validateWorkflowNodes checks node identity, kind, agent configuration and the start-node count. The

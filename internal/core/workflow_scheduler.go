@@ -202,6 +202,55 @@ func readWorkflowGraph(graph Object) workflowGraphView {
 	return out
 }
 
+// workflowGraphCycle reports whether the graph contains a cycle, naming the source of the back edge the
+// walk found — a node that is on a cycle by construction — or "" when the graph is a DAG.
+//
+// It is a depth-first walk with three colours: a node still on the current path that is reached again
+// closes a cycle. The walk is deterministic — it roots at nodes in document order and follows edges in
+// document order — so the node it names is too. Two cheaper-looking tests are wrong here and are worth
+// naming so they are not reintroduced: peeling nodes with no incoming or no outgoing edge leaves the
+// remainder including nodes that are merely *between* two cycles, and unwinding the stack at a back
+// edge misses nodes on a cycle reached by a shortcut edge.
+//
+// Both the publish gate and the run's own advance read this one walk, so a graph Cloud refuses to
+// publish and a graph Cloud refuses to run are the same graph.
+func workflowGraphCycle(graph workflowGraphView) string {
+	const (
+		unvisited = 0
+		onPath    = 1
+		settled   = 2
+	)
+	state := map[string]int{}
+	cycleSource := ""
+	var walk func(id string)
+	walk = func(id string) {
+		state[id] = onPath
+		for _, edge := range graph.Edges {
+			if edge.S("source") != id {
+				continue
+			}
+			next := edge.S("target")
+			switch state[next] {
+			case onPath:
+				// A back edge: `next` is an ancestor on the current path, so the path from `next`
+				// back to `id` plus this edge is a cycle. The first one found wins.
+				if cycleSource == "" {
+					cycleSource = id
+				}
+			case unvisited:
+				walk(next)
+			}
+		}
+		state[id] = settled
+	}
+	for _, node := range graph.Nodes {
+		if state[node.ID] == unvisited {
+			walk(node.ID)
+		}
+	}
+	return cycleSource
+}
+
 // workflowNodeState is one node's committed execution state on the run row. The shape is the one the
 // run viewer already renders (the simulator writes the same keys): status is the shared run/node
 // vocabulary, output carries what the node produced, and an inactive state marks a node behind a
@@ -432,7 +481,18 @@ func advanceWorkflowRun(t *transaction, runID string) {
 	if graph.Start == "" {
 		// A snapshot predating the publish gate can lack a start node; there is no defined
 		// place to begin, so the run settles failed instead of hanging in running.
-		settleWorkflowRunStates(t, runID, version, "failed", "graph has no start node", nil)
+		finishWorkflowRun(t, runID, version, "failed", "graph has no start node", nil)
+		return
+	}
+	// A cyclic graph is not executable: the projection is a topological read of committed state, so a
+	// node on a cycle either waits forever for an upstream that waits for it, or — when the cycle is
+	// reachable from the start — goes round once and stops with the back edge silently dropped, which
+	// would let the run report success for a document whose author asked for a loop. The graph gate
+	// refuses to publish one; a snapshot frozen before that gate existed still reaches here, and
+	// neither outcome is honest for it. Nothing has run yet at this point, so the run settles failed
+	// with no node states — no node is recorded as having executed, which is the truth.
+	if workflowGraphCycle(graph) != "" {
+		finishWorkflowRun(t, runID, version, "failed", "graph has a cycle", nil)
 		return
 	}
 	states := workflowStatesFromJSON(run.O("nodeStates"))

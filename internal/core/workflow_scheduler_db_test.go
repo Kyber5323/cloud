@@ -132,6 +132,178 @@ func TestWorkflowAdvanceFailsRunOnProjectlessAgentNode(t *testing.T) {
 	}
 }
 
+// Publishing a new version — and editing the live document — while a run is in flight cannot change
+// what that run executes: every pass joins the run's own snapshot_id, so the graph it runs is the one
+// frozen at creation (invariant 1, "编辑、发布或插件升级都不改变在途运行执行的内容"). The run here is
+// still `pending` when version 2 lands, which is the window the invariant is about.
+func TestWorkflowAdvanceIgnoresARepublishedVersion(t *testing.T) {
+	store := dispatcherDB(t)
+	frozen := wfGraph(
+		[]Object{wfNode("s", "start", ""), wfNode("o1", "output", "")},
+		[][3]string{{"s", "o1", ""}},
+	)
+	runID := seedWorkflowRunScene(t, store, frozen)
+	var snapshotID string
+	if err := store.Pool.QueryRow(`SELECT snapshot_id FROM workflow_runs WHERE id=$1`, runID).Scan(&snapshotID); err != nil {
+		t.Fatal(err)
+	}
+	// The author edits the live document and publishes version 2 after the run exists.
+	republished := wfGraph(
+		[]Object{wfNode("s", "start", ""), wfNode("o2", "output", "")},
+		[][3]string{{"s", "o2", ""}},
+	)
+	raw, err := json.Marshal(republished)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Pool.Exec(`UPDATE workflows SET graph=$2::jsonb, version=version+1 WHERE id=(SELECT workflow_id FROM workflow_runs WHERE id=$1)`, runID, string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Pool.Exec(`INSERT INTO workflow_snapshots(id,tenant_id,workflow_id,version,name,graph)
+		SELECT $2,tenant_id,workflow_id,2,'v2',$3::jsonb FROM workflow_runs WHERE id=$1`, runID, uuid.NewString(), string(raw)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance: %v", err)
+	}
+	status, runErr, states, _ := readWorkflowRun(t, store, runID)
+	if status != "succeeded" || runErr != "" {
+		t.Fatalf("run settled %q error %q; want succeeded", status, runErr)
+	}
+	if _, ran := states["o1"]; !ran {
+		t.Fatalf("the frozen version's node did not commit: %v", states)
+	}
+	if _, ran := states["o2"]; ran {
+		t.Fatalf("the republished version's node committed: %v", states)
+	}
+	var after string
+	if err := store.Pool.QueryRow(`SELECT snapshot_id FROM workflow_runs WHERE id=$1`, runID).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if after != snapshotID {
+		t.Fatalf("run snapshot moved to %s; want the frozen %s", after, snapshotID)
+	}
+}
+
+// A snapshot that predates the publish gate can carry a node kind the first phase does not execute.
+// Such a node must fail honestly with its own reason: the run settles failed and the unsupported
+// node is never recorded as succeeded (#69 leaves this judgement to the execution side, D2 refuses
+// these kinds at publish for everything published after the gate).
+func TestWorkflowAdvanceFailsAnUnsupportedNodeKind(t *testing.T) {
+	store := dispatcherDB(t)
+	runID := seedWorkflowRunScene(t, store, wfGraph(
+		[]Object{wfNode("s", "start", ""), wfNode("l", "loop", "iterate"), wfNode("o", "output", "")},
+		[][3]string{{"s", "l", ""}, {"l", "o", ""}},
+	))
+
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance: %v", err)
+	}
+	status, runErr, states, _ := readWorkflowRun(t, store, runID)
+	if status != "failed" || runErr != "unsupported_node_kind" {
+		t.Fatalf("run settled %q error %q; want failed/unsupported_node_kind", status, runErr)
+	}
+	node, ok := asWorkflowObject(states["l"])
+	if !ok {
+		t.Fatalf("the unsupported node has no committed state: %v", states)
+	}
+	if node.S("status") != "failed" || node.O("output").S("reason") != "unsupported_node_kind" {
+		t.Fatalf("unsupported node state = %v; want failed with its reason", states["l"])
+	}
+	if _, ran := states["o"]; ran {
+		t.Fatalf("the node downstream of the unsupported one committed a state: %v", states)
+	}
+}
+
+// A DAG that reconverges is legal and drains: two paths lead into `c`, and the wave visits `c` once
+// after both of them committed. The cycle refusal must not read a join as one — refusing a legal
+// document is worse than missing an illegal one, and a join is the shape the two are easiest to
+// confuse.
+func TestWorkflowAdvanceSucceedsAReconvergentGraph(t *testing.T) {
+	store := dispatcherDB(t)
+	runID := seedWorkflowRunScene(t, store, wfGraph(
+		[]Object{wfNode("s", "start", ""), wfNode("a", "output", ""), wfNode("b", "output", ""), wfNode("c", "output", ""), wfNode("o", "output", "")},
+		[][3]string{{"s", "a", ""}, {"s", "b", ""}, {"a", "c", ""}, {"b", "c", ""}, {"c", "o", ""}},
+	))
+
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance: %v", err)
+	}
+	status, runErr, states, _ := readWorkflowRun(t, store, runID)
+	if status != "succeeded" || runErr != "" {
+		t.Fatalf("run settled %q error %q; want succeeded", status, runErr)
+	}
+	for _, id := range []string{"s", "a", "b", "c", "o"} {
+		state, ok := asWorkflowObject(states[id])
+		if !ok {
+			t.Fatalf("node %s has no committed state: %v", id, states)
+		}
+		if state.S("status") != "succeeded" {
+			t.Fatalf("node %s status = %q; want succeeded", id, state.S("status"))
+		}
+	}
+}
+
+// A snapshot frozen before the publish gate can carry a cycle, and such a run must not settle
+// succeeded: a cycle reachable from the start goes round once and stops with its back edge silently
+// dropped, so the pass used to report success for a document whose author drew a loop — the node on
+// the back edge never produced a result for the edge that pointed back at it. The run settles failed
+// instead, and because nothing executed, no node is recorded as having executed: a state written here
+// would claim work that never happened.
+func TestWorkflowAdvanceFailsACyclicSnapshot(t *testing.T) {
+	store := dispatcherDB(t)
+	runID := seedWorkflowRunScene(t, store, wfGraph(
+		[]Object{wfNode("s", "start", ""), wfNode("a", "output", ""), wfNode("b", "output", "")},
+		[][3]string{{"s", "a", ""}, {"a", "b", ""}, {"b", "a", ""}},
+	))
+
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance: %v", err)
+	}
+	status, runErr, states, version := readWorkflowRun(t, store, runID)
+	if status != "failed" || runErr != "graph has a cycle" {
+		t.Fatalf("run settled %q error %q; want failed/graph has a cycle", status, runErr)
+	}
+	if len(states) != 0 {
+		t.Fatalf("a refused cyclic run committed node states: %v", states)
+	}
+	if version != 3 { // claim +1, settle +1, and no node ever committed
+		t.Fatalf("version = %d; want 3", version)
+	}
+	// The refusal is terminal: the retry loop never rescans the run, so it cannot drift to succeeded.
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("second advance: %v", err)
+	}
+	if status, _, _, after := readWorkflowRun(t, store, runID); status != "failed" || after != version {
+		t.Fatalf("second pass moved the run: %q version %d; want failed version %d", status, after, version)
+	}
+}
+
+// A cycle nothing reaches is refused the same way. The projection would leave these nodes unresolved
+// — each waits for an upstream that waits for it — and the run used to settle succeeded with them
+// carrying no state at all, which is the plainest form of "succeeded with nodes that never ran".
+func TestWorkflowAdvanceFailsAHistoricalCycleBehindTheStart(t *testing.T) {
+	store := dispatcherDB(t)
+	runID := seedWorkflowRunScene(t, store, wfGraph(
+		[]Object{wfNode("s", "start", ""), wfNode("o", "output", ""), wfNode("a", "output", ""), wfNode("b", "output", "")},
+		[][3]string{{"s", "o", ""}, {"a", "b", ""}, {"b", "a", ""}},
+	))
+
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance: %v", err)
+	}
+	status, runErr, states, _ := readWorkflowRun(t, store, runID)
+	if status != "failed" || runErr != "graph has a cycle" {
+		t.Fatalf("run settled %q error %q; want failed/graph has a cycle", status, runErr)
+	}
+	for _, id := range []string{"s", "o", "a", "b"} {
+		if _, ran := states[id]; ran {
+			t.Fatalf("node %s committed a state on a refused run: %v", id, states)
+		}
+	}
+}
+
 // The pass is idempotent: a second tick over a settled run rescans nothing and leaves the committed
 // row untouched — no second claim, no second settle, no version drift.
 func TestWorkflowAdvanceIsIdempotent(t *testing.T) {
