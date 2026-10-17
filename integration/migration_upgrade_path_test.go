@@ -1048,11 +1048,11 @@ func TestMigration0033RevisionResumeAppliesFreshAndUpgrades(t *testing.T) {
 	}
 }
 
-// 0035 turns the WorkflowRun into an execution aggregate the control plane accepts as a work owner:
+// 0038 turns the WorkflowRun into an execution aggregate the control plane accepts as a work owner:
 // the frozen run identity, the workspace binding, the exactly-one-owner discriminator on work and
-// the polymorphic runtime reservation. Fresh databases get all of it, an upgrade from 0034 gets it
+// the polymorphic runtime reservation. Fresh databases get all of it, an upgrade from 0037 gets it
 // without a backfill, and a rerun changes nothing.
-func TestMigration0035WorkflowRunIdentityAppliesFreshAndUpgrades(t *testing.T) {
+func TestMigration0038WorkflowRunIdentityAppliesFreshAndUpgrades(t *testing.T) {
 	columns := func(pool *sql.DB) int {
 		t.Helper()
 		var n int
@@ -1078,7 +1078,7 @@ func TestMigration0035WorkflowRunIdentityAppliesFreshAndUpgrades(t *testing.T) {
 			  AND indexname IN ('one_unregistered_execution_work','one_unregistered_workflow_execution_work')`).Scan(&names))
 		return names
 	}
-	// A polymorphic run reference cannot be a foreign key, so 0035 drops the IssueRun FK instead of
+	// A polymorphic run reference cannot be a foreign key, so 0038 drops the IssueRun FK instead of
 	// reworking it. The column stays; only the constraint goes. Resolved through the search path
 	// rather than by name alone, which would count another schema's constraint of the same name.
 	reservationFK := func(pool *sql.DB) int {
@@ -1089,19 +1089,19 @@ func TestMigration0035WorkflowRunIdentityAppliesFreshAndUpgrades(t *testing.T) {
 		return n
 	}
 
-	freshPool, _ := testSchema(t, "test_wfi35f_")
+	freshPool, _ := testSchema(t, "test_wfi38f_")
 	migratedTwice(t, newStoreOnSchema(t, freshPool))
 	if got, names, idx, fk := columns(freshPool), constraints(freshPool), indexes(freshPool), reservationFK(freshPool); got != 4 || names != "execution_work_owner_exclusive,workspace_run_binding_exclusive" || idx != "one_unregistered_execution_work,one_unregistered_workflow_execution_work" || fk != 0 {
 		t.Fatalf("fresh: columns %d constraints %q indexes %q reservation fk %d", got, names, idx, fk)
 	}
 
-	pool, _ := testSchema(t, "test_wfi35_")
-	applyMigrationsUpTo(t, pool, migrationsBefore(t, "0035_workflow_run_identity.sql"))
+	pool, _ := testSchema(t, "test_wfi38_")
+	applyMigrationsUpTo(t, pool, migrationsBefore(t, "0038_workflow_run_identity.sql"))
 	if got, names, fk := columns(pool), constraints(pool), reservationFK(pool); got != 0 || names != "" || fk != 1 {
-		t.Fatalf("before 0035: columns %d constraints %q reservation fk %d", got, names, fk)
+		t.Fatalf("before 0038: columns %d constraints %q reservation fk %d", got, names, fk)
 	}
 	migratedTwice(t, newStoreOnSchema(t, pool))
 	if got, names, idx, fk := columns(pool), constraints(pool), indexes(pool), reservationFK(pool); got != 4 || names != "execution_work_owner_exclusive,workspace_run_binding_exclusive" || idx != "one_unregistered_execution_work,one_unregistered_workflow_execution_work" || fk != 0 {
-		t.Fatalf("after 0035: columns %d constraints %q indexes %q reservation fk %d", got, names, idx, fk)
+		t.Fatalf("after 0038: columns %d constraints %q indexes %q reservation fk %d", got, names, idx, fk)
 	}
 }

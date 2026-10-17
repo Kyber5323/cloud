@@ -111,9 +111,9 @@ only validate schema. `TestMigration0035ModelAttemptsFreshAndUpgradeWithoutBackf
 
 `0036_workflow_asset_imports.sql` records asset imports for `kind='workflow'` plugins: `workflow_asset_imports` holds one row per (space, plugin) with the `requested_revision` each administrator install/reinstall advances, the import progress and its lease; `workflow_asset_documents` holds one row per document path, and only an `outcome='imported'` row permanently occupies (space, namespace, identifier, document path) — failed documents are retried on the next trigger. The imported workflows and published snapshots are ordinary user data; these two tables only record provenance, idempotency and per-document outcomes. Forward-only and additive; no existing table changes.
 
-## 0035: WorkflowRun identity
+## 0038: WorkflowRun identity
 
-`0035_workflow_run_identity.sql` hands run identity and work-item ownership to the control plane.
+`0038_workflow_run_identity.sql` hands run identity and work-item ownership to the control plane.
 `workflow_runs` gains `created_by` and `project_id` (both nullable: rows written before this migration
 carry no recoverable actor, and `project_id` is filled by the invocation path that knows a Project),
 which new runs freeze at creation. `workspaces` gains a mutually exclusive `workflow_run_id`, so a run
@@ -124,4 +124,4 @@ becomes a polymorphic run reference: the `maintenance_run_id` foreign key is dro
 reworked, because a polymorphic reference cannot be a foreign key, and the liveness check moves to the
 code that grants on it. Additive: columns, constraints and indexes, no backfill.
 
-`TestMigration0035WorkflowRunIdentityAppliesFreshAndUpgrades` covers fresh, 0034 upgrade and rerun.
+`TestMigration0038WorkflowRunIdentityAppliesFreshAndUpgrades` covers fresh, 0037 upgrade and rerun.

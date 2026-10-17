@@ -17,4 +17,4 @@ internal/core/migrations/0033_revision_resume.sql text eol=lf
 # position for a different reason — it belongs to another PR, which has to make this call for it.)
 # Everything introduced since main is pinned here instead, while no released database has recorded
 # it yet; after merge that would no longer be true.
-internal/core/migrations/0035_workflow_run_identity.sql text eol=lf
+internal/core/migrations/0038_workflow_run_identity.sql text eol=lf

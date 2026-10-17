@@ -107,7 +107,7 @@ func claimWorkItem(t *transaction) Object {
 	}
 	// A work item names the run it belongs to in one of two columns: agent work carries run_id (an
 	// issue_runs id), workflow work carries workflow_run_id (a workflow_runs id) and leaves run_id
-	// NULL by the mutual-exclusion CHECK 0035 added. The Controller is handed the run id as the
+	// NULL by the mutual-exclusion CHECK 0038 added. The Controller is handed the run id as the
 	// operation id and echoes it back on dispatch, which resolves either column — so the claim has to
 	// project one value. Reading the agent-only column instead hands back the empty string a workflow
 	// row produces, and every dispatch of that item is then refused as a conflict it cannot resolve.

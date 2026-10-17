@@ -1,6 +1,6 @@
 package core
 
-// DB tests for the WorkflowRun execution identity (migration 0035, specs#99 D3/D8): a run's frozen
+// DB tests for the WorkflowRun execution identity (migration 0038, specs#99 D3/D8): a run's frozen
 // identity drives the workspace lifecycle, the workspace binds to workflow_runs, and the control
 // plane's seams — enqueue, dispatch, runtime permit and the settlement hooks — accept a WorkflowRun
 // as the run of either kind. Session execution stays unwired (the scheduler still fails runs on
@@ -259,7 +259,7 @@ func TestWorkflowExecutionWorkDispatchSeam(t *testing.T) {
 // driven through the real control actions rather than by calling nodeDispatch directly.
 //
 // The seam test above dispatches directly and so cannot see this: a workflow work item carries
-// workflow_run_id and leaves run_id NULL by 0035's mutual-exclusion CHECK, so a claim that projects
+// workflow_run_id and leaves run_id NULL by 0038's mutual-exclusion CHECK, so a claim that projects
 // the agent-only column hands the Controller the empty string, and every dispatch of that item then
 // matches no row and is refused as a conflict it can never resolve.
 func TestWorkflowExecutionWorkClaimCarriesItsRunID(t *testing.T) {
