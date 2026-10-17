@@ -30,6 +30,10 @@ func personalSlotMappingsPublic(t *transaction, r *PublicRequest, uid string) (o
 	}
 	_, hasVersion := r.Body["version"]
 	require(hasVersion, 428, "version_required")
+	// Every write answers 200 with the resource, the way the connection routes do, and that is also
+	// the status the idempotency ledger records — a replayed DELETE returns this value, so leaving
+	// the named result at its zero would hand the caller a 0 and store one.
+	status = 200
 	switch r.Method {
 	case "PUT":
 		old := slotMapping(t, uid, r.SlotName)

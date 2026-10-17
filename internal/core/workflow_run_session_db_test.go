@@ -69,6 +69,10 @@ func seedWorkflowSessionSceneGraph(t *testing.T, store *Store, graph Object) (ru
 		exec("credential", `INSERT INTO personal_model_credentials(id,user_id,ciphertext,key_id) VALUES($1,$2,repeat('c',64),'test-key')`, cred, uid)
 		exec("connection", `INSERT INTO personal_model_connections(id,user_id,credential_id,name,protocol,base_url,auth_mode,models,enabled) VALUES($1,$2,$3,'Personal Provider','openai-completions','https://models.example.invalid/v1','bearer',$4::jsonb,true)`, conn, uid, cred, jsonText([]any{map[string]any{"id": "vendor/model-v1", "name": "Model V1"}}))
 		exec("default", `INSERT INTO personal_model_defaults(user_id,connection_id,model_id,version) VALUES($1,$2,'vendor/model-v1',1)`, uid, conn)
+		// A named slot too, so a graph that references one freezes a second binding on the same run.
+		// 0036 keys a workflow binding by (run, slot) rather than by run alone, which is what makes
+		// "belongs to this run" too weak a test for a session to redeem one (liveWorkflowModelBinding).
+		exec("slot", `INSERT INTO executor_slot_mappings(user_id,slot_name,agent_cli,connection_id,model_id,version) VALUES($1,'strong','official/ora-space.opencode',$2,'vendor/model-v1',1)`, uid, conn)
 		freezeWorkflowRunExecutors(tx, rid, uid, graph)
 		return Object{}
 	}); err != nil {
@@ -642,6 +646,39 @@ func TestWorkflowSessionStartDeadlineFailsNode(t *testing.T) {
 	assertRunWorkspaceReleased(t, store, runID)
 }
 
+// The run-creation gate freezes one binding per slot the graph references, so a node whose slot has
+// no frozen binding is a run whose freeze never happened — not a state the next tick can fix. The
+// session must not start without a model to run on: the node fails under the gate's own reason, the
+// way it does for an unresolvable slot at creation, instead of handing the Node a binding-less
+// session that would run on whatever the Node defaults to.
+func TestWorkflowSessionWithoutFrozenBindingFailsTheNode(t *testing.T) {
+	store := dispatcherDB(t)
+	runID, _, _, _, _ := seedWorkflowSessionScene(t, store)
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance 1: %v", err)
+	}
+	wsID := settleSessionWorkspace(t, store, runID)
+	bindConnectedNode(t, store, wsID)
+	if _, err := store.Pool.Exec(`UPDATE node_instances SET model_proxy=true WHERE workspace_id=$1`, wsID); err != nil {
+		t.Fatal(err)
+	}
+	// Everything the session needs is in place except the freeze itself.
+	if _, err := store.Pool.Exec(`DELETE FROM run_model_bindings WHERE workflow_run_id=$1`, runID); err != nil {
+		t.Fatalf("drop the frozen binding: %v", err)
+	}
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance to session start: %v", err)
+	}
+	status, runErr, states, _ := readWorkflowRun(t, store, runID)
+	agent, _ := asWorkflowObject(states["a"])
+	if status != "failed" || runErr != "workflow_executor_unconfigured" {
+		t.Fatalf("run settled %q error %q; want failed/workflow_executor_unconfigured", status, runErr)
+	}
+	if agent == nil || agent.S("status") != "failed" || agent.S("error") != "workflow_executor_unconfigured" {
+		t.Fatalf("node a = %v; want failed under the same reason", states["a"])
+	}
+}
+
 // A replayed terminal receipt for a settled run changes nothing: the run's status, its committed
 // node states and its version are exactly what the first settle left, and the extra passes write
 // nothing. Late or duplicate evidence is a no-op (invariant 3).
@@ -719,5 +756,60 @@ func TestWorkflowLiveModelBindingResolvesRun(t *testing.T) {
 		return Object{}
 	}); err == nil || ErrorCode(err).Code != "model_grant_revoked" {
 		t.Fatalf("foreign execution: err=%v; want model_grant_revoked", err)
+	}
+}
+
+// A run freezes one binding per executor slot (gateGraph references `default` and `strong`), so
+// "the binding belongs to this execution's run" admits more than one row. A session dispatched for
+// node a1 under `default` must not be able to name `strong`'s binding and be handed that slot's
+// credential and model: the binding id is the caller's to state, because a model mTLS certificate is
+// bound to a tenant, workspace and runtime generation and never to a slot.
+//
+// What settles it is the execution's own frozen modelBindingId, which Cloud wrote when it enqueued
+// the work and which no request body can restate.
+func TestWorkflowLiveModelBindingRefusesAnotherSlotsBinding(t *testing.T) {
+	store := dispatcherDB(t)
+	runID, _, _, _, _ := seedWorkflowSessionSceneGraph(t, store, gateGraph())
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance 1: %v", err)
+	}
+	wsID := settleSessionWorkspace(t, store, runID)
+	nodeService, spec := startSessionNode(t, store, runID, wsID, "a1")
+	execution := dispatchSession(t, store, runID, "a1", nodeService, spec)
+	if _, err := store.Pool.Exec(`UPDATE runtime_controls SET binding_confirmed=true,
+		bound_sandbox_id=(SELECT sandbox_instance_id FROM node_instances WHERE workspace_id=$1 AND ended_at IS NULL)
+		WHERE workspace_id=$1`, wsID); err != nil {
+		t.Fatal(err)
+	}
+	var own, other, tenant string
+	var generation int64
+	if err := store.Pool.QueryRow(`SELECT id FROM run_model_bindings WHERE workflow_run_id=$1 AND slot_name='default'`, runID).Scan(&own); err != nil {
+		t.Fatalf("read the default binding: %v", err)
+	}
+	if err := store.Pool.QueryRow(`SELECT id FROM run_model_bindings WHERE workflow_run_id=$1 AND slot_name='strong'`, runID).Scan(&other); err != nil {
+		t.Fatalf("read the strong binding: %v", err)
+	}
+	if spec.S("modelBindingId") != own || own == other {
+		t.Fatalf("dispatched with %q; want the default slot's %q, a distinct row from strong's %q", spec.S("modelBindingId"), own, other)
+	}
+	if err := store.Pool.QueryRow(`SELECT tenant_id, runtime_generation FROM workspaces WHERE id=$1`, wsID).Scan(&tenant, &generation); err != nil {
+		t.Fatal(err)
+	}
+	scope := ModelRuntimeScope{TenantID: tenant, WorkspaceID: wsID, Generation: generation}
+	// The slot the session was dispatched under still resolves, so the refusal below is about the
+	// binding and not about the scene failing some other gate.
+	if _, err := store.transact(context.Background(), func(tx *transaction) Object {
+		if b := liveModelBinding(tx, scope, own, execution); b.S("runId") != runID || b.S("nodeId") != nodeService {
+			t.Fatalf("binding = %v; want run %s on node %s", b, runID, nodeService)
+		}
+		return Object{}
+	}); err != nil {
+		t.Fatalf("own slot's binding: %v", err)
+	}
+	if _, err := store.transact(context.Background(), func(tx *transaction) Object {
+		liveModelBinding(tx, scope, other, execution)
+		return Object{}
+	}); err == nil || ErrorCode(err).Code != "model_grant_revoked" {
+		t.Fatalf("another slot's binding for this execution: err=%v; want model_grant_revoked", err)
 	}
 }

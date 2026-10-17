@@ -170,7 +170,7 @@ func workflowSessionTarget(t *transaction, wid string) Object {
 // the run cannot change what it executes. The initial turn is the node's prompt rendered as one
 // text block; the model binding is the frozen binding of the node's slot. A permanent gap returns
 // a named reason instead of an error so the node fails honestly rather than retrying forever.
-func workflowSessionSpec(t *transaction, run Object, node workflowNodeView, w, target Object) (spec Object, reason string) {
+func workflowSessionSpec(t *transaction, run Object, node workflowNodeView, w Object) (spec Object, reason string) {
 	runID := run.S("id")
 	// A run created before the plugin version was frozen carries none, and there is no honest value to
 	// substitute: the space's current version is not what this run was created against. It is reported
@@ -212,11 +212,17 @@ func workflowSessionSpec(t *transaction, run Object, node workflowNodeView, w, t
 	}
 	slot := node.Data.O("agentConfig").S("executorSlot")
 	if slot == "" {
-		slot = "default"
+		slot = workflowDefaultSlot
 	}
-	if binding := t.one("SELECT id FROM run_model_bindings WHERE workflow_run_id=$1 AND slot_name=$2", runID, slot); binding != nil {
-		spec["modelBindingId"] = binding.S("id")
+	// The run-creation gate freezes one binding per referenced slot, so a missing row here is not a
+	// transient state waiting to be retried — it is a run whose freeze never happened. Starting the
+	// session regardless would hand the Node a session with no model to run on, which is the silent
+	// downgrade the gate exists to prevent, so the node fails under the gate's own reason.
+	binding := t.one("SELECT id FROM run_model_bindings WHERE workflow_run_id=$1 AND slot_name=$2", runID, slot)
+	if binding == nil {
+		return nil, "workflow_executor_unconfigured"
 	}
+	spec["modelBindingId"] = binding.S("id")
 	return spec, ""
 }
 
@@ -253,7 +259,7 @@ func startWorkflowAgentSession(t *transaction, run Object, node workflowNodeView
 	if target == nil {
 		return // no connected Node yet; the startup deadline eventually fails the node
 	}
-	spec, reason := workflowSessionSpec(t, run, node, w, target)
+	spec, reason := workflowSessionSpec(t, run, node, w)
 	if reason != "" {
 		failWorkflowAgentNode(t, runID, version, states, node, reason)
 		return

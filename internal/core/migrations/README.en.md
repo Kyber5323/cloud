@@ -125,3 +125,34 @@ reworked, because a polymorphic reference cannot be a foreign key, and the liven
 code that grants on it. Additive: columns, constraints and indexes, no backfill.
 
 `TestMigration0038WorkflowRunIdentityAppliesFreshAndUpgrades` covers fresh, 0037 upgrade and rerun.
+
+## 0036: Executor slot bindings
+
+`0036_executor_slot_bindings.sql` lets executor slots reach the runtime. A `run_model_bindings` row's
+owner becomes a discriminator pair — exactly one of `run_id` / `workflow_run_id` — and the previous
+whole-table UNIQUE(run_id) splits into one (run, slot) uniqueness per owner, so a run may carry several
+bindings at once: a WorkflowRun freezes one row per slot its graph references, while an IssueRun keeps
+its single binding under the reserved `default` slot. Adds `executor_slot_mappings` (slot name ->
+executor), the invoker-owned resolution table the creation gate reads; `default` is deliberately
+excluded there because it IS the personal default model, never a stored mapping. Additive: it adds
+columns, constraints and a table without rewriting any existing binding row.
+
+## 0038: Workflow execution node
+
+`0038_workflow_execution_node.sql` adds `workflow_node_id` to `execution_work` and `node_executions`,
+with a constraint tying a work item's node to the graph of the run the item belongs to. It is
+Cloud-internal routing: the Controller-facing projection of `node_executions`
+(nodeExecutionColumns) deliberately omits it, because no Controller contract declares it. Additive,
+no backfill.
+
+## 0039: Run-level plugin version
+
+`0039_workflow_run_plugin_version.sql` adds a nullable `plugin_version` to `workflow_runs`, folding the
+plugin version into the run identity the creation transaction freezes (snapshot, input, initiator,
+Project, run Workspace binding, per-slot model bindings, plugin version). Session start reads the
+frozen value, so an upgrade can no longer change what an already-created run executes. Nullable and
+deliberately not backfilled: rows written before this migration were never frozen, and writing the
+space's current version would record a fact that never held. Such a run fails at its first agent node
+with `agent_plugin_version_unfrozen` rather than guessing; whether those rows should be backfilled,
+refused or executed under some other rule remains an open owner decision this migration records no
+answer to.
