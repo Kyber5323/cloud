@@ -218,20 +218,7 @@ func TestWorkflowSessionRunsEndToEnd(t *testing.T) {
 		t.Fatalf("agent output reason = %q; want idle_timeout", reason)
 	}
 	// Terminal cleanup: no unregistered work, and the Workspace deletion is declared.
-	var unregistered int
-	if err := store.Pool.QueryRow(`SELECT count(*) FROM execution_work WHERE workflow_run_id=$1 AND execution_id IS NULL`, runID).Scan(&unregistered); err != nil {
-		t.Fatal(err)
-	}
-	if unregistered != 0 {
-		t.Fatalf("%d unregistered work items survived", unregistered)
-	}
-	var deletes int
-	if err := store.Pool.QueryRow(`SELECT count(*) FROM operations o JOIN workspaces w ON w.id=o.workspace_id WHERE w.workflow_run_id=$1 AND o.kind='delete_workspace'`, runID).Scan(&deletes); err != nil {
-		t.Fatal(err)
-	}
-	if deletes != 1 {
-		t.Fatalf("%d delete operations declared; want 1", deletes)
-	}
+	assertRunWorkspaceReleased(t, store, runID)
 }
 
 // A run's agent nodes execute serially and settle from their own evidence. The second node starts on
@@ -401,12 +388,56 @@ func TestWorkflowSessionFailureFailsRun(t *testing.T) {
 	if agent == nil || agent.S("status") != "failed" || agent.O("output").S("reason") != "agent_failed" {
 		t.Fatalf("agent state = %v; want failed with agent_failed", states["a"])
 	}
+	assertRunWorkspaceReleased(t, store, runID)
+}
+
+// A session that reports `cancelled` cancels its node and the run. Cancelled is a third terminal
+// status with its own settlement path — a run that is cancelled rather than failed is not a run that
+// failed, and the two are asserted separately rather than inferred from each other.
+func TestWorkflowSessionCancelledReleasesTheRunWorkspace(t *testing.T) {
+	store := dispatcherDB(t)
+	runID, _, _, _, _ := seedWorkflowSessionScene(t, store)
+	if err := store.AdvanceWorkflowRunsOnce(context.Background()); err != nil {
+		t.Fatalf("advance 1: %v", err)
+	}
+	wsID := settleSessionWorkspace(t, store, runID)
+	nodeService, spec := startSessionNode(t, store, runID, wsID, "a")
+	execution := dispatchSession(t, store, runID, "a", nodeService, spec)
+	reportSessionEnd(t, store, runID, execution, nodeService, "cancelled")
+	status, runErr, states, _ := readWorkflowRun(t, store, runID)
+	if status != "cancelled" || runErr != "cancelled" {
+		t.Fatalf("run settled %q error %q states=%v; want cancelled/cancelled", status, runErr, states)
+	}
+	agent, _ := asWorkflowObject(states["a"])
+	if agent == nil || agent.S("status") != "cancelled" || agent.O("output").S("reason") != "cancelled" {
+		t.Fatalf("agent state = %v; want cancelled carrying the session's own reason", states["a"])
+	}
+	assertRunWorkspaceReleased(t, store, runID)
+}
+
+// assertRunWorkspaceReleased asserts the D7 half of a terminal settle: the run's Workspace has its
+// deletion declared, and no unregistered session work survives to be claimed. Every terminal status
+// owes this, and the failing and cancelled ones owe it most — a run that stops holding a live
+// Workspace is exactly the case where a missing release leaves the clone, the sandbox and the
+// Project's operation slot occupied with nothing left to notice. Declaring the delete is a
+// declaration rather than a completed deletion: the operation machinery drains it asynchronously,
+// and re-declaring on a later pass is a no-op.
+func assertRunWorkspaceReleased(t *testing.T, store *Store, runID string) {
+	t.Helper()
 	var unregistered int
 	if err := store.Pool.QueryRow(`SELECT count(*) FROM execution_work WHERE workflow_run_id=$1 AND execution_id IS NULL`, runID).Scan(&unregistered); err != nil {
-		t.Fatal(err)
+		t.Fatalf("count unregistered work: %v", err)
 	}
 	if unregistered != 0 {
-		t.Fatalf("%d unregistered work items survived a failed run", unregistered)
+		t.Fatalf("%d unregistered work items survived a terminal run", unregistered)
+	}
+	var deletes int
+	if err := store.Pool.QueryRow(`SELECT count(*) FROM operations o JOIN workspaces w ON w.id=o.workspace_id
+		WHERE w.workflow_run_id=$1 AND o.kind='delete_workspace'`, runID).Scan(&deletes); err != nil {
+		t.Fatalf("count delete operations: %v", err)
+	}
+	if deletes != 1 {
+		t.Fatalf("%d workspace deletions declared for a terminal run; want 1", deletes)
 	}
 }
 
@@ -545,13 +576,7 @@ func TestWorkflowSessionStartDeadlineFailsNode(t *testing.T) {
 	if agent == nil || agent.S("status") != "failed" || agent.O("output").S("reason") != "session_start_deadline_exceeded" {
 		t.Fatalf("agent state = %v; want the deadline failure", states["a"])
 	}
-	var unregistered int
-	if err := store.Pool.QueryRow(`SELECT count(*) FROM execution_work WHERE workflow_run_id=$1 AND execution_id IS NULL`, runID).Scan(&unregistered); err != nil {
-		t.Fatal(err)
-	}
-	if unregistered != 0 {
-		t.Fatalf("%d undispatched work items survived", unregistered)
-	}
+	assertRunWorkspaceReleased(t, store, runID)
 }
 
 // A replayed terminal receipt for a settled run changes nothing: the run's status, its committed
