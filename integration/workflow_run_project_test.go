@@ -66,7 +66,9 @@ func foreignProject(t *testing.T, f *fixture) string {
 		t.Fatalf("foreign project begin: %v", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`INSERT INTO projects(id,tenant_id,owner_user_id,space_id,name,repository_url,default_branch,lifecycle) VALUES($1,$2,$3,$4,'Foreign','https://example.invalid/foreign.git','main','active')`,
+	// The repository lives in the Project's Binding, not in Project columns (0037): the two go in
+	// together, the way every other direct seed in this repository now does it.
+	if _, err := tx.Exec(`WITH p AS (INSERT INTO projects(id,tenant_id,owner_user_id,space_id,name,lifecycle) VALUES($1,$2,$3,$4,'Foreign','active') RETURNING id,tenant_id) INSERT INTO repository_bindings(id,tenant_id,project_id,repository_url,branch) SELECT gen_random_uuid(),tenant_id,id,'https://example.invalid/foreign.git','main' FROM p`,
 		pid, other.S("tenantId"), other.S("userId"), other.S("spaceId")); err != nil {
 		t.Fatalf("seed foreign project: %v", err)
 	}

@@ -41,7 +41,7 @@ func seedWorkflowIdentityScene(t *testing.T, store *Store, withProject bool) (ru
 	exec("tenant", `INSERT INTO tenants(id,name,status) VALUES($1,'wfi','active')`, tid)
 	exec("membership", `INSERT INTO tenant_memberships(tenant_id,user_id,role,status) VALUES($1,$2,'admin','active')`, tid, uid)
 	exec("space", `INSERT INTO collab_workspaces(id,tenant_id,name,slug,created_by) VALUES($1,$2,'wfi','wfi-'||left($4::text,8),$3)`, space, tid, uid, project)
-	exec("project", `INSERT INTO projects(id,tenant_id,owner_user_id,space_id,name,repository_url,default_branch,lifecycle) VALUES($1,$2,$3,$4,'wfi','https://example.invalid/wfi.git','main','active')`, project, tid, uid, space)
+	exec("project", `WITH p AS (INSERT INTO projects(id,tenant_id,owner_user_id,space_id,name,lifecycle) VALUES($1,$2,$3,$4,'wfi','active') RETURNING id,tenant_id) INSERT INTO repository_bindings(id,tenant_id,project_id,repository_url,branch) SELECT gen_random_uuid(),tenant_id,id,'https://example.invalid/wfi.git','main' FROM p`, project, tid, uid, space)
 	// A live project must carry exactly one main workspace (deferred project_main trigger).
 	exec("main-workspace", `INSERT INTO workspaces(id,tenant_id,owner_user_id,creator_user_id,creator_evidence,project_id,kind,desired_state,observed_state,runtime_generation,requested_ref) VALUES($1,$2,$3,$3,'verified_request',$4,'main','running','ready',1,'HEAD')`, uuid.NewString(), tid, uid, project)
 	exec("workflow", `INSERT INTO workflows(id,tenant_id,name,graph) VALUES($1,$2,'wfi','{"nodes":[],"edges":[]}'::jsonb)`, wid, tid)

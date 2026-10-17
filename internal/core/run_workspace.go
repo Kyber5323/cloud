@@ -63,7 +63,10 @@ func createWorkflowRunWorkspace(t *transaction, runID string) Object {
 		op := t.one("SELECT * FROM operations WHERE workspace_id=$1 AND kind='create_workspace' ORDER BY created_at,id LIMIT 1", existing.S("id"))
 		return Object{"busy": false, "workspace": existing, "operation": op}
 	}
-	p := t.one("SELECT * FROM projects WHERE id=$1 AND tenant_id=$2 AND deleted_at IS NULL", run.S("projectId"), run.S("tenantId"))
+	// projectView, not the projects table: 0037 moved the repository to the Project's Binding, so
+	// `default_branch` is read back under the Project's published name from there. It is the same
+	// read its IssueRun counterpart above makes, and the reason both now require a Binding.
+	p := t.one("SELECT * FROM "+projectView+" p WHERE id=$1 AND tenant_id=$2 AND deleted_at IS NULL", run.S("projectId"), run.S("tenantId"))
 	require(p != nil, 404, "not_found")
 	if p.S("lifecycle") != "active" || t.one("SELECT id FROM operations WHERE project_id=$1 AND state IN ('queued','running','retry_wait','blocked')", p.S("id")) != nil {
 		return Object{"busy": true}
