@@ -183,8 +183,8 @@ func resolveWorkflowRunProject(t *transaction, r *PublicRequest, uid string) any
 
 // resolveWorkflowRunPluginVersion reads the plugin version the run will execute with, so the creation
 // transaction freezes it alongside the rest of the run's identity (D3). The plugin lives in the
-// Project's space, which is why this takes the Project the same transaction just froze: a run that
-// named none has no space to read from and freezes nothing.
+// Project's space, which is why this takes the Project the same transaction just froze: the Project is
+// what names the space to read the version from, and creation no longer admits a run without one.
 //
 // It is the same read the session start used to make, moved earlier rather than changed. The version
 // is whatever the space's desired state says at creation; nothing here consults the observed state, so
@@ -197,16 +197,9 @@ func resolveWorkflowRunProject(t *transaction, r *PublicRequest, uid string) any
 // alternative — the executor-slot gate beside this does refuse — but it would turn a request the API
 // accepts today into a 400, so it stays an owner decision rather than a change made here.
 func resolveWorkflowRunPluginVersion(t *transaction, tenantID string, projectID any) any {
-	pid := ""
-	if s, ok := projectID.(string); ok {
-		pid = s
-	}
-	if pid == "" {
-		return nil
-	}
 	pv := t.one(`SELECT p.desired_version FROM projects pr JOIN space_plugins p ON p.space_id=pr.space_id
 		AND p.source_namespace=split_part($3,'/',1) AND p.identifier=split_part($3,'/',2)
-		WHERE pr.id=$1 AND pr.tenant_id=$2 AND pr.deleted_at IS NULL`, pid, tenantID, opencodeAgentCLI)
+		WHERE pr.id=$1 AND pr.tenant_id=$2 AND pr.deleted_at IS NULL`, projectID, tenantID, opencodeAgentCLI)
 	if pv == nil || pv.S("desiredVersion") == "" {
 		return nil
 	}
