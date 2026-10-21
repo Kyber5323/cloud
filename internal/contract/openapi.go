@@ -129,9 +129,10 @@ func Document() map[string]any {
 	properties(s, "Workflow")["graph"] = obj{"type": "object", "additionalProperties": true, "description": "The authored graph document: nodes, edges, viewport, editor annotations and global variables. Stored and returned whole; the editor is its only reader."}
 	s["WorkflowSnapshot"] = resource("id tenantId workflowId version name graph createdAt", "")
 	properties(s, "WorkflowSnapshot")["graph"] = obj{"type": "object", "additionalProperties": true, "description": "The graph document frozen at publish time; restoring this snapshot writes it back to the workflow's live graph."}
-	s["WorkflowRun"] = resource("id tenantId workflowId snapshotId name status input nodeStates rounds error startedAt finishedAt createdAt updatedAt workflowName cancelRequestedAt", "startedAt finishedAt cancelRequestedAt")
+	s["WorkflowRun"] = resource("id tenantId workflowId snapshotId name status input nodeStates rounds error startedAt finishedAt createdAt updatedAt workflowName cancelRequestedAt pluginVersion", "startedAt finishedAt cancelRequestedAt pluginVersion")
 	workflowRunProps := properties(s, "WorkflowRun")
 	workflowRunProps["status"] = enumeration("pending", "running", "awaiting_input", "succeeded", "failed", "cancelled")
+	workflowRunProps["pluginVersion"] = optional(obj{"type": "string", "description": "The agent plugin version frozen into the run at creation: the frozen identity the run's agent sessions execute with. Null only when the space declared no plugin at creation (or the run predates migration 0042); the first agent node then fails with `agent_plugin_version_unfrozen`."})
 	workflowRunProps["input"] = obj{"type": "object", "additionalProperties": true, "description": "The run's input object: each form value keyed by variable name, plus the reserved `input` key carrying the kickoff text the run submitted. A run that submitted no kickoff evaluates against the Start node's authored instruction instead."}
 	workflowRunProps["nodeStates"] = obj{"type": "object", "additionalProperties": true, "description": "Per-node execution state keyed by node id: status, displayName, startedAt, finishedAt, output, and error — the reason, present only when the node failed."}
 	workflowRunProps["rounds"] = array(obj{"type": "object", "additionalProperties": true})

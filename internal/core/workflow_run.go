@@ -52,6 +52,11 @@ func workflowRunSummary(run Object) Object {
 		// The user's own D6 request, made through POST …/runs/{rid}/cancel: the run page has to be
 		// able to show that a cancellation is pending, and a repeat of the request reads it back.
 		"cancelRequestedAt": run["cancelRequestedAt"],
+		// The plugin version frozen at creation (D3) is part of the run's identity, so readers see
+		// exactly what the run executes with, not what the space declares today. Raw pass-through:
+		// an unfrozen run (a row from before 0042, or one whose space declared no plugin) has NULL,
+		// and the API reports that absence as JSON null rather than an empty version string.
+		"pluginVersion": run["pluginVersion"],
 	}
 }
 

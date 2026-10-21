@@ -8,8 +8,10 @@ import (
 // The run summary is the projection both the history list and the detail page return, so these
 // tests pin its complete shape and, in particular, that an unset timestamp stays JSON null: the
 // OpenAPI schema declares startedAt/finishedAt nullable and the page treats null as "not reached",
-// while an empty string would be an invalid date-time rendered as a blank timestamp.
-func TestWorkflowRunSummaryKeepsNullableTimestamps(t *testing.T) {
+// while an empty string would be an invalid date-time rendered as a blank timestamp. pluginVersion
+// follows the same rule: frozen at creation and projected verbatim, so an unfrozen run reads back
+// as null instead of an empty version string that could be mistaken for a real one.
+func TestWorkflowRunSummaryKeepsNullableFields(t *testing.T) {
 	tests := []struct {
 		name string
 		run  Object
@@ -29,6 +31,7 @@ func TestWorkflowRunSummaryKeepsNullableTimestamps(t *testing.T) {
 				"createdAt":         "2026-10-20T09:00:00.000000+00:00",
 				"updatedAt":         "2026-10-20T09:00:00.000000+00:00",
 				"cancelRequestedAt": nil,
+				"pluginVersion":     nil,
 			},
 			want: Object{
 				"id": "run-1", "tenantId": "tenant-1", "workflowId": "workflow-1",
@@ -42,6 +45,7 @@ func TestWorkflowRunSummaryKeepsNullableTimestamps(t *testing.T) {
 				"createdAt":         "2026-10-20T09:00:00.000000+00:00",
 				"updatedAt":         "2026-10-20T09:00:00.000000+00:00",
 				"cancelRequestedAt": nil,
+				"pluginVersion":     nil,
 			},
 		},
 		{
@@ -60,6 +64,7 @@ func TestWorkflowRunSummaryKeepsNullableTimestamps(t *testing.T) {
 				"createdAt":         "2026-10-20T09:00:00.000000+00:00",
 				"updatedAt":         "2026-10-20T09:00:02.000000+00:00",
 				"cancelRequestedAt": "2026-10-20T09:00:02.500000+00:00",
+				"pluginVersion":     "1.0.0",
 			},
 			want: Object{
 				"id": "run-2", "tenantId": "tenant-1", "workflowId": "workflow-1",
@@ -75,6 +80,7 @@ func TestWorkflowRunSummaryKeepsNullableTimestamps(t *testing.T) {
 				"createdAt":         "2026-10-20T09:00:00.000000+00:00",
 				"updatedAt":         "2026-10-20T09:00:02.000000+00:00",
 				"cancelRequestedAt": "2026-10-20T09:00:02.500000+00:00",
+				"pluginVersion":     "1.0.0",
 			},
 		},
 		{
@@ -91,6 +97,7 @@ func TestWorkflowRunSummaryKeepsNullableTimestamps(t *testing.T) {
 				"createdAt":         "2026-10-20T09:00:00.000000+00:00",
 				"updatedAt":         "2026-10-20T09:03:00.000000+00:00",
 				"cancelRequestedAt": nil,
+				"pluginVersion":     "1.0.0",
 			},
 			want: Object{
 				"id": "run-3", "tenantId": "tenant-1", "workflowId": "workflow-1",
@@ -104,6 +111,7 @@ func TestWorkflowRunSummaryKeepsNullableTimestamps(t *testing.T) {
 				"createdAt":         "2026-10-20T09:00:00.000000+00:00",
 				"updatedAt":         "2026-10-20T09:03:00.000000+00:00",
 				"cancelRequestedAt": nil,
+				"pluginVersion":     "1.0.0",
 			},
 		},
 	}

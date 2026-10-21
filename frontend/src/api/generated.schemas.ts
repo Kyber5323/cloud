@@ -2599,6 +2599,11 @@ export interface WorkflowRun {
   name: string;
   /** Per-node execution state keyed by node id: status, displayName, startedAt, finishedAt, output, and error — the reason, present only when the node failed. */
   nodeStates: WorkflowRunNodeStates;
+  /**
+     * The agent plugin version frozen into the run at creation: the frozen identity the run's agent sessions execute with. Null only when the space declared no plugin at creation (or the run predates migration 0042); the first agent node then fails with `agent_plugin_version_unfrozen`.
+     * @nullable
+     */
+  pluginVersion: string | null;
   rounds: WorkflowRunRoundsItem[];
   snapshotId: string;
   /** @nullable */
